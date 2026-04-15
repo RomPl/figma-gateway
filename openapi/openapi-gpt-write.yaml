@@ -1,0 +1,508 @@
+openapi: 3.1.0
+info:
+  title: Figma Gateway GPT Write API
+  version: 0.1.0
+  description: |
+    GPT Actions schema for guarded write operations in Figma Gateway.
+
+    Important:
+    - all write operations are consequential
+    - use only against explicitly named targets
+    - this schema creates or modifies nodes inside an existing file
+    - it does not create a brand new Figma file or project
+servers:
+  - url: https://figma-gateway.vazovski.art
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+        - code
+        - message
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          $ref: '#/components/schemas/Error'
+      required:
+        - success
+        - error
+    AliasRecord:
+      type: object
+      properties:
+        alias:
+          type: string
+        fileKey:
+          type: string
+        nodeId:
+          type: string
+        project:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+    AliasListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AliasRecord'
+      required:
+        - success
+        - data
+    AliasResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/AliasRecord'
+      required:
+        - success
+        - data
+    ResolveAliasRequest:
+      type: object
+      required:
+        - alias
+      properties:
+        alias:
+          type: string
+    CreatePageRequest:
+      type: object
+      required:
+        - name
+      properties:
+        fileKey:
+          type: string
+          description: Optional. For plugin bridge flows the server can resolve the active session automatically.
+        clientName:
+          type: string
+          description: Optional. Helps select the active plugin session automatically.
+        sessionId:
+          type: string
+          description: Optional. When omitted, the server can use the latest active plugin session automatically.
+        name:
+          type: string
+        dryRun:
+          type: boolean
+    CreateFileRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        projectId:
+          type: string
+        dryRun:
+          type: boolean
+    CreateFrameRequest:
+      type: object
+      required:
+        - fileKey
+        - parentNodeId
+        - name
+        - width
+        - height
+      properties:
+        fileKey:
+          type: string
+        parentNodeId:
+          type: string
+        name:
+          type: string
+        width:
+          type: number
+        height:
+          type: number
+        x:
+          type: number
+        y:
+          type: number
+        dryRun:
+          type: boolean
+    CreateSectionRequest:
+      type: object
+      required:
+        - fileKey
+        - parentNodeId
+        - name
+        - width
+        - height
+      properties:
+        fileKey:
+          type: string
+        parentNodeId:
+          type: string
+        name:
+          type: string
+        width:
+          type: number
+        height:
+          type: number
+        x:
+          type: number
+        y:
+          type: number
+        dryRun:
+          type: boolean
+    UpdateTextRequest:
+      type: object
+      required:
+        - fileKey
+        - nodeId
+        - text
+      properties:
+        fileKey:
+          type: string
+        nodeId:
+          type: string
+        text:
+          type: string
+        dryRun:
+          type: boolean
+    DuplicateBlockRequest:
+      type: object
+      required:
+        - fileKey
+        - nodeId
+      properties:
+        fileKey:
+          type: string
+        nodeId:
+          type: string
+        targetParentNodeId:
+          type: string
+        name:
+          type: string
+        x:
+          type: number
+        y:
+          type: number
+        dryRun:
+          type: boolean
+    ApplyStyleFromAliasRequest:
+      type: object
+      required:
+        - fileKey
+        - nodeId
+        - alias
+      properties:
+        fileKey:
+          type: string
+        nodeId:
+          type: string
+        alias:
+          type: string
+        dryRun:
+          type: boolean
+    WriteResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            operation:
+              type: string
+            performed:
+              type: boolean
+            dryRun:
+              type: boolean
+            payload:
+              type: object
+              additionalProperties: true
+            result:
+              type: object
+              additionalProperties: true
+            notes:
+              type: array
+              items:
+                type: string
+      required:
+        - success
+        - data
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: OK
+  /version:
+    get:
+      operationId: getVersion
+      summary: Version info
+      security: []
+      responses:
+        '200':
+          description: OK
+  /api/aliases:
+    get:
+      operationId: listAliases
+      summary: List aliases
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: tag
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AliasListResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/resolve-alias:
+    post:
+      operationId: resolveAlias
+      summary: Resolve alias
+      x-openai-isConsequential: false
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveAliasRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AliasResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/write/create-page:
+    post:
+      operationId: createPage
+      summary: Create a new page in an existing file
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePageRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/write/create-file:
+    post:
+      operationId: createFile
+      summary: Create a brand new Figma file or design document
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFileRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/write/create-frame:
+    post:
+      operationId: createFrame
+      summary: Create a new frame inside an existing file
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFrameRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/write/create-section:
+    post:
+      operationId: createSection
+      summary: Create a new section inside an existing file
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSectionRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/write/update-text:
+    post:
+      operationId: updateText
+      summary: Update text content in an existing text node
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTextRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/write/duplicate-block:
+    post:
+      operationId: duplicateBlock
+      summary: Duplicate an existing block inside an existing file
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DuplicateBlockRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/write/apply-style-from-alias:
+    post:
+      operationId: applyStyleFromAlias
+      summary: Apply style from a known alias to an existing node
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplyStyleFromAliasRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+security:
+  - bearerAuth: []

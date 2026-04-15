@@ -1,0 +1,702 @@
+openapi: 3.1.0
+info:
+  title: Figma Gateway GPT Plugin Bridge API
+  version: 0.1.0
+  description: |
+    GPT Actions schema for read-only alias operations and page creation through the Figma plugin bridge.
+
+    Notes:
+    - createPage requires a running Figma plugin bridge session
+    - registerPluginSession is usually handled automatically by the plugin itself
+    - createPage can auto-resolve the latest active plugin session when sessionId is omitted
+    - fileKey is optional for createPage; the server can use the current plugin session context automatically
+    - createPage is consequential and queues a command for the plugin
+    - createPage defaults to live execution when dryRun is omitted
+servers:
+  - url: https://figma-gateway.vazovski.art
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          $ref: '#/components/schemas/Error'
+    AliasRecord:
+      type: object
+      properties:
+        alias:
+          type: string
+        fileKey:
+          type: string
+        nodeId:
+          type: string
+        project:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+    AliasListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AliasRecord'
+    AliasResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/AliasRecord'
+    ResolveAliasRequest:
+      type: object
+      required:
+        - alias
+      properties:
+        alias:
+          type: string
+    SessionRegisterRequest:
+      type: object
+      properties:
+        fileKey:
+          type: string
+          description: Optional cloud file key when available from Figma.
+        localFileKey:
+          type: string
+          description: Optional local editor identifier when a cloud file key is not available.
+        fileName:
+          type: string
+          description: Optional current file name for local or draft files.
+        clientName:
+          type: string
+    SessionRegisterResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            sessionId:
+              type: string
+            sessionToken:
+              type: string
+            fileKey:
+              type: string
+            clientName:
+              type: string
+            createdAt:
+              type: string
+    CreatePageRequest:
+      type: object
+      required:
+        - name
+      properties:
+        fileKey:
+          type: string
+          description: Optional. When omitted, the server uses the current plugin session context automatically.
+        clientName:
+          type: string
+          description: Optional. Helps select the latest active plugin session when sessionId is omitted.
+        name:
+          type: string
+        sessionId:
+          type: string
+          description: Optional. When omitted, the server uses the latest active plugin session automatically.
+        dryRun:
+          type: boolean
+          default: false
+          description: Set to false for live page creation.
+    CreateFrameRequest:
+      type: object
+      required:
+        - name
+        - width
+        - height
+      properties:
+        fileKey:
+          type: string
+          description: Optional. When omitted, the server uses the current plugin session context automatically.
+        clientName:
+          type: string
+          description: Optional. Helps select the latest active plugin session when sessionId is omitted.
+        sessionId:
+          type: string
+          description: Optional. When omitted, the server uses the latest active plugin session automatically.
+        parentNodeId:
+          type: string
+          description: Optional. When omitted, the current page is used.
+        name:
+          type: string
+        width:
+          type: number
+        height:
+          type: number
+        x:
+          type: number
+        y:
+          type: number
+        dryRun:
+          type: boolean
+          default: false
+          description: Set to false for live frame creation.
+    UpdateTextRequest:
+      type: object
+      required:
+        - nodeId
+        - text
+      properties:
+        fileKey:
+          type: string
+          description: Optional. When omitted, the server uses the current plugin session context automatically.
+        clientName:
+          type: string
+          description: Optional. Helps select the latest active plugin session when sessionId is omitted.
+        sessionId:
+          type: string
+          description: Optional. When omitted, the server uses the latest active plugin session automatically.
+        nodeId:
+          type: string
+        text:
+          type: string
+        dryRun:
+          type: boolean
+          default: false
+          description: Set to false for live text updates.
+    CreateSectionRequest:
+      type: object
+      required:
+        - name
+      properties:
+        fileKey:
+          type: string
+          description: Optional. When omitted, the server uses the current plugin session context automatically.
+        clientName:
+          type: string
+          description: Optional. Helps select the latest active plugin session when sessionId is omitted.
+        sessionId:
+          type: string
+          description: Optional. When omitted, the server uses the latest active plugin session automatically.
+        parentNodeId:
+          type: string
+          description: Optional. When omitted, the current page is used.
+        name:
+          type: string
+        width:
+          type: number
+        height:
+          type: number
+        x:
+          type: number
+        y:
+          type: number
+        dryRun:
+          type: boolean
+          default: false
+          description: Set to false for live section creation.
+    DuplicateBlockRequest:
+      type: object
+      required:
+        - nodeId
+      properties:
+        fileKey:
+          type: string
+          description: Optional. When omitted, the server uses the current plugin session context automatically.
+        clientName:
+          type: string
+          description: Optional. Helps select the latest active plugin session when sessionId is omitted.
+        sessionId:
+          type: string
+          description: Optional. When omitted, the server uses the latest active plugin session automatically.
+        nodeId:
+          type: string
+        targetParentNodeId:
+          type: string
+        name:
+          type: string
+        x:
+          type: number
+        y:
+          type: number
+        dryRun:
+          type: boolean
+          default: false
+          description: Set to false for live block duplication.
+    PluginCommandStep:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          description: Generic plugin command type, for example create_frame, update_text, duplicate_block, apply_style_from_alias.
+        payload:
+          type: object
+          additionalProperties: true
+    ExecutePluginCommandRequest:
+      type: object
+      required:
+        - command
+      properties:
+        fileKey:
+          type: string
+        clientName:
+          type: string
+        sessionId:
+          type: string
+        command:
+          $ref: '#/components/schemas/PluginCommandStep'
+        dryRun:
+          type: boolean
+          default: false
+    ExecutePluginBatchRequest:
+      type: object
+      required:
+        - commands
+      properties:
+        fileKey:
+          type: string
+        clientName:
+          type: string
+        sessionId:
+          type: string
+        commands:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PluginCommandStep'
+        dryRun:
+          type: boolean
+          default: false
+    QueuedWriteResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            operation:
+              type: string
+            performed:
+              type: boolean
+            dryRun:
+              type: boolean
+            payload:
+              type: object
+              additionalProperties: true
+            result:
+              type: object
+              additionalProperties: true
+            notes:
+              type: array
+              items:
+                type: string
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: OK
+  /version:
+    get:
+      operationId: getVersion
+      security: []
+      responses:
+        '200':
+          description: OK
+  /capabilities:
+    get:
+      operationId: getCapabilities
+      security: []
+      responses:
+        '200':
+          description: OK
+  /api/aliases:
+    get:
+      operationId: listAliases
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project
+          in: query
+          schema:
+            type: string
+        - name: tag
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AliasListResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/resolve-alias:
+    post:
+      operationId: resolveAlias
+      x-openai-isConsequential: false
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveAliasRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AliasResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/plugin-bridge/sessions/active:
+    get:
+      operationId: listActivePluginSessions
+      x-openai-isConsequential: false
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/plugin-bridge/sessions/register:
+    post:
+      operationId: registerPluginSession
+      x-openai-isConsequential: false
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionRegisterRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionRegisterResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/write/apply-style-from-alias:
+    post:
+      operationId: applyStyleFromAlias
+      summary: Queue alias style application for a connected Figma plugin bridge session
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - alias
+                - nodeId
+              properties:
+                fileKey:
+                  type: string
+                alias:
+                  type: string
+                nodeId:
+                  type: string
+                dryRun:
+                  type: boolean
+                  default: false
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        '200':
+          description: Dry run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/write/execute-plugin-command:
+    post:
+      operationId: executePluginCommand
+      summary: Queue a generic plugin command for a connected Figma plugin bridge session
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecutePluginCommandRequest'
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        '200':
+          description: Dry run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/write/execute-plugin-batch:
+    post:
+      operationId: executePluginBatch
+      summary: Queue a batch of generic plugin commands for a connected Figma plugin bridge session
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecutePluginBatchRequest'
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        '200':
+          description: Dry run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/write/duplicate-block:
+    post:
+      operationId: duplicateBlock
+      summary: Queue block duplication for a connected Figma plugin bridge session
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DuplicateBlockRequest'
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        '200':
+          description: Dry run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/write/create-section:
+    post:
+      operationId: createSection
+      summary: Queue section creation for a connected Figma plugin bridge session
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSectionRequest'
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        '200':
+          description: Dry run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/write/update-text:
+    post:
+      operationId: updateText
+      summary: Queue text update for a connected Figma plugin bridge session
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTextRequest'
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        '200':
+          description: Dry run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/write/create-frame:
+    post:
+      operationId: createFrame
+      summary: Queue frame creation for a connected Figma plugin bridge session
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFrameRequest'
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        '200':
+          description: Dry run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/write/create-page:
+    post:
+      operationId: createPage
+      summary: Queue page creation for a connected Figma plugin bridge session
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePageRequest'
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        '200':
+          description: Dry run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedWriteResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+security:
+  - bearerAuth: []

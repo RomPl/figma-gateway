@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "figma-gateway": {
+      "command": "node",
+      "args": [
+        "/home/figma-gateway.vazovski.art/scripts/mcp-stdio-runner.mjs"
+      ],
+      "cwd": "/home/figma-gateway.vazovski.art",
+      "env": {},
+      "alwaysAllow": [
+        "figma_search_aliases",
+        "figma_resolve_alias",
+        "figma_create_frame"
+      ],
+      "disabled": false
+    }
+  }
+}

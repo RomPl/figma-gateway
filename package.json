@@ -1,0 +1,36 @@
+{
+  "name": "figma-gateway",
+  "version": "0.1.0",
+  "description": "Production-ready backend scaffold for Figma Gateway",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "mcp:start": "tsx src/mcp/server.ts",
+    "start": "node dist/index.js",
+    "start:prod": "NODE_ENV=production node dist/index.js",
+    "self-check": "bash deploy/scripts/self-check.sh",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test tests/**/*.test.ts",
+    "mcp:runner": "node scripts/mcp-stdio-runner.mjs",
+    "mcp:smoke": "node scripts/mcp-test/stdio-smoke.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@cfworker/json-schema": "^4.1.1",
+    "@modelcontextprotocol/server": "^2.0.0-alpha.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "pino": "^9.7.0",
+    "zod": "^4.0.17"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,29 @@
+[Unit]
+Description=Figma Gateway HTTP API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=figma5001
+Group=figma5001
+WorkingDirectory=/home/figma-gateway.vazovski.art
+EnvironmentFile=/home/figma-gateway.vazovski.art/.env
+Environment=NODE_ENV=production
+ExecStart=/bin/bash /home/figma-gateway.vazovski.art/deploy/scripts/start-prod.sh
+ExecStartPost=/bin/bash /home/figma-gateway.vazovski.art/deploy/scripts/self-check.sh
+Restart=always
+RestartSec=5
+TimeoutStartSec=60
+TimeoutStopSec=30
+KillSignal=SIGINT
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ReadWritePaths=/home/figma-gateway.vazovski.art
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

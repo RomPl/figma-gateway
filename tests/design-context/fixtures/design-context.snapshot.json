@@ -1,0 +1,119 @@
+{
+  "summary": {
+    "id": "10:20",
+    "name": "Hero Section",
+    "type": "FRAME",
+    "visible": true,
+    "childCount": 3,
+    "size": {
+      "width": 1440,
+      "height": 900
+    },
+    "position": {
+      "x": 0,
+      "y": 0
+    },
+    "layoutMode": "VERTICAL"
+  },
+  "childBlocks": [
+    {
+      "id": "10:21",
+      "name": "Hero Heading",
+      "type": "TEXT",
+      "childCount": 0,
+      "textPreview": "Build design systems faster"
+    },
+    {
+      "id": "10:22",
+      "name": "Primary CTA",
+      "type": "INSTANCE",
+      "childCount": 0,
+      "textPreview": "Get Started"
+    },
+    {
+      "id": "10:23",
+      "name": "Feature Card",
+      "type": "INSTANCE",
+      "childCount": 1,
+      "textPreview": "Reusable production-ready blocks"
+    }
+  ],
+  "textContent": [
+    "Build design systems faster",
+    "Get Started",
+    "Reusable production-ready blocks"
+  ],
+  "layoutHints": {
+    "layoutMode": "VERTICAL",
+    "primaryAxisSizingMode": "AUTO",
+    "counterAxisSizingMode": "FIXED",
+    "itemSpacing": 24,
+    "padding": {
+      "top": 64,
+      "right": 64,
+      "bottom": 64,
+      "left": 64
+    },
+    "alignItems": "CENTER",
+    "clipsContent": true,
+    "sizingHints": [
+      "Uses auto-layout (vertical).",
+      "Children are spaced by 24px.",
+      "Frame size is 1440x900.",
+      "Content is clipped by the frame."
+    ]
+  },
+  "styles": [
+    {
+      "id": "S:1",
+      "name": "Surface / Hero Background",
+      "type": "FILL"
+    },
+    {
+      "id": "S:2",
+      "name": "Heading / XL",
+      "type": "TEXT"
+    }
+  ],
+  "variables": [
+    {
+      "id": "V:1",
+      "name": "color/hero/background",
+      "collection": "Primitives",
+      "resolvedType": "COLOR"
+    },
+    {
+      "id": "V:2",
+      "name": "space/page/gutter",
+      "collection": "Primitives",
+      "resolvedType": "FLOAT"
+    },
+    {
+      "id": "V:3",
+      "name": "content/hero/title",
+      "collection": "Content",
+      "resolvedType": "STRING"
+    }
+  ],
+  "componentsUsed": [
+    {
+      "id": "C:1",
+      "name": "Button / Primary",
+      "description": "Primary call to action button",
+      "kind": "component"
+    },
+    {
+      "id": "CS:1",
+      "name": "Card / Feature",
+      "description": "Feature card variants",
+      "kind": "componentSet"
+    }
+  ],
+  "implementationNotes": [
+    "Keep auto-layout semantics in code instead of absolute positioning.",
+    "Extract visible copy into structured content props or constants.",
+    "Map referenced style IDs to design-system tokens or reusable CSS variables.",
+    "Prefer variables/tokens over hardcoded color and spacing values.",
+    "Preserve component boundaries for repeated UI patterns."
+  ]
+}

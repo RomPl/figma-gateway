@@ -1,0 +1,277 @@
+openapi: 3.0.1
+info:
+  title: Figma Gateway GPT Read-Only API
+  version: 0.1.0
+  description: Read-only API for a custom GPT via Actions.
+servers:
+  - url: https://figma-gateway.vazovski.art
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+        - code
+        - message
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          $ref: '#/components/schemas/Error'
+      required:
+        - success
+        - error
+    HealthData:
+      type: object
+      properties:
+        status:
+          type: string
+        service:
+          type: string
+        version:
+          type: string
+        uptime:
+          type: number
+    HealthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/HealthData'
+      required:
+        - success
+        - data
+    VersionData:
+      type: object
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        environment:
+          type: string
+    VersionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/VersionData'
+      required:
+        - success
+        - data
+    AliasRecord:
+      type: object
+      properties:
+        alias:
+          type: string
+        fileKey:
+          type: string
+        nodeId:
+          type: string
+        project:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+    AliasListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AliasRecord'
+      required:
+        - success
+        - data
+    AliasResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/AliasRecord'
+      required:
+        - success
+        - data
+    ResolveAliasRequest:
+      type: object
+      properties:
+        alias:
+          type: string
+      required:
+        - alias
+    SearchAliasesRequest:
+      type: object
+      properties:
+        query:
+          type: string
+        project:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        limit:
+          type: integer
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        'default':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /version:
+    get:
+      operationId: getVersion
+      summary: Version info
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
+        'default':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/aliases:
+    get:
+      operationId: listAliases
+      summary: List aliases
+      parameters:
+        - name: project
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: tag
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AliasListResponse'
+        'default':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/aliases/{alias}:
+    get:
+      operationId: getAlias
+      summary: Get one alias
+      parameters:
+        - name: alias
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AliasResponse'
+        'default':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/resolve-alias:
+    post:
+      operationId: resolveAlias
+      summary: Resolve alias
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveAliasRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AliasResponse'
+        'default':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/search/aliases:
+    post:
+      operationId: searchAliases
+      summary: Search aliases
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchAliasesRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AliasListResponse'
+        'default':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+security:
+  - bearerAuth: []

@@ -1,0 +1,8 @@
+[mcp_servers.figma_gateway]
+command = "node"
+args = ["/home/figma-gateway.vazovski.art/scripts/mcp-stdio-runner.mjs"]
+cwd = "/home/figma-gateway.vazovski.art"
+startup_timeout_sec = 20
+tool_timeout_sec = 60
+enabled = true
+required = false
