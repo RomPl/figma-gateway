@@ -9,8 +9,6 @@ import { AuditService } from '../../src/core/audit';
 import { createApp } from '../../src/api/app';
 import { AliasRegistry } from '../../src/core/alias-registry';
 import type { FigmaReadClient } from '../../src/core/figma-client';
-import { createDefaultFigmaWriteAdapter, createFigmaWriteService } from '../../src/core/figma-write-service';
-import type { FigmaWriteAdapter } from '../../src/core/figma-write-types';
 import { migrateDatabase } from '../../src/db/migrate';
 import { createSqliteDatabase } from '../../src/db/sqlite';
 
@@ -37,29 +35,6 @@ const createMockClient = (): FigmaReadClient => ({
   getVariables: async () => ({ status: 200, error: false, meta: { variables: {}, variableCollections: {} } })
 });
 
-const createAdapter = (): FigmaWriteAdapter => ({
-  createFrame: async (request) => ({
-    id: 'frame-live',
-    name: request.input.name
-  }),
-  updateText: async (request) => ({
-    id: request.input.nodeId,
-    text: request.input.text
-  }),
-  createSection: async (request) => ({
-    id: 'section-live',
-    name: request.input.name
-  }),
-  duplicateBlock: async (request) => ({
-    id: 'duplicate-live',
-    nodeId: request.input.nodeId
-  }),
-  applyStyleFromAlias: async (request) => ({
-    id: request.input.nodeId,
-    alias: request.input.sourceAlias.alias
-  })
-});
-
 const requestJson = async (baseUrl: string, path: string, init?: RequestInit) => {
   const headers = new Headers(init?.headers);
   headers.set('authorization', 'Bearer test-api-token');
@@ -75,7 +50,7 @@ const requestJson = async (baseUrl: string, path: string, init?: RequestInit) =>
   };
 };
 
-test('write API supports dry-run and live-mode through abstraction and writes audit trail', async () => {
+test('write API queues live write commands through plugin bridge and writes audit trail', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'figma-write-api-'));
   const dbPath = join(dir, 'write.sqlite');
 
@@ -98,12 +73,8 @@ test('write API supports dry-run and live-mode through abstraction and writes au
       corsAllowedOrigins: ['https://chat.openai.com'],
       db,
       auditService,
-      figmaWriteService: createFigmaWriteService({
-        aliasRegistry,
-        adapter: createAdapter(),
-        enabled: true,
-        allowedOperations: ['create-frame', 'apply-style-from-alias']
-      })
+      enableWriteActions: true,
+      writeAllowedOperations: ['create-frame', 'apply-style-from-alias', 'execute-plugin-command', 'execute-plugin-batch']
     });
     const server = createServer(app);
 
@@ -116,6 +87,23 @@ test('write API supports dry-run and live-mode through abstraction and writes au
     const baseUrl = `http://127.0.0.1:${address.port}`;
 
     try {
+      const registration = await requestJson(baseUrl, '/api/plugin-bridge/sessions/register', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          fileKey: 'file-app',
+          localFileKey: 'local:figma',
+          fileName: 'Test File',
+          clientName: 'test-plugin'
+        })
+      });
+
+      assert.equal(registration.status, 200);
+      const sessionId = (registration.json as { data: { sessionId: string } }).data.sessionId;
+      const sessionToken = (registration.json as { data: { sessionToken: string } }).data.sessionToken;
+
       const dryRun = await requestJson(baseUrl, '/api/write/create-frame', {
         method: 'POST',
         headers: {
@@ -144,21 +132,34 @@ test('write API supports dry-run and live-mode through abstraction and writes au
           fileKey: 'file-app',
           nodeId: '9:1',
           alias: 'button-primary-style',
-          dryRun: false
+          dryRun: false,
+          sessionId: sessionId
         })
       });
 
-      assert.equal(live.status, 200);
-      assert.deepEqual((live.json as { data: { payload: unknown } }).data.payload, {
-        id: '9:1',
-        alias: 'button-primary-style'
-      });
+      assert.equal(live.status, 202);
+      const liveData = (live.json as { data: { result: { commandId: string; status: string } } }).data;
+      assert.equal(liveData.result.status, 'queued');
 
-      const events = auditService.listRecent(2);
-      assert.equal(events[0].target, 'POST /api/write/apply-style-from-alias');
-      assert.equal(events[0].status, 'success');
-      assert.equal(events[1].target, 'POST /api/write/create-frame');
+      const pending = await fetch(`${baseUrl}/api/plugin-bridge/sessions/${sessionId}/commands/pending`, {
+        headers: {
+          authorization: 'Bearer test-api-token',
+          'x-plugin-session-token': sessionToken
+        }
+      });
+      const pendingJson = (await pending.json()) as { data: Array<{ type: string; payload: { alias?: string; nodeId?: string } }> };
+      assert.equal(pending.status, 200);
+      assert.equal(pendingJson.data.length, 1);
+      assert.equal(pendingJson.data[0].type, 'apply-style-from-alias');
+      assert.equal(pendingJson.data[0].payload.alias, 'button-primary-style');
+      assert.equal(pendingJson.data[0].payload.nodeId, '9:1');
+
+      const events = auditService.listRecent(3);
+      assert.equal(events[0].target, `GET /api/plugin-bridge/sessions/${sessionId}/commands/pending`);
+      assert.equal(events[1].target, 'POST /api/write/apply-style-from-alias');
       assert.equal(events[1].status, 'success');
+      assert.equal(events[2].target, 'POST /api/write/create-frame');
+      assert.equal(events[2].status, 'success');
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
@@ -176,7 +177,6 @@ test('write API is blocked when write actions are disabled', async () => {
   try {
     const db = createSqliteDatabase(dbPath);
     migrateDatabase(db);
-    const aliasRegistry = new AliasRegistry(db);
     const auditService = new AuditService(db);
     const app = createApp({
       figmaClient: createMockClient(),
@@ -184,12 +184,8 @@ test('write API is blocked when write actions are disabled', async () => {
       corsAllowedOrigins: ['https://chat.openai.com'],
       db,
       auditService,
-      figmaWriteService: createFigmaWriteService({
-        aliasRegistry,
-        adapter: createDefaultFigmaWriteAdapter(),
-        enabled: false,
-        allowedOperations: ['update-text']
-      })
+      enableWriteActions: false,
+      writeAllowedOperations: ['update-text']
     });
     const server = createServer(app);
 

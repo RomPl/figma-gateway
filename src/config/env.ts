@@ -30,7 +30,8 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).max(3600000).default(60000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().min(1).max(10000).default(60),
   SQLITE_DB_PATH: z.string().trim().min(1).default('/home/figma-gateway.vazovski.art/data/figma-gateway.sqlite'),
-  ALIAS_REGISTRY_SEED_ON_STARTUP: z.coerce.boolean().default(false)
+  ALIAS_REGISTRY_SEED_ON_STARTUP: z.coerce.boolean().default(false),
+  CODE_UI_ROOT_DIR: z.string().trim().min(1).default('/home/figma-gateway.vazovski.art')
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -69,6 +70,7 @@ export type AppConfig = {
   rateLimitMaxRequests: number;
   sqliteDbPath: string;
   aliasRegistrySeedOnStartup: boolean;
+  codeUiRootDir: string;
 };
 
 export const config: AppConfig = {
@@ -100,5 +102,6 @@ export const config: AppConfig = {
   rateLimitWindowMs: parsedEnv.data.RATE_LIMIT_WINDOW_MS,
   rateLimitMaxRequests: parsedEnv.data.RATE_LIMIT_MAX_REQUESTS,
   sqliteDbPath: parsedEnv.data.SQLITE_DB_PATH,
-  aliasRegistrySeedOnStartup: parsedEnv.data.ALIAS_REGISTRY_SEED_ON_STARTUP
+  aliasRegistrySeedOnStartup: parsedEnv.data.ALIAS_REGISTRY_SEED_ON_STARTUP,
+  codeUiRootDir: parsedEnv.data.CODE_UI_ROOT_DIR
 };

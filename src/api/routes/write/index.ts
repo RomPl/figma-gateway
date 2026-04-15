@@ -3,7 +3,6 @@ import { Router } from 'express';
 
 import {
   applyStyleFromAliasSchema,
-  buildWriteContextFromBody,
   createFileSchema,
   createFrameSchema,
   createPageSchema,
@@ -16,6 +15,8 @@ import {
 import type { AuditActor } from '../../../core/audit';
 import { AppError } from '../../../core/errors';
 import { asyncHandler, sendSuccess, validateRequest } from '../helpers';
+import type { FigmaWriteOperation } from '../../../core/figma-write-types';
+import { assertMvpWriteBatchAllowed, assertMvpWriteCommandAllowed } from '../../../core/mvp-guardrails';
 
 const getRestWriteActor = (req: Request): AuditActor => ({
   type: 'api-client',
@@ -23,6 +24,23 @@ const getRestWriteActor = (req: Request): AuditActor => ({
   ip: req.ip,
   userAgent: req.header('user-agent') ?? undefined
 });
+
+const assertQueuedWriteAllowed = (req: Request, operation: FigmaWriteOperation): void => {
+  const runtime = req.app.locals.writeRuntime;
+  if (!runtime.enabled) {
+    throw new AppError('Write actions are disabled', 403, 'WRITE_ACTIONS_DISABLED');
+  }
+  if (!runtime.allowedOperations.includes(operation)) {
+    throw new AppError(`Write operation is not allowed: ${operation}`, 403, 'WRITE_OPERATION_NOT_ALLOWED');
+  }
+};
+
+const resolveQueuedSession = (req: Request) =>
+  req.app.locals.pluginBridgeService.resolveSession({
+    sessionId: req.body.sessionId,
+    fileKey: req.body.fileKey,
+    clientName: req.body.clientName
+  });
 
 export const writeRouter = Router();
 
@@ -41,6 +59,7 @@ writeRouter.post(
           clientName: req.body.clientName ?? null,
           sessionId: req.body.sessionId ?? null,
           parentNodeId: req.body.parentNodeId ?? null,
+          uiId: req.body.uiId ?? null,
           name: req.body.name,
           width: req.body.width,
           height: req.body.height,
@@ -54,15 +73,13 @@ writeRouter.post(
       });
       return;
     }
-    const resolvedSession = req.app.locals.pluginBridgeService.resolveSession({
-      sessionId: req.body.sessionId,
-      fileKey: req.body.fileKey,
-      clientName: req.body.clientName
-    });
+    assertQueuedWriteAllowed(req, 'create-frame');
+    const resolvedSession = resolveQueuedSession(req);
     const command = req.app.locals.pluginBridgeService.queueCreateFrame({
       sessionId: resolvedSession.sessionId,
       fileKey: req.body.fileKey ?? resolvedSession.fileKey,
       parentNodeId: req.body.parentNodeId,
+      uiId: req.body.uiId,
       name: req.body.name,
       width: req.body.width,
       height: req.body.height,
@@ -79,6 +96,7 @@ writeRouter.post(
         clientName: req.body.clientName ?? resolvedSession.clientName ?? null,
         sessionId: resolvedSession.sessionId,
         parentNodeId: req.body.parentNodeId ?? null,
+        uiId: req.body.uiId ?? null,
         name: req.body.name,
         width: req.body.width,
         height: req.body.height,
@@ -122,11 +140,8 @@ writeRouter.post(
       });
       return;
     }
-    const resolvedSession = req.app.locals.pluginBridgeService.resolveSession({
-      sessionId: req.body.sessionId,
-      fileKey: req.body.fileKey,
-      clientName: req.body.clientName
-    });
+    assertQueuedWriteAllowed(req, 'update-text');
+    const resolvedSession = resolveQueuedSession(req);
     const command = req.app.locals.pluginBridgeService.queueUpdateText({
       sessionId: resolvedSession.sessionId,
       fileKey: req.body.fileKey ?? resolvedSession.fileKey,
@@ -173,6 +188,7 @@ writeRouter.post(
           clientName: req.body.clientName ?? null,
           sessionId: req.body.sessionId ?? null,
           parentNodeId: req.body.parentNodeId ?? null,
+          uiId: req.body.uiId ?? null,
           name: req.body.name,
           width: req.body.width ?? null,
           height: req.body.height ?? null,
@@ -186,15 +202,13 @@ writeRouter.post(
       });
       return;
     }
-    const resolvedSession = req.app.locals.pluginBridgeService.resolveSession({
-      sessionId: req.body.sessionId,
-      fileKey: req.body.fileKey,
-      clientName: req.body.clientName
-    });
+    assertQueuedWriteAllowed(req, 'create-section');
+    const resolvedSession = resolveQueuedSession(req);
     const command = req.app.locals.pluginBridgeService.queueCreateSection({
       sessionId: resolvedSession.sessionId,
       fileKey: req.body.fileKey ?? resolvedSession.fileKey,
       parentNodeId: req.body.parentNodeId,
+      uiId: req.body.uiId,
       name: req.body.name,
       width: req.body.width,
       height: req.body.height,
@@ -211,6 +225,7 @@ writeRouter.post(
         clientName: req.body.clientName ?? resolvedSession.clientName ?? null,
         sessionId: resolvedSession.sessionId,
         parentNodeId: req.body.parentNodeId ?? null,
+        uiId: req.body.uiId ?? null,
         name: req.body.name,
         width: req.body.width ?? null,
         height: req.body.height ?? null,
@@ -257,11 +272,8 @@ writeRouter.post(
       });
       return;
     }
-    const resolvedSession = req.app.locals.pluginBridgeService.resolveSession({
-      sessionId: req.body.sessionId,
-      fileKey: req.body.fileKey,
-      clientName: req.body.clientName
-    });
+    assertQueuedWriteAllowed(req, 'duplicate-block');
+    const resolvedSession = resolveQueuedSession(req);
     const command = req.app.locals.pluginBridgeService.queueDuplicateBlock({
       sessionId: resolvedSession.sessionId,
       fileKey: req.body.fileKey ?? resolvedSession.fileKey,
@@ -323,11 +335,8 @@ writeRouter.post(
       });
       return;
     }
-    const resolvedSession = req.app.locals.pluginBridgeService.resolveSession({
-      sessionId: req.body.sessionId,
-      fileKey: req.body.fileKey,
-      clientName: req.body.clientName
-    });
+    assertQueuedWriteAllowed(req, 'apply-style-from-alias');
+    const resolvedSession = resolveQueuedSession(req);
     const command = req.app.locals.pluginBridgeService.queueApplyStyleFromAlias({
       sessionId: resolvedSession.sessionId,
       fileKey: req.body.fileKey ?? resolvedSession.fileKey,
@@ -381,11 +390,9 @@ writeRouter.post(
       });
       return;
     }
-    const resolvedSession = req.app.locals.pluginBridgeService.resolveSession({
-      sessionId: req.body.sessionId,
-      fileKey: req.body.fileKey,
-      clientName: req.body.clientName
-    });
+    assertQueuedWriteAllowed(req, 'execute-plugin-command');
+    assertMvpWriteCommandAllowed(req.body.command);
+    const resolvedSession = resolveQueuedSession(req);
     const command = req.app.locals.pluginBridgeService.queueCreatePage({
       sessionId: resolvedSession.sessionId,
       fileKey: req.body.fileKey ?? resolvedSession.fileKey,
@@ -438,11 +445,9 @@ writeRouter.post(
       });
       return;
     }
-    const resolvedSession = req.app.locals.pluginBridgeService.resolveSession({
-      sessionId: req.body.sessionId,
-      fileKey: req.body.fileKey,
-      clientName: req.body.clientName
-    });
+    assertQueuedWriteAllowed(req, 'execute-plugin-command');
+    assertMvpWriteCommandAllowed(req.body.command);
+    const resolvedSession = resolveQueuedSession(req);
     const command = req.app.locals.pluginBridgeService.queueExecutePluginCommand({
       sessionId: resolvedSession.sessionId,
       fileKey: req.body.fileKey ?? resolvedSession.fileKey,
@@ -495,11 +500,9 @@ writeRouter.post(
       });
       return;
     }
-    const resolvedSession = req.app.locals.pluginBridgeService.resolveSession({
-      sessionId: req.body.sessionId,
-      fileKey: req.body.fileKey,
-      clientName: req.body.clientName
-    });
+    assertQueuedWriteAllowed(req, 'execute-plugin-batch');
+    assertMvpWriteBatchAllowed(req.body.commands);
+    const resolvedSession = resolveQueuedSession(req);
     const command = req.app.locals.pluginBridgeService.queueExecutePluginBatch({
       sessionId: resolvedSession.sessionId,
       fileKey: req.body.fileKey ?? resolvedSession.fileKey,

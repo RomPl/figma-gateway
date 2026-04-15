@@ -33,6 +33,54 @@ npm start
 - `GET /health`
 - `GET /version`
 
+## MVP scope первой версии
+
+Первая рабочая версия намеренно ограничена.
+
+Поддерживается:
+
+- React + TypeScript
+- базовые layout-компоненты
+- text
+- buttons
+- images
+- sections / frames / groups
+- colors
+- typography
+- spacing
+- border radius
+- auto layout
+
+Не входит в первую версию:
+
+- сложная бизнес-логика
+- анимации
+- сложные canvas/WebGL UI
+- responsive diff всех брейкпоинтов сразу
+- полный round-trip для любых технологий
+
+Подробно: `docs/mvp-scope-v1.md`.
+
+## Design tokens как общий слой истины
+
+Проект теперь поддерживает registry design tokens как shared source of truth между кодом и Figma.
+
+Поддерживаются категории:
+
+- colors
+- spacing
+- typography
+- radius
+- shadows
+- breakpoints
+
+Токены могут маппиться одновременно на:
+
+- code refs (`className`, `css var`, file/export)
+- Figma refs (`variableId`, `styleId`, collection)
+
+Подробно: `docs/design-tokens.md`.
+
 ## Конфигурация
 
 Все runtime-конфиги читаются только из переменных окружения.

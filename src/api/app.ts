@@ -2,10 +2,20 @@ import express from 'express';
 
 import { config } from '../config/env';
 import { AliasRegistry, createAliasService } from '../core/alias-registry';
+import { UiBlockRegistry, createUiBlockService } from '../core/ui-block-registry';
+import { UiMappingRegistry, createUiMappingService } from '../core/ui-mapping-registry';
+import { DesignTokenRegistry, createDesignTokenService } from '../core/design-token-registry';
 import { AuditService, createAuditMiddleware } from '../core/audit';
 import { createCachedFigmaReadClient, defaultFigmaCacheTtlConfig, type CacheBackend } from '../core/cache';
 import { createMemoryCacheBackend } from '../core/cache-memory';
 import { createDesignContextService } from '../core/design-context';
+import { createCodeUiParserService, type CodeUiParserService } from '../core/code-ui-parser';
+import { createFigmaUiExtractorService, type FigmaUiExtractorService } from '../core/figma-ui-extractor';
+import { CodeToFigmaPipelineService } from '../core/code-to-figma-pipeline';
+import { FigmaToCodePipelineService } from '../core/figma-to-code-pipeline';
+import { ReconcilePipelineService } from '../core/reconcile-pipeline';
+import { IntentApiService } from '../core/intent-api';
+import { SelectorResolverService } from '../core/selector-resolver';
 import { FigmaClient, type FigmaReadClient } from '../core/figma-client';
 import { createFigmaGatewayService } from '../core/figma-gateway-service';
 import {
@@ -34,6 +44,8 @@ export type ApiDependencies = {
   figmaClient?: FigmaReadClient;
   figmaWriteAdapter?: FigmaWriteAdapter;
   figmaWriteService?: FigmaWriteService;
+  codeUiParserService?: CodeUiParserService;
+  figmaUiExtractorService?: FigmaUiExtractorService;
   enableWriteActions?: boolean;
   writeAllowedOperations?: string[];
   apiBearerToken?: string;
@@ -81,14 +93,57 @@ export const createApp = (dependencies: ApiDependencies = {}) => {
   }
   app.locals.aliasRegistry = new AliasRegistry(db);
   app.locals.aliasService = createAliasService(app.locals.aliasRegistry, app.locals.figmaGatewayService);
+  app.locals.uiBlockRegistry = new UiBlockRegistry(db);
+  app.locals.uiBlockService = createUiBlockService(app.locals.uiBlockRegistry);
+  app.locals.uiMappingRegistry = new UiMappingRegistry(db);
+  app.locals.uiMappingService = createUiMappingService(app.locals.uiMappingRegistry);
+  app.locals.designTokenRegistry = new DesignTokenRegistry(db);
+  app.locals.designTokenService = createDesignTokenService(app.locals.designTokenRegistry);
   app.locals.pluginBridgeService = new PluginBridgeService();
+  app.locals.codeUiParserService = dependencies.codeUiParserService ?? createCodeUiParserService(config.codeUiRootDir, app.locals.designTokenService);
+  app.locals.figmaUiExtractorService = dependencies.figmaUiExtractorService ?? createFigmaUiExtractorService(app.locals.figmaClient, app.locals.designTokenService);
+  app.locals.codeToFigmaPipelineService = new CodeToFigmaPipelineService(
+    app.locals.codeUiParserService,
+    app.locals.pluginBridgeService,
+    app.locals.uiMappingService
+  );
+  app.locals.figmaToCodePipelineService = new FigmaToCodePipelineService(
+    app.locals.figmaUiExtractorService,
+    app.locals.codeUiParserService,
+    app.locals.uiMappingService
+  );
+  app.locals.reconcilePipelineService = new ReconcilePipelineService(
+    app.locals.figmaUiExtractorService,
+    app.locals.codeUiParserService,
+    app.locals.uiMappingService
+  );
+  app.locals.selectorResolverService = new SelectorResolverService(
+    app.locals.codeUiParserService,
+    app.locals.figmaUiExtractorService,
+    app.locals.uiMappingService
+  );
+  app.locals.intentApiService = new IntentApiService(
+    app.locals.codeToFigmaPipelineService,
+    app.locals.figmaToCodePipelineService,
+    app.locals.reconcilePipelineService,
+    app.locals.codeUiParserService,
+    app.locals.figmaUiExtractorService,
+    app.locals.uiMappingService,
+    app.locals.pluginBridgeService,
+    app.locals.designTokenService,
+    app.locals.selectorResolverService
+  );
+  app.locals.writeRuntime = {
+    enabled: enableWriteActions,
+    allowedOperations: parseAllowedWriteOperations(writeAllowedOperations.join(','))
+  };
   app.locals.figmaWriteService =
     dependencies.figmaWriteService ??
     createFigmaWriteService({
       aliasRegistry: app.locals.aliasRegistry,
       adapter: dependencies.figmaWriteAdapter ?? createDefaultFigmaWriteAdapter(),
       enabled: enableWriteActions,
-      allowedOperations: parseAllowedWriteOperations(writeAllowedOperations.join(','))
+      allowedOperations: app.locals.writeRuntime.allowedOperations
     });
 
   app.use(requestIdMiddleware);

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { AliasRegistry } from './alias-registry';
 import { AppError } from './errors';
 import {
+  FIGMA_LOW_LEVEL_COMMAND_TYPES,
   FIGMA_WRITE_OPERATIONS,
   assertDryRunAwareContext,
   createDryRunResult,
@@ -11,6 +12,9 @@ import {
   type CreateFrameInput,
   type CreateSectionInput,
   type DuplicateBlockInput,
+  type ExecutePluginBatchInput,
+  type ExecutePluginCommandInput,
+  type FigmaCommandStep,
   type FigmaWriteAdapter,
   type FigmaWriteContext,
   type FigmaWriteOperation,
@@ -20,13 +24,106 @@ import {
 } from './figma-write-types';
 
 const nonEmptyString = z.string().trim().min(1);
+const nullableNumber = z.coerce.number().finite().nullable().optional();
+const recordUnknown = z.record(z.string(), z.unknown());
 
 export const writeRequestMetaSchema = z.object({
   dryRun: z.coerce.boolean().default(true),
   reason: z.string().trim().min(1).max(500).optional()
 });
 
+const commandPayloadSchema = z.object({
+  fileKey: nonEmptyString.optional(),
+  parentNodeId: nonEmptyString.optional(),
+  parentRef: nonEmptyString.optional(),
+  nodeId: nonEmptyString.optional(),
+  nodeRef: nonEmptyString.optional(),
+  targetParentNodeId: nonEmptyString.optional(),
+  targetParentRef: nonEmptyString.optional(),
+  ref: nonEmptyString.optional(),
+  name: z.string().trim().min(1).max(200).optional(),
+  text: z.string().min(1).max(10000).optional(),
+  characters: z.string().max(10000).optional(),
+  content: z.string().max(10000).optional(),
+  x: nullableNumber,
+  y: nullableNumber,
+  width: z.coerce.number().positive().max(100000).optional(),
+  height: z.coerce.number().positive().max(100000).optional(),
+  itemSpacing: nullableNumber,
+  primaryAxisAlignItems: z.string().trim().min(1).max(100).optional(),
+  counterAxisAlignItems: z.string().trim().min(1).max(100).optional(),
+  layoutMode: z.string().trim().min(1).max(100).optional(),
+  layoutWrap: z.string().trim().min(1).max(100).optional(),
+  strokesIncludedInLayout: z.coerce.boolean().optional(),
+  visible: z.coerce.boolean().optional(),
+  opacity: z.coerce.number().min(0).max(1).optional(),
+  cornerRadius: z.coerce.number().min(0).max(100000).optional(),
+  fontSize: z.coerce.number().positive().max(1000).optional(),
+  fontFamily: z.string().trim().min(1).max(200).optional(),
+  fontStyle: z.string().trim().min(1).max(200).optional(),
+  textAlignHorizontal: z.string().trim().min(1).max(100).optional(),
+  textAlignVertical: z.string().trim().min(1).max(100).optional(),
+  textAutoResize: z.string().trim().min(1).max(100).optional(),
+  fills: z.array(recordUnknown).max(32).optional(),
+  fill: z.union([recordUnknown, z.array(recordUnknown).max(32)]).optional(),
+  strokes: z.array(recordUnknown).max(32).optional(),
+  stroke: z.union([recordUnknown, z.array(recordUnknown).max(32)]).optional(),
+  strokeWeight: z.coerce.number().min(0).max(1000).optional(),
+  paddingTop: z.coerce.number().min(0).max(100000).optional(),
+  paddingRight: z.coerce.number().min(0).max(100000).optional(),
+  paddingBottom: z.coerce.number().min(0).max(100000).optional(),
+  paddingLeft: z.coerce.number().min(0).max(100000).optional(),
+  padding: z.object({
+    top: z.coerce.number().min(0).max(100000).optional(),
+    right: z.coerce.number().min(0).max(100000).optional(),
+    bottom: z.coerce.number().min(0).max(100000).optional(),
+    left: z.coerce.number().min(0).max(100000).optional()
+  }).partial().optional(),
+  spacing: z.coerce.number().min(0).max(100000).optional(),
+  alignment: z.object({
+    primaryAxisAlignItems: z.string().trim().min(1).max(100).optional(),
+    counterAxisAlignItems: z.string().trim().min(1).max(100).optional(),
+    layoutAlign: z.string().trim().min(1).max(100).optional(),
+    layoutGrow: z.coerce.number().min(0).max(1000).optional(),
+    layoutPositioning: z.string().trim().min(1).max(100).optional()
+  }).partial().optional(),
+  constraints: z.object({
+    horizontal: z.string().trim().min(1).max(100).optional(),
+    vertical: z.string().trim().min(1).max(100).optional()
+  }).partial().optional(),
+  layoutSizing: z.object({
+    horizontal: z.string().trim().min(1).max(100).optional(),
+    vertical: z.string().trim().min(1).max(100).optional()
+  }).partial().optional(),
+  pluginData: z.object({
+    namespace: z.string().trim().min(1).max(200),
+    key: z.string().trim().min(1).max(200),
+    value: z.string().max(10000).default('')
+  }).optional(),
+  query: z.object({
+    nodeId: nonEmptyString.optional(),
+    parentNodeId: nonEmptyString.optional(),
+    uiId: nonEmptyString.optional(),
+    name: z.string().trim().min(1).max(200).optional(),
+    type: z.string().trim().min(1).max(100).optional(),
+    pluginData: z.object({
+      namespace: z.string().trim().min(1).max(200),
+      key: z.string().trim().min(1).max(200),
+      value: z.string().optional()
+    }).optional(),
+    visible: z.coerce.boolean().optional()
+  }).partial().optional(),
+  nodes: z.array(nonEmptyString).max(256).optional(),
+  includePages: z.coerce.boolean().optional()
+}).passthrough();
+
+export const pluginCommandStepSchema = z.object({
+  type: z.enum(FIGMA_LOW_LEVEL_COMMAND_TYPES),
+  payload: commandPayloadSchema.optional()
+});
+
 export const createFrameSchema = z.object({
+  uiId: z.string().trim().min(1).max(200).optional(),
   fileKey: nonEmptyString.optional(),
   clientName: z.string().trim().min(1).max(200).optional(),
   sessionId: z.string().trim().min(1).optional(),
@@ -51,6 +148,7 @@ export const updateTextSchema = z.object({
 });
 
 export const createSectionSchema = z.object({
+  uiId: z.string().trim().min(1).max(200).optional(),
   fileKey: nonEmptyString.optional(),
   clientName: z.string().trim().min(1).max(200).optional(),
   sessionId: z.string().trim().min(1).optional(),
@@ -101,11 +199,6 @@ export const createFileSchema = z.object({
   projectId: nonEmptyString.optional(),
   dryRun: writeRequestMetaSchema.shape.dryRun,
   reason: writeRequestMetaSchema.shape.reason
-});
-
-export const pluginCommandStepSchema = z.object({
-  type: z.string().trim().min(1).max(100),
-  payload: z.record(z.string(), z.unknown()).optional()
 });
 
 export const executePluginCommandSchema = z.object({
@@ -177,7 +270,9 @@ const createUnsupportedWriteAdapter = (): FigmaWriteAdapter => {
     updateText: notConfigured,
     createSection: notConfigured,
     duplicateBlock: notConfigured,
-    applyStyleFromAlias: notConfigured
+    applyStyleFromAlias: notConfigured,
+    executePluginCommand: notConfigured,
+    executePluginBatch: notConfigured
   };
 };
 
@@ -213,49 +308,17 @@ export const createFigmaWriteService = (options: ServiceOptions): FigmaWriteServ
   };
 
   return {
-    async createFrame(
-      request: FigmaWriteRequest<CreateFrameInput, 'create-frame'>,
-      context: FigmaWriteContext
-    ) {
-      return executeOrDryRun(
-        request,
-        context,
-        () => adapter.createFrame(request, context),
-        request.input
-      );
+    async createFrame(request: FigmaWriteRequest<CreateFrameInput, 'create-frame'>, context: FigmaWriteContext) {
+      return executeOrDryRun(request, context, () => adapter.createFrame(request, context), request.input);
     },
-    async updateText(
-      request: FigmaWriteRequest<UpdateTextInput, 'update-text'>,
-      context: FigmaWriteContext
-    ) {
-      return executeOrDryRun(
-        request,
-        context,
-        () => adapter.updateText(request, context),
-        request.input
-      );
+    async updateText(request: FigmaWriteRequest<UpdateTextInput, 'update-text'>, context: FigmaWriteContext) {
+      return executeOrDryRun(request, context, () => adapter.updateText(request, context), request.input);
     },
-    async createSection(
-      request: FigmaWriteRequest<CreateSectionInput, 'create-section'>,
-      context: FigmaWriteContext
-    ) {
-      return executeOrDryRun(
-        request,
-        context,
-        () => adapter.createSection(request, context),
-        request.input
-      );
+    async createSection(request: FigmaWriteRequest<CreateSectionInput, 'create-section'>, context: FigmaWriteContext) {
+      return executeOrDryRun(request, context, () => adapter.createSection(request, context), request.input);
     },
-    async duplicateBlock(
-      request: FigmaWriteRequest<DuplicateBlockInput, 'duplicate-block'>,
-      context: FigmaWriteContext
-    ) {
-      return executeOrDryRun(
-        request,
-        context,
-        () => adapter.duplicateBlock(request, context),
-        request.input
-      );
+    async duplicateBlock(request: FigmaWriteRequest<DuplicateBlockInput, 'duplicate-block'>, context: FigmaWriteContext) {
+      return executeOrDryRun(request, context, () => adapter.duplicateBlock(request, context), request.input);
     },
     async applyStyleFromAlias(
       request: FigmaWriteRequest<ApplyStyleFromAliasInput, 'apply-style-from-alias'>,
@@ -282,6 +345,18 @@ export const createFigmaWriteService = (options: ServiceOptions): FigmaWriteServ
           sourceAlias
         }
       );
+    },
+    async executePluginCommand(
+      request: FigmaWriteRequest<ExecutePluginCommandInput, 'execute-plugin-command'>,
+      context: FigmaWriteContext
+    ) {
+      return executeOrDryRun(request, context, () => adapter.executePluginCommand(request, context), request.input);
+    },
+    async executePluginBatch(
+      request: FigmaWriteRequest<ExecutePluginBatchInput, 'execute-plugin-batch'>,
+      context: FigmaWriteContext
+    ) {
+      return executeOrDryRun(request, context, () => adapter.executePluginBatch(request, context), request.input);
     }
   };
 };
@@ -300,3 +375,6 @@ export const buildWriteContextFromBody = <
     },
     actor
   );
+
+export const isLowLevelCommandType = (value: string): value is FigmaCommandStep['type'] =>
+  FIGMA_LOW_LEVEL_COMMAND_TYPES.includes(value as FigmaCommandStep['type']);

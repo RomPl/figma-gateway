@@ -2,23 +2,117 @@
 
 ## Purpose
 
-This is the closest practical equivalent to a broad "root-like" execution layer for Figma, within the limits of the Figma Plugin API.
+Plugin bridge is now a low-level Figma write runtime.
 
-Instead of adding a separate Action for every operation, GPT can queue:
+Instead of exposing a separate HTTP endpoint for every small UI mutation, the backend can queue one typed command or a batch of typed commands, and the plugin executes them inside the open Figma file.
 
-- `executePluginCommand`
-- `executePluginBatch`
+This keeps write control server-side, validation centralized, and execution delegated to the Figma Plugin API.
 
-The running Figma plugin bridge resolves the active session automatically and executes the command(s) inside the open file.
+## Low-level command types
 
-## Supported generic command types
+Supported generic command types:
 
-- `create_page`
-- `create_frame`
-- `create_section`
-- `update_text`
-- `duplicate_block`
-- `apply_style_from_alias`
+- `create_text`
+- `create_group`
+- `move_node`
+- `delete_node`
+- `rename_node`
+- `set_fill`
+- `set_stroke`
+- `set_corner_radius`
+- `set_opacity`
+- `set_size`
+- `set_position`
+- `set_text_content`
+- `set_text_style`
+- `set_auto_layout`
+- `set_padding`
+- `set_spacing`
+- `set_alignment`
+- `set_constraints`
+- `set_layout_sizing`
+- `set_visibility`
+- `set_plugin_data`
+- `get_plugin_data`
+- `find_nodes`
+
+## Transport model
+
+Two generic write endpoints are the main low-level runtime surface:
+
+- `POST /api/write/execute-plugin-command`
+- `POST /api/write/execute-plugin-batch`
+
+Legacy higher-level endpoints such as `create-frame`, `update-text`, `create-section`, `duplicate-block`, and `apply-style-from-alias` still exist, but the universal runtime is the generic command bus.
+
+## Validation
+
+Backend validates:
+
+- `command.type`
+- basic payload shape
+- write enable flag
+- write allowlist membership
+- plugin session resolution
+
+Validation happens before queueing any live command.
+
+## Batch execution
+
+Batch execution is sequential inside the plugin.
+
+Returned batch result is normalized and includes:
+
+- `status`
+- `total`
+- `successCount`
+- `errorCount`
+- `results[]`
+
+A batch may finish with partial failure. In that case individual step results remain visible and the command is marked with mapped plugin error metadata.
+
+## Normalized result format
+
+Each executed low-level command returns a normalized result object:
+
+```json
+{
+  "commandType": "set_text_content",
+  "status": "ok",
+  "nodeId": "12:34",
+  "data": {
+    "id": "12:34",
+    "text": "Hello"
+  }
+}
+```
+
+On failure:
+
+```json
+{
+  "commandType": "set_text_content",
+  "status": "error",
+  "nodeId": null,
+  "error": {
+    "code": "NODE_NOT_FOUND",
+    "message": "Node not found for set_text_content: 12:34"
+  }
+}
+```
+
+## Error mapping
+
+Plugin runtime maps common failures into normalized error codes:
+
+- `INVALID_COMMAND_PAYLOAD`
+- `UNSUPPORTED_COMMAND`
+- `UNSUPPORTED_OPERATION`
+- `NODE_NOT_FOUND`
+- `FONT_LOAD_FAILED`
+- `STYLE_ALIAS_NOT_FOUND`
+- `PLUGIN_RUNTIME_ERROR`
+- `PLUGIN_BATCH_PARTIAL_FAILURE`
 
 ## Example single command
 
@@ -27,13 +121,10 @@ The running Figma plugin bridge resolves the active session automatically and ex
   "clientName": "ChatGPT web108",
   "dryRun": false,
   "command": {
-    "type": "create_frame",
+    "type": "set_text_content",
     "payload": {
-      "name": "Hero",
-      "width": 1440,
-      "height": 900,
-      "x": 0,
-      "y": 0
+      "nodeId": "12:34",
+      "text": "Updated headline"
     }
   }
 }
@@ -47,21 +138,32 @@ The running Figma plugin bridge resolves the active session automatically and ex
   "dryRun": false,
   "commands": [
     {
-      "type": "create_section",
+      "type": "create_text",
       "payload": {
-        "name": "Landing",
-        "width": 1440,
-        "height": 2000
+        "name": "Headline",
+        "text": "Hello",
+        "x": 100,
+        "y": 120
       }
     },
     {
-      "type": "create_frame",
+      "type": "set_text_style",
       "payload": {
-        "name": "Hero",
-        "width": 1440,
-        "height": 900,
-        "x": 0,
-        "y": 0
+        "nodeId": "12:34",
+        "fontSize": 48,
+        "textAlignHorizontal": "CENTER"
+      }
+    },
+    {
+      "type": "set_fill",
+      "payload": {
+        "nodeId": "12:34",
+        "fills": [
+          {
+            "type": "SOLID",
+            "color": { "r": 0.145, "g": 0.388, "b": 0.922 }
+          }
+        ]
       }
     }
   ]
@@ -70,15 +172,8 @@ The running Figma plugin bridge resolves the active session automatically and ex
 
 ## Limits
 
-This is not true operating-system root access.
-It is a universal command bus on top of the Figma Plugin API, scoped to the currently open file and whatever the Figma runtime allows.
+This is not unrestricted system access. It is a broad write runtime on top of the Figma Plugin API, scoped to:
 
-
-## Alias styles
-
-Current demo plugin registry aliases:
-
-- `hero-primary`
-- `footer-contact`
-
-These are currently applied inside the plugin through a small local style registry.
+- the currently open file
+- the connected plugin session
+- capabilities actually exposed by Figma Plugin API
