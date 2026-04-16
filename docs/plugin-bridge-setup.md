@@ -27,6 +27,18 @@ Open `plugin-bridge/code.js` and replace the bearer token constant with your rea
 5. Run `Figma Gateway Plugin Bridge`
 6. The plugin will automatically register a session and start polling
 
+
+## Session restore after restart
+
+The plugin now attempts to restore the last session for the same file on startup before registering a new session.
+
+Restore logic:
+
+- read previous `sessionId/sessionToken` from plugin client storage
+- verify that stored session belongs to the same file identity
+- validate it by polling pending commands
+- reuse it if valid, otherwise clear it and register a fresh session
+
 ## Plugin UI
 
 The plugin UI shows:

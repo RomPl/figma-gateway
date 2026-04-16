@@ -21,6 +21,19 @@ Fix:
 - or restart the plugin
 - retry the GPT action after the new session is visible
 
+
+## Session changed after plugin or gateway restart
+
+Expected behavior now:
+
+- plugin first attempts to restore the last session for the same file
+- if the restored session is invalid, it clears the stored state and re-registers automatically
+
+Manual fallback:
+
+- click `Reconnect session` in the plugin UI
+- verify the newly shown sessionId in the plugin UI
+
 ## GPT queued a command but nothing happened
 
 Cause:
