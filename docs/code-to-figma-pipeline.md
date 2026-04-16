@@ -125,3 +125,39 @@ Universal rule:
 Repeated rendered-first imports into the same Figma page can leave older roots with the same logical sync identity.
 
 To avoid exporting stale sections/frames on later passes, the runtime should delete previously imported root nodes that match the current root `uiId`/name before creating the new tree.
+
+## Wrapper fill suppression
+
+Planner must not create fills for transparent wrapper/layout nodes that only provide spacing, centering or flow structure.
+
+Examples:
+
+- bootstrap/grid wrappers like `row`, `col-*`, `justify-content-*`
+- plain spacing wrappers like `mb-*`, `mt-*`, `text-center`
+- switch/form wrappers with transparent backgrounds
+
+If a node has no meaningful background, no border, no radius and no shadow, it should remain visually transparent in Figma.
+
+## Effects and icons
+
+Planner should preserve browser `box-shadow` through Figma `effects` when supported.
+
+Font/SVG icons should use native icon reference commands when available instead of text placeholders.
+
+## Explicit transparent fill reset
+
+Figma frames may keep a default visible fill even when the browser node is fully transparent.
+
+For transparent wrappers, icon containers and outline-only controls, planner must emit an explicit `set_fill` with an empty fills array so that the node stays visually transparent in Figma.
+
+## Frame-only rendered containers
+
+Rendered-first imports should create normal containers as Figma `frame` nodes by default.
+
+Do not promote browser sections/wrappers to Figma `section` during normal page reconstruction. Figma sections are page-organization primitives, not visual layout primitives.
+
+## Capability-aware write planning
+
+Planner must not emit layout mutations blindly. Before sending write steps such as padding, corner radius or transparent fill reset, it should restrict them to node kinds that are expected to support those operations in Figma.
+
+This avoids partial-failure batches on larger projects with mixed group/frame/text structures.

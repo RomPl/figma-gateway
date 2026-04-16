@@ -50,3 +50,15 @@ Fix:
 
 - `createPage` defaults to live mode when `dryRun` is omitted
 - set `dryRun: false` explicitly when verifying behavior
+
+## Duplicate roots or old blocks after repeated imports
+
+Cause:
+
+- older rendered-first roots were not fully cleaned before the next import
+- root matching by `uiId` alone was too weak on mixed files
+
+Fix:
+
+- cleanup now matches by both `uiId` and root name before the new tree is created
+- rendered-first containers are created as frames, not sections, to avoid stale page-organization nodes staying behind
