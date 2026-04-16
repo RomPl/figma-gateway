@@ -292,14 +292,39 @@ const inferAutoLayoutPayload = (node: UiNode): Record<string, unknown> | null =>
 };
 
 const planTextNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: string | undefined, actions: PlannerAction[], commands: FigmaCommandStep[]): void => {
-  const needsReview = Boolean(node.confidence?.needsReview);
   const ref = node.uiId;
   const figmaName = buildFigmaNodeName(node, 'text');
   const x = relativeCoordinate(node.boundingBox?.x ?? node.position?.x, parentNode?.boundingBox?.x ?? parentNode?.position?.x);
   const y = relativeCoordinate(node.boundingBox?.y ?? node.position?.y, parentNode?.boundingBox?.y ?? parentNode?.position?.y);
   const parentUsesAutoLayout = Boolean(parentNode && inferAutoLayoutPayload(parentNode));
-  actions.push({ id: `${ref}:create_text`, type: 'create_text', uiId: node.uiId, payload: { ref, parentRef, uiId: node.uiId, name: figmaName, text: node.text ?? '', x, y } });
-  commands.push({ type: 'create_text', payload: { ref, parentRef, uiId: node.uiId, name: figmaName, text: node.text ?? '', x, y } });
+  const font = node.computedStyle ?? {};
+  const declaredText = node.declarativeStyle?.text ?? node.style?.text;
+  const parentPadding = parentNode?.layout?.padding ?? parentNode?.padding;
+  const parentWidth = parentNode?.boundingBox?.width ?? parentNode?.size?.width ?? parentNode?.computedStyle?.width;
+  const availableParentWidth = parentWidth !== undefined ? Math.max(0, parentWidth - (parentPadding?.left ?? 0) - (parentPadding?.right ?? 0)) : undefined;
+  const explicitTextAlign = lowerTextAlign(font.textAlign ?? declaredText?.textAlign);
+  const parentTextAlign = lowerTextAlign(parentNode?.computedStyle?.textAlign);
+  const parentDisplay = parentNode?.computedStyle?.display;
+  const parentCentersFlowChildren = !parentUsesAutoLayout && Boolean(parentNode && (
+    parentTextAlign === 'CENTER' ||
+    ((parentDisplay === 'flex' || parentDisplay === 'inline-flex') &&
+      (parentNode.computedStyle?.flexDirection === 'column' || parentNode.computedStyle?.flexDirection === 'column-reverse') &&
+      parentNode.computedStyle?.alignItems === 'center')
+  ));
+  const shouldUseParentContentWidth = !parentUsesAutoLayout && !['absolute', 'fixed', 'sticky'].includes(node.computedStyle?.position ?? '') && availableParentWidth !== undefined && availableParentWidth > 0 && (
+    explicitTextAlign === 'CENTER' ||
+    explicitTextAlign === 'RIGHT' ||
+    explicitTextAlign === 'JUSTIFIED' ||
+    (!explicitTextAlign && parentCentersFlowChildren)
+  );
+  const plannedTextAlign = explicitTextAlign ?? (parentCentersFlowChildren ? 'CENTER' : parentTextAlign);
+  const plannedX = shouldUseParentContentWidth ? (parentPadding?.left ?? 0) : x;
+  const plannedY = y;
+  const plannedWidth = shouldUseParentContentWidth ? availableParentWidth : (node.boundingBox?.width ?? node.size?.width);
+  const plannedHeight = node.boundingBox?.height ?? node.size?.height;
+  const plannedTextAutoResize = shouldUseParentContentWidth ? 'HEIGHT' : undefined;
+  actions.push({ id: `${ref}:create_text`, type: 'create_text', uiId: node.uiId, payload: { ref, parentRef, uiId: node.uiId, name: figmaName, text: node.text ?? '', x: plannedX, y: plannedY } });
+  commands.push({ type: 'create_text', payload: { ref, parentRef, uiId: node.uiId, name: figmaName, text: node.text ?? '', x: plannedX, y: plannedY } });
 
   const colorRaw = paintRaw(node.declarativeStyle?.fill ?? node.style?.fill) ?? node.computedStyle?.color;
   if (colorRaw) {
@@ -307,9 +332,7 @@ const planTextNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: s
     commands.push({ type: 'set_fill', payload: { nodeRef: ref, fills: lowerAnyPaint(colorRaw, node.computedStyle?.opacity ?? 1), token: node.semanticTokens?.fill ?? node.tokens?.fill, figmaVariableId: getTokenBinding(node, 'fill')?.figmaVariableId, figmaStyleId: getTokenBinding(node, 'fill')?.figmaStyleId } });
   }
 
-  const font = node.computedStyle ?? {};
-  const declaredText = node.declarativeStyle?.text ?? node.style?.text;
-  if (declaredText || font.fontSize || font.fontFamily || font.textAlign) {
+  if (declaredText || font.fontSize || font.fontFamily || font.textAlign || plannedTextAlign || plannedTextAutoResize) {
     actions.push({ id: `${ref}:text_style`, type: 'set_text_style', uiId: node.uiId, payload: { nodeRef: ref, source: 'rendered' } });
     commands.push({
       type: 'set_text_style',
@@ -321,21 +344,22 @@ const planTextNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: s
         lineHeight: font.lineHeight ?? declaredText?.lineHeight,
         letterSpacing: font.letterSpacing ?? declaredText?.letterSpacing,
         fontWeight: font.fontWeight,
-        textAlignHorizontal: lowerTextAlign(font.textAlign ?? declaredText?.textAlign),
+        textAlignHorizontal: plannedTextAlign,
+        textAutoResize: plannedTextAutoResize,
         token: node.semanticTokens?.typography ?? node.tokens?.typography,
         figmaStyleId: getTokenBinding(node, 'typography')?.figmaStyleId
       }
     });
   }
 
-  if (node.boundingBox?.width || node.boundingBox?.height || node.size?.width || node.size?.height) {
+  if (plannedWidth || plannedHeight) {
     actions.push({ id: `${ref}:size`, type: 'set_size', uiId: node.uiId, payload: { nodeRef: ref } });
-    commands.push({ type: 'set_size', payload: { nodeRef: ref, width: node.boundingBox?.width ?? node.size?.width, height: node.boundingBox?.height ?? node.size?.height } });
+    commands.push({ type: 'set_size', payload: { nodeRef: ref, width: plannedWidth, height: plannedHeight } });
   }
   const isAbsoluteTextNode = ['absolute', 'fixed', 'sticky'].includes(node.computedStyle?.position ?? '');
-  if ((!parentUsesAutoLayout || isAbsoluteTextNode) && (x !== undefined || y !== undefined)) {
+  if ((!parentUsesAutoLayout || isAbsoluteTextNode) && (plannedX !== undefined || plannedY !== undefined)) {
     actions.push({ id: `${ref}:position`, type: 'set_position', uiId: node.uiId, payload: { nodeRef: ref } });
-    commands.push({ type: 'set_position', payload: { nodeRef: ref, x, y } });
+    commands.push({ type: 'set_position', payload: { nodeRef: ref, x: plannedX, y: plannedY } });
   }
 };
 

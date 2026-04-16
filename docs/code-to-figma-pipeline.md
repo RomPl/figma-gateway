@@ -101,6 +101,17 @@ This naming improves Figma inspection and keeps nodes aligned with browser-rende
 
 ## Flow positioning rule
 
+## Layout-first flow reconstruction
+
+Planner should reconstruct ordinary text placement from layout cues before using raw geometry.
+
+Universal rule for flow text in non-absolute containers:
+
+- derive horizontal intent from child `text-align` and parent centering cues
+- if the text is flow-centered or right-aligned, use the parent content width as the Figma text box width
+- use `textAutoResize=HEIGHT` for fixed-width flow text boxes
+- reserve `set_position` for parent-relative fallback placement, not page-space replay
+
 For text and other flow children inside non-absolute containers, planner must keep coordinates relative to the parent frame, not absolute page coordinates.
 
 Universal rule:
