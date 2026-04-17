@@ -213,3 +213,59 @@ test('apply-style-from-alias resolves alias before live execution', async () => 
     cleanup();
   }
 });
+
+
+test('write service validates allowlist parsing, helper context builder and low-level command guard', async () => {
+  const mod = await import('../../src/core/figma-write-service');
+  assert.deepEqual(mod.parseAllowedWriteOperations('create-frame, update-text, nope, create-frame'), ['create-frame', 'update-text']);
+  const context = mod.buildWriteContextFromBody({ dryRun: false, reason: 'user-request' }, actor);
+  assert.equal(context.dryRun, false);
+  assert.equal(context.reason, 'user-request');
+  assert.equal(mod.isLowLevelCommandType('set_fill'), true);
+  assert.equal(mod.isLowLevelCommandType('not-a-command'), false);
+});
+
+test('default write adapter and disallowed operations fail with explicit app errors', async () => {
+  const { registry, cleanup } = createRegistry();
+  try {
+    const mod = await import('../../src/core/figma-write-service');
+    const defaultAdapter = mod.createDefaultFigmaWriteAdapter();
+    await assert.rejects(
+      () => defaultAdapter.createFrame({ operation: 'create-frame', input: { fileKey: 'file-1', name: 'Hero', width: 100, height: 100 } } as any, { actor, dryRun: false }),
+      (error: unknown) => error instanceof AppError && error.code === 'WRITE_BACKEND_NOT_CONFIGURED'
+    );
+
+    const service = createFigmaWriteService({ aliasRegistry: registry, adapter: createAdapterSpy().adapter, enabled: true, allowedOperations: ['create-frame'] });
+    await assert.rejects(
+      () => service.updateText({ operation: 'update-text', input: { fileKey: 'file-1', nodeId: '1:2', text: 'Hello' } }, { actor, dryRun: false }),
+      (error: unknown) => error instanceof AppError && error.code === 'WRITE_OPERATION_NOT_ALLOWED'
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test('write service supports plugin command and batch dry-run/live execution', async () => {
+  const { registry, cleanup } = createRegistry();
+  const calls: string[] = [];
+  const adapter: FigmaWriteAdapter = {
+    ...createAdapterSpy().adapter,
+    executePluginCommand: async (request) => { calls.push(request.operation); return { commandId: 'cmd-1', type: request.input.command.type }; },
+    executePluginBatch: async (request) => { calls.push(request.operation); return { commandId: 'cmd-2', count: request.input.commands.length }; }
+  };
+  try {
+    const service = createFigmaWriteService({ aliasRegistry: registry, adapter, enabled: true, allowedOperations: ['execute-plugin-command', 'execute-plugin-batch'] });
+    const dry = await service.executePluginCommand({ operation: 'execute-plugin-command', input: { fileKey: 'file-1', command: { type: 'set_fill', payload: { nodeRef: 'hero', fills: [] } } } }, { actor, dryRun: true });
+    assert.equal(dry.performed, false);
+    assert.equal(calls.length, 0);
+    const liveCommand = await service.executePluginCommand({ operation: 'execute-plugin-command', input: { fileKey: 'file-1', command: { type: 'set_fill', payload: { nodeRef: 'hero', fills: [] } } } }, { actor, dryRun: false });
+    const liveBatch = await service.executePluginBatch({ operation: 'execute-plugin-batch', input: { fileKey: 'file-1', commands: [{ type: 'set_fill', payload: { nodeRef: 'hero', fills: [] } }, { type: 'set_position', payload: { nodeRef: 'hero', x: 1, y: 2 } }] } }, { actor, dryRun: false });
+    assert.equal(liveCommand.performed, true);
+    assert.deepEqual(liveCommand.payload, { commandId: 'cmd-1', type: 'set_fill' });
+    assert.equal(liveBatch.performed, true);
+    assert.deepEqual(liveBatch.payload, { commandId: 'cmd-2', count: 2 });
+    assert.deepEqual(calls, ['execute-plugin-command', 'execute-plugin-batch']);
+  } finally {
+    cleanup();
+  }
+});

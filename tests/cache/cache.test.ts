@@ -239,3 +239,36 @@ test('manual invalidation clears file-scoped and render cache entries', async ()
   assert.equal(calls.getComponents, 2);
   assert.equal(calls.getImages, 2);
 });
+
+
+test('memory cache backend expires keys and clears by prefix', () => {
+  let now = 1000;
+  const backend = createMemoryCacheBackend({ now: () => now });
+  backend.set('figma:files:file-1', { ok: true }, 50);
+  backend.set('figma:nodes:file-1:1:2', { ok: true }, 50);
+  backend.set('other:key', { ok: true }, 500);
+  assert.deepEqual(backend.get('figma:files:file-1'), { ok: true });
+  now += 60;
+  assert.equal(backend.get('figma:files:file-1'), undefined);
+  assert.equal(backend.clear('figma:'), 1);
+  assert.deepEqual(backend.get('other:key'), { ok: true });
+});
+
+test('cache invalidate supports namespace-only invalidation and metrics snapshot cloning', async () => {
+  const calls = { getFile: 0, getNode: 0, getNodes: 0, getImages: 0, getStyles: 0, getComponents: 0, getComponentSets: 0, getVariables: 0 };
+  const { client, cache } = createCachedFigmaReadClient(createBaseClient(calls), { backend: createMemoryCacheBackend() });
+  await client.getFile('file-123');
+  await client.getStyles('file-123');
+  await client.getComponents('file-123');
+  const deleted = await cache.invalidate({ namespace: 'styles' });
+  assert.equal(deleted, 1);
+  await client.getFile('file-123');
+  await client.getStyles('file-123');
+  await client.getComponents('file-123');
+  assert.equal(calls.getFile, 1);
+  assert.equal(calls.getStyles, 2);
+  assert.equal(calls.getComponents, 1);
+  const snapshot = cache.getMetrics();
+  snapshot.byNamespace.styles.hits = 999;
+  assert.notEqual(cache.getMetrics().byNamespace.styles.hits, 999);
+});
