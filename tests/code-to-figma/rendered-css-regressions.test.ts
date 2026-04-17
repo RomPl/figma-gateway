@@ -546,3 +546,42 @@ test('planner reconstructs grid wrappers as wrapping auto-layout containers', as
   const childPos = cmds.filter((c: any) => c.type === 'set_position' && String(c.payload?.nodeRef || '').startsWith('__auto__/section[1]/div[1]/div['));
   assert.equal(childPos.length, 0);
 });
+
+test('planner keeps transparent flex text stack wrappers inside grid items instead of attaching text directly to grid parent', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: {
+      kind: 'section', uiId: 'how.root', name: 'section-root', visible: true,
+      children: [
+        {
+          kind: 'frame', uiId: 'how.grid', name: 'div-mt-16.grid.gap-8', visible: true,
+          boundingBox: { x: 0, y: 0, width: 1248, height: 208 },
+          computedStyle: { display: 'grid', width: 1248, height: 208, gap: 32, rowGap: 32, columnGap: 32 },
+          icon: {}, asset: {}, meta: {}, children: [
+            {
+              kind: 'frame', uiId: 'how.item.stack', name: 'div-relative.flex.flex-col', visible: true,
+              boundingBox: { x: 0, y: 0, width: 394, height: 208 },
+              computedStyle: { display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: 394, height: 208, position: 'relative' },
+              icon: {}, asset: {}, meta: { rendered: { dom: { tag: 'div', className: 'relative flex flex-col items-center text-center' } } }, children: [
+                { kind: 'text', uiId: 'how.item.stack.step', name: 'span-text-6xl', text: '01', visible: true, boundingBox: { x: 0, y: 0, width: 84, height: 60 }, computedStyle: { display: 'block', width: 84, height: 60, fontSize: 60, lineHeight: 60, fontWeight: '900', textAlign: 'center', color: 'rgb(31,41,55)' }, children: [] },
+                { kind: 'text', uiId: 'how.item.stack.title', name: 'h3-title', text: 'Загрузите шаблон', visible: true, boundingBox: { x: 0, y: 124, width: 214, height: 28 }, computedStyle: { display: 'block', width: 214, height: 28, fontSize: 20, lineHeight: 28, fontWeight: '700', textAlign: 'center', color: 'rgb(225,231,239)' }, children: [] },
+                { kind: 'text', uiId: 'how.item.stack.body', name: 'p-body', text: 'Выберите шаблон', visible: true, boundingBox: { x: 0, y: 160, width: 394, height: 48 }, computedStyle: { display: 'block', width: 394, height: 48, fontSize: 16, lineHeight: 24, fontWeight: '400', textAlign: 'center', color: 'rgb(148,163,184)' }, children: [] }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'HowItWorks', 'src/components/HowItWorks.tsx');
+  const cmds = plan.commands;
+  const stackCreate = cmds.find((c: any) => c.type === 'create_frame' && c.payload?.ref === 'how.item.stack');
+  assert.equal(Boolean(stackCreate), true);
+  const stackAuto = cmds.find((c: any) => c.type === 'set_auto_layout' && c.payload?.nodeRef === 'how.item.stack');
+  assert.equal(Boolean(stackAuto), true);
+  assert.equal(stackAuto?.payload?.layoutMode, 'VERTICAL');
+  const leakedTexts = cmds.filter((c: any) => c.type === 'create_text' && c.payload?.parentRef === 'how.grid');
+  assert.equal(leakedTexts.length, 0);
+  const nestedTexts = cmds.filter((c: any) => c.type === 'create_text' && c.payload?.parentRef === 'how.item.stack');
+  assert.equal(nestedTexts.length, 3);
+});

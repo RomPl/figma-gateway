@@ -171,10 +171,13 @@ const shouldSkipTransparentTextWrapper = (node: UiNode): boolean => {
   if (!node.children.every((child) => child.kind === 'text')) return false;
   const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined;
   const className = String(dom?.className || '').toLowerCase();
+  const display = String(node.computedStyle?.display || '').toLowerCase();
+  const isRealLayoutContainer = display === 'flex' || display === 'inline-flex' || display === 'grid';
   const transparentBackground = !isMeaningfulPaintRaw(node.computedStyle?.backgroundColor) && !isMeaningfulPaintRaw(node.computedStyle?.backgroundImage);
   const noDecoration = (node.computedStyle?.borderWidth ?? 0) <= 0 && (node.computedStyle?.borderRadius ?? 0) <= 0 && !hasMeaningfulEffects(node.computedStyle?.boxShadow);
   if (!transparentBackground || !noDecoration) return false;
   if (Boolean(node.asset?.layer) || Boolean(node.icon?.sourceType)) return false;
+  if (isRealLayoutContainer) return false;
   if (!/(^|\s)(text-center|max-w-|mx-auto)(\s|$)|text-center|max-w-|mx-auto/.test(className)) return false;
   return true;
 };
@@ -307,24 +310,25 @@ const inferAutoLayoutPayload = (node: UiNode): Record<string, unknown> | null =>
   const hasAbsoluteChildren = node.children.some((child) => ['absolute', 'fixed', 'sticky'].includes(child.computedStyle?.position ?? ''));
   const nodePosition = node.computedStyle?.position;
   const isRealFlexContainer = display === 'flex' || display === 'inline-flex';
+  const isGridContainer = display === 'grid' && childCount >= 2;
   const isButtonLikeContainer = node.kind === 'button' && (Boolean(node.text) || Boolean(node.icon?.sourceType));
   const textStackChildren = node.children.filter((child) => child.kind === 'text');
-  const textStackCandidate = !isRealFlexContainer && !isButtonLikeContainer && childCount >= 2 && textStackChildren.length === childCount && !hasAbsoluteChildren && !['absolute', 'fixed', 'sticky'].includes(nodePosition ?? '') && ['block', 'inline-block', 'contents', ''].includes(String(display || 'block'));
+  const textStackCandidate = !isRealFlexContainer && !isGridContainer && !isButtonLikeContainer && childCount >= 2 && textStackChildren.length === childCount && !hasAbsoluteChildren && !['absolute', 'fixed', 'sticky'].includes(nodePosition ?? '') && ['block', 'inline-block', 'contents', ''].includes(String(display || 'block'));
   const hasNonDefaultAlignment = ['center', 'flex-end', 'space-between', 'space-around', 'space-evenly'].includes(justifyContent ?? '') || ['center', 'flex-end', 'stretch'].includes(alignItems ?? '') || lowerTextAlign(node.computedStyle?.textAlign) === 'CENTER';
   const hasPadding = Boolean(padding && ((padding.top ?? 0) || (padding.right ?? 0) || (padding.bottom ?? 0) || (padding.left ?? 0)));
   const hasGap = gap !== undefined && gap !== null && Number(gap) > 0;
-  if (!isRealFlexContainer && !isButtonLikeContainer && !textStackCandidate) return null;
+  if (!isRealFlexContainer && !isGridContainer && !isButtonLikeContainer && !textStackCandidate) return null;
   if (['absolute', 'fixed', 'sticky'].includes(nodePosition ?? '')) return null;
   if (hasAbsoluteChildren) return null;
   if (childCount === 0 && !isButtonLikeContainer) return null;
   if (childCount === 1 && !hasNonDefaultAlignment && !hasPadding && !hasGap) return null;
-  const layoutMode = textStackCandidate ? 'VERTICAL' : (isButtonLikeContainer ? 'HORIZONTAL' : (flexDirection === 'column' || flexDirection === 'column-reverse' ? 'VERTICAL' : 'HORIZONTAL'));
+  const layoutMode = textStackCandidate ? 'VERTICAL' : ((isButtonLikeContainer || isGridContainer) ? 'HORIZONTAL' : (flexDirection === 'column' || flexDirection === 'column-reverse' ? 'VERTICAL' : 'HORIZONTAL'));
   return {
     layoutMode,
     itemSpacing: gap ?? (isButtonLikeContainer && node.icon?.sourceType ? 8 : (textStackCandidate ? 16 : gap)),
     primaryAxisAlignItems: mapPrimaryAlign(textStackCandidate ? 'start' : (isButtonLikeContainer ? 'center' : (node.layout?.alignment?.primary ?? (justifyContent === 'center' ? 'center' : justifyContent === 'flex-end' ? 'end' : justifyContent === 'space-between' ? 'space-between' : 'start')))),
-    counterAxisAlignItems: mapCrossAlign(textStackCandidate ? (lowerTextAlign(node.computedStyle?.textAlign) === 'CENTER' ? 'center' : 'start') : (isButtonLikeContainer ? 'center' : (node.layout?.alignment?.cross ?? (alignItems === 'center' ? 'center' : alignItems === 'flex-end' ? 'end' : alignItems === 'stretch' ? 'stretch' : 'start')))),
-    layoutWrap: (node.layout?.wrap || node.computedStyle?.flexWrap === 'wrap' || node.computedStyle?.flexWrap === 'wrap-reverse') ? 'WRAP' : 'NO_WRAP',
+    counterAxisAlignItems: mapCrossAlign(textStackCandidate ? (lowerTextAlign(node.computedStyle?.textAlign) === 'CENTER' ? 'center' : 'start') : ((isButtonLikeContainer || isGridContainer) ? 'center' : (node.layout?.alignment?.cross ?? (alignItems === 'center' ? 'center' : alignItems === 'flex-end' ? 'end' : alignItems === 'stretch' ? 'stretch' : 'start')))),
+    layoutWrap: (isGridContainer || node.layout?.wrap || node.computedStyle?.flexWrap === 'wrap' || node.computedStyle?.flexWrap === 'wrap-reverse') ? 'WRAP' : 'NO_WRAP',
     strokesIncludedInLayout: (node.computedStyle?.borderWidth ?? 0) > 0,
     padding
   };
@@ -503,7 +507,8 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
     commands.push({ type: 'set_icon_reference', payload: { nodeRef: ref, sourceType: node.icon.sourceType, textLabel: node.icon.textLabel, svgMarkup: node.icon.svgMarkup, fill: node.icon.fill, stroke: node.icon.stroke, size: node.icon.size, placement: node.icon.placement, spriteRef: node.icon.spriteRef, hash: node.icon.hash, assetId: node.icon.assetId, figmaStrategy } });
   }
 
-  if ((node.kind === 'button' || ((node.kind === 'frame' || node.kind === 'group') && node.text && node.children.length === 0)) && (node.text || node.name)) {
+  const iconOnlyChildren = node.children.length > 0 && node.children.every((child) => child.kind === 'icon');
+  if ((node.kind === 'button' || ((node.kind === 'frame' || node.kind === 'group') && node.text && (node.children.length === 0 || iconOnlyChildren))) && (node.text || node.name)) {
     const labelUiId = `${node.uiId}.label`;
     const font = node.computedStyle ?? {};
     const labelText = node.text ?? node.name ?? 'Label';
@@ -517,6 +522,7 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
         text: labelText,
         fontSize: font.fontSize,
         fontFamily: font.fontFamily,
+        fontWeight: font.fontWeight,
         lineHeight: font.lineHeight,
         letterSpacing: font.letterSpacing,
         textAlignHorizontal: lowerTextAlign(font.textAlign),

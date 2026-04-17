@@ -290,3 +290,9 @@ This is required for inline-flex links, badges and CTA-like controls where brows
 Render-first wrappers with `display:grid` should be reconstructed as wrapping horizontal auto-layout containers when possible.
 
 This keeps child hierarchy editable and avoids flattening the grid into unrelated absolutely-positioned frames.
+
+## Transparent text-wrapper shortcut must not remove real layout containers
+
+The planner may skip a synthetic transparent text-only wrapper only when it is a passive block wrapper.
+
+If the wrapper is a real layout container (`flex`, `inline-flex`, or `grid`), it must stay in the plan so nested text stacks remain attached to their own item frame instead of leaking directly into the outer grid/flex parent.

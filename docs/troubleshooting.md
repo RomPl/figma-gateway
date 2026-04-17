@@ -306,3 +306,16 @@ Fix:
 
 - planner now reconstructs eligible grid wrappers as wrapping auto-layout containers
 - this keeps feature-card groups under a stable parent hierarchy instead of relying on flat absolute positioning
+
+## Second grid section still looks flat even after grid wrapper reconstruction
+
+Cause:
+
+- the outer grid wrapper was reconstructed correctly
+- but an inner transparent text-stack item wrapper was still treated as a skippable text-only wrapper
+- planner then attached its text children directly to the grid parent
+
+Fix:
+
+- transparent text-only wrapper skipping now excludes real layout containers (`flex`, `inline-flex`, `grid`)
+- nested text-stack item wrappers stay as their own frames and preserve grid item hierarchy
