@@ -80,3 +80,16 @@ test('normalizePluginCommandResult preserves ok/error contract and default nodeI
     error: { code: 'MISSING_FONT', message: 'font not loaded' }
   });
 });
+
+test('plugin bridge font selection prefers fontWeight over generic Regular style hint', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /normalizedStyle === 'regular'[\s\S]*numericWeight >= 500/);
+  assert.match(source, /styleAttempts = Array\.from\(new Set\(\[styleGuess,[\s\S]*'Black',[\s\S]*'Extra Bold',[\s\S]*'Bold',[\s\S]*'Semibold',[\s\S]*'Medium',[\s\S]*'Regular'/);
+});
+
+test('plugin bridge create_text applies requested font before characters assignment', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /const effectiveFont = requestedFont \|\| textNode\.fontName;/);
+  assert.match(source, /await figma\.loadFontAsync\(effectiveFont\);[\s\S]*if \(requestedFont\) textNode\.fontName = requestedFont;[\s\S]*textNode\.characters =/);
+  assert.match(source, /fontName: textNode\.fontName/);
+});

@@ -319,3 +319,15 @@ Fix:
 
 - transparent text-only wrapper skipping now excludes real layout containers (`flex`, `inline-flex`, `grid`)
 - nested text-stack item wrappers stay as their own frames and preserve grid item hierarchy
+
+## Cleanup still removes only root body and misses old synthetic orphans
+
+Cause:
+
+- the second synthetic-prefix cleanup pass could hit detached nodes left behind after the exact-root deletion
+- query traversal then failed before collecting the remaining orphan synthetic nodes
+
+Fix:
+
+- plugin-side query traversal now ignores detached/stale nodes safely during `findAll`
+- cleanup can continue scanning the page for remaining `__auto__/...` nodes after the root body removal

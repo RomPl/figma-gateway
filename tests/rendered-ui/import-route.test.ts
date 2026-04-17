@@ -103,7 +103,9 @@ test('rendered-ui import route prepends cleanup command with synthetic uiIdPrefi
       assert.equal(response.status, 200);
       assert.equal(json.data.plan.commands[0].type, 'delete_matching_nodes');
       assert.equal(json.data.plan.commands[0].payload.query.uiId, 'landing.hero');
-      assert.equal(json.data.plan.commands[0].payload.query.uiIdPrefix, '__auto__/');
+      assert.equal(json.data.plan.commands[0].payload.query.name, 'section');
+      assert.equal(json.data.plan.commands[1].type, 'delete_matching_nodes');
+      assert.equal(json.data.plan.commands[1].payload.query.uiIdPrefix, '__auto__/');
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
     }

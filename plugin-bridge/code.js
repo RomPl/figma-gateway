@@ -165,14 +165,16 @@ async function loadRequestedFont(payload) {
   const requestedWeight = payload && payload.fontWeight ? String(payload.fontWeight) : '';
   const requestedStyle = payload && payload.fontStyle ? String(payload.fontStyle) : '';
   const numericWeight = Number.parseInt(requestedWeight || '400', 10);
-  const styleGuess = requestedStyle || ((numericWeight >= 700) ? 'Bold' : (numericWeight >= 600) ? 'Semibold' : 'Regular');
+  const normalizedStyle = requestedStyle.trim().toLowerCase();
+  const weightDrivenStyle = (numericWeight >= 900) ? 'Black' : (numericWeight >= 800) ? 'Extra Bold' : (numericWeight >= 700) ? 'Bold' : (numericWeight >= 600) ? 'Semibold' : (numericWeight >= 500) ? 'Medium' : 'Regular';
+  const styleGuess = (!requestedStyle || (normalizedStyle === 'regular' && numericWeight >= 500)) ? weightDrivenStyle : requestedStyle;
   const familyParts = rawFamily.split(',').map(function (item) { return String(item || '').replace(/["']/g, '').trim(); }).filter(Boolean);
   const genericFamilies = new Set(['ui-sans-serif','ui-serif','ui-monospace','system-ui','sans-serif','serif','monospace','emoji','math','fangsong']);
   const candidateFamilies = familyParts.filter(function (item) { return !genericFamilies.has(String(item).toLowerCase()); });
   if (!candidateFamilies.length && familyParts.length) candidateFamilies.push(familyParts[0]);
   candidateFamilies.push('Inter', 'Roboto', 'Arial');
   const uniqueFamilies = Array.from(new Set(candidateFamilies.filter(Boolean)));
-  const styleAttempts = Array.from(new Set([styleGuess, styleGuess.includes('Italic') ? styleGuess : `${styleGuess} Italic`, 'Regular', 'Medium', 'Semibold', 'Bold']));
+  const styleAttempts = Array.from(new Set([styleGuess, styleGuess.includes('Italic') ? styleGuess : `${styleGuess} Italic`, 'Black', 'Extra Bold', 'Bold', 'Semibold', 'Medium', 'Regular']));
   for (const family of uniqueFamilies) {
     for (const style of styleAttempts) {
       try { await figma.loadFontAsync({ family, style }); return { family, style }; } catch (error) {}
@@ -191,15 +193,23 @@ function findNodesByQuery(query) {
   const scopeRoot = query && query.parentNodeId ? figma.getNodeById(String(query.parentNodeId)) : figma.currentPage;
   if (!scopeRoot || !('findAll' in scopeRoot)) return [];
   return scopeRoot.findAll(function (node) {
-    if (query.nodeId && node.id !== String(query.nodeId)) return false;
-    if (query.name && node.name !== String(query.name)) return false;
-    if (query.namePrefix && !String(node.name || '').startsWith(String(query.namePrefix))) return false;
-    if (query.type && node.type !== String(query.type)) return false;
-    if (query.visible !== undefined && 'visible' in node && node.visible !== Boolean(query.visible)) return false;
-    const uiId = getUiIdFromNode(node);
-    if (query.uiId && uiId !== String(query.uiId)) return false;
-    if (query.uiIdPrefix && !String(uiId || '').startsWith(String(query.uiIdPrefix))) return false;
-    return true;
+    try {
+      const nodeId = String(node.id || '');
+      const nodeName = String(node.name || '');
+      const nodeType = String(node.type || '');
+      const nodeVisible = ('visible' in node) ? Boolean(node.visible) : undefined;
+      const uiId = getUiIdFromNode(node);
+      if (query.nodeId && nodeId !== String(query.nodeId)) return false;
+      if (query.name && nodeName !== String(query.name)) return false;
+      if (query.namePrefix && !nodeName.startsWith(String(query.namePrefix))) return false;
+      if (query.type && nodeType !== String(query.type)) return false;
+      if (query.visible !== undefined && nodeVisible !== undefined && nodeVisible !== Boolean(query.visible)) return false;
+      if (query.uiId && uiId !== String(query.uiId)) return false;
+      if (query.uiIdPrefix && !String(uiId || '').startsWith(String(query.uiIdPrefix))) return false;
+      return true;
+    } catch (error) {
+      return false;
+    }
   });
 }
 
@@ -322,10 +332,11 @@ async function executeLowLevelCommand(step, refMap) {
     const parent = await getParentNodeResolved(payload, refMap);
     const textNode = figma.createText();
     const requestedFont = await loadRequestedFont(payload);
-    await figma.loadFontAsync(requestedFont || textNode.fontName);
+    const effectiveFont = requestedFont || textNode.fontName;
+    await figma.loadFontAsync(effectiveFont);
+    if (requestedFont) textNode.fontName = requestedFont;
     textNode.name = String(payload.name || 'Text');
     textNode.characters = String(payload.text !== undefined ? payload.text : payload.content !== undefined ? payload.content : '');
-    if (requestedFont) textNode.fontName = requestedFont;
     if (payload.fontSize !== undefined) textNode.fontSize = Number(payload.fontSize);
     applyTextMetrics(textNode, payload);
     if (payload.textAlignHorizontal !== undefined) textNode.textAlignHorizontal = String(payload.textAlignHorizontal);
@@ -339,7 +350,7 @@ async function executeLowLevelCommand(step, refMap) {
       try { setSize(textNode, payload.width, payload.height, commandType); } catch (error) {}
     }
     if (payload.ref) refMap[String(payload.ref)] = textNode.id;
-    return normalizeCommandResult(commandType, 'ok', { nodeId: textNode.id, data: { id: textNode.id, name: textNode.name, parentNodeId: parent.id, text: textNode.characters, uiId: getUiIdFromNode(textNode) || null, ref: payload.ref || null } });
+    return normalizeCommandResult(commandType, 'ok', { nodeId: textNode.id, data: { id: textNode.id, name: textNode.name, parentNodeId: parent.id, text: textNode.characters, fontName: textNode.fontName, uiId: getUiIdFromNode(textNode) || null, ref: payload.ref || null } });
   }
   if (commandType === 'create_group') {
     const nodeIds = payload.nodes;
@@ -424,7 +435,7 @@ async function executeLowLevelCommand(step, refMap) {
     const node = await getNodeFromPayload(payload, commandType, refMap);
     const textNode = await ensureTextNode(node, commandType);
     const requestedFont = await loadRequestedFont(payload);
-    if (requestedFont) textNode.fontName = requestedFont;
+    if (requestedFont) { await figma.loadFontAsync(requestedFont); textNode.fontName = requestedFont; }
     if (payload.fontSize !== undefined) textNode.fontSize = Number(payload.fontSize);
     applyTextMetrics(textNode, payload);
     if (payload.textAlignHorizontal !== undefined) textNode.textAlignHorizontal = String(payload.textAlignHorizontal);

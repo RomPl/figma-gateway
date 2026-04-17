@@ -71,7 +71,11 @@ renderedUiRouter.post(
     const model = segmentVisualBlocks(mapped?.rendered ?? await req.app.locals.renderedUiExtractorService.extract(data));
     const plan = buildCodeToFigmaPlan(model, data.componentName, data.filePath);
     if (!data.dryRun) {
-      plan.commands = [{ type: 'delete_matching_nodes' as const, payload: { query: { uiId: plan.model.root.uiId, name: plan.model.root.name, uiIdPrefix: '__auto__/' } } }, ...plan.commands];
+      plan.commands = [
+        { type: 'delete_matching_nodes' as const, payload: { query: { uiId: plan.model.root.uiId, name: plan.model.root.name } } },
+        { type: 'delete_matching_nodes' as const, payload: { query: { uiIdPrefix: '__auto__/' } } },
+        ...plan.commands
+      ];
     }
     const acceptance = auditFirstPassVisualAcceptance(plan.model);
     const notes = acceptance.passed
