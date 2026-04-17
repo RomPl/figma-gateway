@@ -361,24 +361,24 @@ const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: 
       if (el.querySelector('button,a,input,img,picture,video,svg,h1,h2,h3')) score += 120000;
       return score;
     }
-    function cssPath(el) {
+    function domPath(element) {
+      if (!(element instanceof HTMLElement) || element === document.body) return '';
       const parts = [];
-      let current = el;
-      while (current && current instanceof HTMLElement && current !== document.body && parts.length < 6) {
+      let current = element;
+      while (current && current instanceof HTMLElement && current !== document.body) {
         const tag = current.tagName.toLowerCase();
-        const siblings = current.parentElement ? Array.from(current.parentElement.children).filter((s) => s.tagName === current.tagName) : [current];
-        const idx = Math.max(1, siblings.indexOf(current) + 1);
-        parts.unshift(tag + '[' + idx + ']');
-        current = current.parentElement;
+        const parent = current.parentElement;
+        const siblings = parent ? Array.from(parent.children).filter((child) => child.tagName === current.tagName) : [current];
+        const index = Math.max(1, siblings.indexOf(current) + 1);
+        parts.unshift(tag + '[' + index + ']');
+        current = parent;
       }
       return parts.join('/');
     }
-    function syntheticUiId(el) { return '__auto__/' + cssPath(el); }
+    function syntheticUiId(el) { const path = domPath(el); return path ? '__auto__/' + path : '__auto__/'; }
     function buildTreePath(element, parentPath) {
-      const tag = element.tagName.toLowerCase();
-      const parent = element.parentElement;
-      const index = parent ? Array.from(parent.children).filter((child) => child.tagName === element.tagName).indexOf(element) + 1 : 1;
-      return (parentPath ? parentPath : '') + '/' + tag + '[' + index + ']';
+      const path = domPath(element);
+      return path ? '/' + path : '/';
     }
     function selectRoot() {
       const explicit = args.rootUiId ? document.querySelector('[data-ui-id="' + String(args.rootUiId).replace(/"/g, '\\"') + '"]') : null;

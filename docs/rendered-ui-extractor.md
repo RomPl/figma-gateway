@@ -141,3 +141,15 @@ Asset metadata should be emitted only for real visual assets such as:
 - icon-bearing nodes
 
 This prevents placeholder asset planning on ordinary frames and keeps rendered-first imports from overproducing placeholder branches.
+
+## Synthetic auto uiId must use one full path space
+
+Synthetic rendered-first `uiId` values must be generated from one full tree-based DOM path without truncation.
+
+Do not shorten deep paths to only the last few ancestors.
+
+Why this matters:
+
+- parent refs and child refs must remain in the same path space
+- mixed truncated/full paths cause missing parents during plugin batch execution
+- mixed path spaces also create duplicate branches in Figma because the same subtree appears under different synthetic identities

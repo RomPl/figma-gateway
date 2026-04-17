@@ -138,3 +138,16 @@ Fix:
 
 - generic containers no longer get asset metadata by default
 - only real images, background-image layers and icon-bearing nodes should carry asset info
+
+## Repeating duplicates during live import
+
+Cause:
+
+- synthetic rendered auto-ids were produced from mixed path spaces
+- deep children used truncated paths while parents used full paths
+- plugin batch then created duplicate branches or lost parent-child attachment
+
+Fix:
+
+- synthetic rendered uiIds now use one full tree-based DOM path without truncation
+- rerun the import on a fresh plugin session after gateway restart
