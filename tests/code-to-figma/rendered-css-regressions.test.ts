@@ -354,3 +354,41 @@ test('planner keeps centered hero child aligned from parent width for justify-ce
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+test('planner defers set_size until after children for auto-layout buttons with inline icon content', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'css-regression-defer-button-size-'));
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(rootDir, 'src', 'components', 'Header.tsx'), `
+      import React from 'react';
+      export function Header() {
+        return <div data-ui-id="header.root"><button data-ui-id="header.login">Login</button></div>;
+      }
+    `, 'utf8');
+
+    const runtime: RenderedUiRuntime = {
+      capture: async () => ({
+        uiId: 'header.root', tag: 'div', text: 'Login', treePath: 'header.root',
+        clientRect: { x: 0, y: 0, width: 400, height: 80 },
+        computedStyle: { display: 'flex', width: 400, height: 80 },
+        visibility: { visible: true, display: 'flex', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1280, viewportHeight: 800, name: 'desktop' }, syncRelevantFields: [], children: [
+          { uiId: 'header.login', tag: 'button', text: 'Login', treePath: 'header.root > header.login', clientRect: { x: 10, y: 10, width: 120, height: 36 }, computedStyle: { display: 'inline-flex', width: 120, height: 36, alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 6 }, visibility: { visible: true, display: 'inline-flex', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: { role: 'button', clickTarget: true }, breakpoint: { viewportWidth: 1280, viewportHeight: 800, name: 'desktop' }, syncRelevantFields: [], children: [
+            { uiId: '__auto__/button[1]/svg[1]', tag: 'svg', text: undefined, treePath: 'header.root > header.login > icon', clientRect: { x: 22, y: 20, width: 16, height: 16 }, computedStyle: { display: 'block', width: 16, height: 16, color: 'rgb(2,8,23)' }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: { kind: 'svg', inlineSvg: true, iconRole: 'leading', contentRole: 'content' }, asset: { layer: 'svg-icon', role: 'content' }, icon: { sourceType: 'inline-svg', textLabel: 'log-in', svgMarkup: '<svg viewBox="0 0 24 24"><path d="M15 3h4"/></svg>', fill: 'rgb(2,8,23)', stroke: 'rgb(2,8,23)', size: { width: 16, height: 16 }, placement: 'standalone' }, semantics: {}, breakpoint: { viewportWidth: 1280, viewportHeight: 800, name: 'desktop' }, syncRelevantFields: [], children: [] }
+          ] }
+        ]
+      })
+    };
+
+    const pipeline = buildPipeline(rootDir, runtime);
+    const result = await pipeline.run({ project: 'template-engine', componentName: 'Header', rootDir, dryRun: true, render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3001' }, breakpointName: 'desktop' } });
+    const commands = result.plan.commands;
+    const createButtonIndex = commands.findIndex((item: any) => item.type === 'create_frame' && item.payload?.uiId === 'header.login');
+    const labelIndex = commands.findIndex((item: any) => item.type === 'create_text' && item.payload?.uiId === 'header.login.label');
+    const sizeIndex = commands.findIndex((item: any) => item.type === 'set_size' && item.payload?.nodeRef === 'header.login');
+    assert.equal(createButtonIndex >= 0, true);
+    assert.equal(labelIndex > createButtonIndex, true);
+    assert.equal(sizeIndex > labelIndex, true);
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

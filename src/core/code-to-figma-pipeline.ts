@@ -434,7 +434,8 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
     commands.push({ type: 'set_effects', payload: { nodeRef: ref, boxShadow: node.computedStyle?.boxShadow } });
   }
 
-  if (width || height) {
+  const deferSizeUntilAfterChildren = Boolean(autoLayout && (node.children.length > 0 || node.kind === 'button' || ((node.computedStyle?.display === 'inline-flex' || node.computedStyle?.display === 'flex') && (Boolean(node.text) || Boolean(node.icon?.sourceType)))));
+  if ((width || height) && !deferSizeUntilAfterChildren) {
     actions.push({ id: `${ref}:size`, type: 'set_size', uiId: node.uiId, payload: { nodeRef: ref } });
     commands.push({ type: 'set_size', payload: { nodeRef: ref, width, height } });
   }
@@ -509,6 +510,19 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
   }
 };
 
+const shouldDeferContainerSize = (node: UiNode): boolean => Boolean(inferAutoLayoutPayload(node) && (node.children.length > 0 || node.kind === 'button' || ((node.computedStyle?.display === 'inline-flex' || node.computedStyle?.display === 'flex') && (Boolean(node.text) || Boolean(node.icon?.sourceType)))));
+
+const emitDeferredContainerSize = (node: UiNode, actions: PlannerAction[], commands: FigmaCommandStep[], isRoot = false): void => {
+  if (!shouldDeferContainerSize(node)) return;
+  const viewportWidth = node.responsive?.viewportWidth;
+  const viewportHeight = node.responsive?.viewportHeight;
+  const width = isRoot ? Math.max(node.boundingBox?.width ?? node.size?.width ?? node.computedStyle?.width ?? 0, viewportWidth ?? 1440) : (node.boundingBox?.width ?? node.size?.width ?? node.computedStyle?.width ?? 320);
+  const height = isRoot ? Math.max(node.boundingBox?.height ?? node.size?.height ?? node.computedStyle?.height ?? 0, viewportHeight ?? 900) : (node.boundingBox?.height ?? node.size?.height ?? node.computedStyle?.height ?? 120);
+  if (!(width || height)) return;
+  actions.push({ id: `${node.uiId}:size`, type: 'set_size', uiId: node.uiId, payload: { nodeRef: node.uiId, deferred: true } });
+  commands.push({ type: 'set_size', payload: { nodeRef: node.uiId, width, height } });
+};
+
 const planNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: string | undefined, actions: PlannerAction[], commands: FigmaCommandStep[], isRoot = false): void => {
   if (node.kind === 'text') {
     planTextNode(node, parentNode, parentRef, actions, commands);
@@ -517,6 +531,7 @@ const planNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: strin
   planContainerNode(node, parentNode, parentRef, actions, commands, isRoot);
   if (shouldRenderAsRedPlaceholder(node)) return;
   for (const child of node.children) planNode(child, node, node.uiId, actions, commands, false);
+  emitDeferredContainerSize(node, actions, commands, isRoot);
 };
 
 export const buildCodeToFigmaPlan = (model: UiModelDocument, componentName: string, filePath: string): CodeToFigmaExecutionPlan => {

@@ -264,3 +264,9 @@ planner now prefers one `create_text` payload that already carries:
 - initial x/y
 
 This reduces batch fragility for nested text nodes inside large rendered-first imports.
+
+## Deferred sizing for auto-layout interactive containers
+
+For rendered-first auto-layout controls such as button-like containers with text and/or icon content, planner should append child content before applying the final fixed size.
+
+This keeps the batch closer to real browser layout flow and avoids fragile parent/child attachment in live plugin execution for interactive controls.

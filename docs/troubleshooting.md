@@ -246,3 +246,14 @@ Fix:
 
 - synthetic tree-path generation now supports SVG elements too
 - nested SVG nodes must receive their own non-root `__auto__/.../svg[n]` identities
+
+## One button branch still breaks live batch after most of the tree is created
+
+Cause:
+
+- an auto-layout interactive container could receive its fixed `set_size` before its synthetic label/icon children were appended
+- in live plugin execution this made the branch fragile and later child commands could lose the intended parent chain
+
+Fix:
+
+- auto-layout button-like containers now defer final `set_size` until after child creation in the render-first plan
