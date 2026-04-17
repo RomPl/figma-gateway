@@ -270,3 +270,11 @@ This reduces batch fragility for nested text nodes inside large rendered-first i
 For rendered-first auto-layout controls such as button-like containers with text and/or icon content, planner should append child content before applying the final fixed size.
 
 This keeps the batch closer to real browser layout flow and avoids fragile parent/child attachment in live plugin execution for interactive controls.
+
+## Text-only centered wrappers as render-first flow stacks
+
+A plain block wrapper with multiple text children can still be a layout-first container even without CSS flex.
+
+When rendered flow indicates a centered text stack, planner should reconstruct it as a vertical auto-layout frame instead of a plain positioned frame with manually placed text children.
+
+This keeps the result closer to browser flow layout and reduces fragile parent-child attachment in live plugin batches.

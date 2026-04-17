@@ -392,3 +392,48 @@ test('planner defers set_size until after children for auto-layout buttons with 
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+test('planner converts centered text-only block wrappers into vertical auto-layout stacks', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'css-regression-text-stack-wrapper-'));
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(rootDir, 'src', 'components', 'Section.tsx'), `
+      import React from 'react';
+      export function Section() {
+        return <section data-ui-id="section.root"><div data-ui-id="section.copy"><h2 data-ui-id="section.title">How it works</h2><p data-ui-id="section.body">Three simple steps</p></div></section>;
+      }
+    `, 'utf8');
+
+    const runtime: RenderedUiRuntime = {
+      capture: async () => ({
+        uiId: 'section.root', tag: 'section', text: 'How it works Three simple steps', treePath: 'section.root',
+        clientRect: { x: 0, y: 0, width: 1440, height: 320 },
+        computedStyle: { display: 'block', width: 1440, height: 320, backgroundColor: 'rgb(2,8,23)' },
+        visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [], children: [
+          { uiId: 'section.copy', tag: 'div', text: 'How it works Three simple steps', treePath: 'section.root > section.copy', clientRect: { x: 464, y: 80, width: 512, height: 80 }, computedStyle: { display: 'block', width: 512, height: 80, textAlign: 'center' }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [], children: [
+            { uiId: 'section.title', tag: 'h2', text: 'How it works', treePath: 'section.root > section.copy > section.title', clientRect: { x: 464, y: 80, width: 512, height: 40 }, computedStyle: { display: 'block', width: 512, height: 40, textAlign: 'center', color: 'rgb(225,231,239)', fontSize: 36, lineHeight: 40, fontWeight: '700' }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [], children: [] },
+            { uiId: 'section.body', tag: 'p', text: 'Three simple steps', treePath: 'section.root > section.copy > section.body', clientRect: { x: 464, y: 136, width: 512, height: 24 }, computedStyle: { display: 'block', width: 512, height: 24, textAlign: 'center', color: 'rgb(148,163,184)', fontSize: 16, lineHeight: 24, fontWeight: '400' }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [], children: [] }
+          ] }
+        ]
+      })
+    };
+
+    const pipeline = buildPipeline(rootDir, runtime);
+    const result = await pipeline.run({ project: 'template-engine', componentName: 'Section', rootDir, dryRun: true, render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3001' }, breakpointName: 'desktop' } });
+    const commands = result.plan.commands;
+    const autoLayout = commands.find((item: any) => item.type === 'set_auto_layout' && item.payload?.nodeRef === 'section.copy');
+    const titlePos = commands.find((item: any) => item.type === 'set_position' && item.payload?.nodeRef === 'section.title');
+    const bodyPos = commands.find((item: any) => item.type === 'set_position' && item.payload?.nodeRef === 'section.body');
+    const wrapperSize = commands.findIndex((item: any) => item.type === 'set_size' && item.payload?.nodeRef === 'section.copy');
+    const titleCreate = commands.findIndex((item: any) => item.type === 'create_text' && item.payload?.uiId === 'section.title');
+    const bodyCreate = commands.findIndex((item: any) => item.type === 'create_text' && item.payload?.uiId === 'section.body');
+    assert.equal(autoLayout?.payload?.layoutMode, 'VERTICAL');
+    assert.equal(autoLayout?.payload?.counterAxisAlignItems, 'CENTER');
+    assert.equal(Boolean(titlePos), false);
+    assert.equal(Boolean(bodyPos), false);
+    assert.equal(wrapperSize > bodyCreate, true);
+    assert.equal(bodyCreate > titleCreate, true);
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

@@ -257,3 +257,15 @@ Cause:
 Fix:
 
 - auto-layout button-like containers now defer final `set_size` until after child creation in the render-first plan
+
+## Centered text copy block still breaks live import in one branch
+
+Cause:
+
+- a plain `text-center` wrapper with multiple text children was still planned as a non-auto-layout frame with manually positioned text
+- this branch remained more fragile in live plugin execution than the neighboring render-first vertical stacks
+
+Fix:
+
+- centered text-only wrappers are now promoted to vertical render-first auto-layout stacks
+- text children are attached through flow layout instead of a plain frame with manual child positioning

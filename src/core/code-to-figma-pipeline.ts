@@ -294,20 +294,22 @@ const inferAutoLayoutPayload = (node: UiNode): Record<string, unknown> | null =>
   const nodePosition = node.computedStyle?.position;
   const isRealFlexContainer = display === 'flex' || display === 'inline-flex';
   const isButtonLikeContainer = node.kind === 'button' && (Boolean(node.text) || Boolean(node.icon?.sourceType));
-  const hasNonDefaultAlignment = ['center', 'flex-end', 'space-between', 'space-around', 'space-evenly'].includes(justifyContent ?? '') || ['center', 'flex-end', 'stretch'].includes(alignItems ?? '');
+  const textStackChildren = node.children.filter((child) => child.kind === 'text');
+  const textStackCandidate = !isRealFlexContainer && !isButtonLikeContainer && childCount >= 2 && textStackChildren.length === childCount && !hasAbsoluteChildren && !['absolute', 'fixed', 'sticky'].includes(nodePosition ?? '') && ['block', 'inline-block', 'contents', ''].includes(String(display || 'block'));
+  const hasNonDefaultAlignment = ['center', 'flex-end', 'space-between', 'space-around', 'space-evenly'].includes(justifyContent ?? '') || ['center', 'flex-end', 'stretch'].includes(alignItems ?? '') || lowerTextAlign(node.computedStyle?.textAlign) === 'CENTER';
   const hasPadding = Boolean(padding && ((padding.top ?? 0) || (padding.right ?? 0) || (padding.bottom ?? 0) || (padding.left ?? 0)));
   const hasGap = gap !== undefined && gap !== null && Number(gap) > 0;
-  if (!isRealFlexContainer && !isButtonLikeContainer) return null;
+  if (!isRealFlexContainer && !isButtonLikeContainer && !textStackCandidate) return null;
   if (['absolute', 'fixed', 'sticky'].includes(nodePosition ?? '')) return null;
   if (hasAbsoluteChildren) return null;
   if (childCount === 0 && !isButtonLikeContainer) return null;
   if (childCount === 1 && !hasNonDefaultAlignment && !hasPadding && !hasGap) return null;
-  const layoutMode = isButtonLikeContainer ? 'HORIZONTAL' : (flexDirection === 'column' || flexDirection === 'column-reverse' ? 'VERTICAL' : 'HORIZONTAL');
+  const layoutMode = textStackCandidate ? 'VERTICAL' : (isButtonLikeContainer ? 'HORIZONTAL' : (flexDirection === 'column' || flexDirection === 'column-reverse' ? 'VERTICAL' : 'HORIZONTAL'));
   return {
     layoutMode,
-    itemSpacing: gap ?? (isButtonLikeContainer && node.icon?.sourceType ? 8 : gap),
-    primaryAxisAlignItems: mapPrimaryAlign(isButtonLikeContainer ? 'center' : (node.layout?.alignment?.primary ?? (justifyContent === 'center' ? 'center' : justifyContent === 'flex-end' ? 'end' : justifyContent === 'space-between' ? 'space-between' : 'start'))),
-    counterAxisAlignItems: mapCrossAlign(isButtonLikeContainer ? 'center' : (node.layout?.alignment?.cross ?? (alignItems === 'center' ? 'center' : alignItems === 'flex-end' ? 'end' : alignItems === 'stretch' ? 'stretch' : 'start'))),
+    itemSpacing: gap ?? (isButtonLikeContainer && node.icon?.sourceType ? 8 : (textStackCandidate ? 16 : gap)),
+    primaryAxisAlignItems: mapPrimaryAlign(textStackCandidate ? 'start' : (isButtonLikeContainer ? 'center' : (node.layout?.alignment?.primary ?? (justifyContent === 'center' ? 'center' : justifyContent === 'flex-end' ? 'end' : justifyContent === 'space-between' ? 'space-between' : 'start')))),
+    counterAxisAlignItems: mapCrossAlign(textStackCandidate ? (lowerTextAlign(node.computedStyle?.textAlign) === 'CENTER' ? 'center' : 'start') : (isButtonLikeContainer ? 'center' : (node.layout?.alignment?.cross ?? (alignItems === 'center' ? 'center' : alignItems === 'flex-end' ? 'end' : alignItems === 'stretch' ? 'stretch' : 'start')))),
     layoutWrap: (node.layout?.wrap || node.computedStyle?.flexWrap === 'wrap' || node.computedStyle?.flexWrap === 'wrap-reverse') ? 'WRAP' : 'NO_WRAP',
     strokesIncludedInLayout: (node.computedStyle?.borderWidth ?? 0) > 0,
     padding
