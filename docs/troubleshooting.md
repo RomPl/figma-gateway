@@ -222,3 +222,15 @@ Fix:
 
 - graceful shutdown now returns immediately after the error exit path
 - shutdown failure and success paths are now mutually exclusive
+
+## Live import says acceptance passed but only body gets created
+
+Cause:
+
+- rendered extractor promoted generic ancestor containers to `svg-icon` because they contained descendant SVG nodes
+- planner then treated large layout branches as icon/asset containers and emitted only a tiny command batch
+
+Fix:
+
+- SVG icon detection is now local to the actual `<svg>` node or a narrow icon host only
+- generic ancestor wrappers must stay ordinary layout containers even when they contain deeper SVG descendants

@@ -392,14 +392,15 @@ const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: 
 
     function inferAssetAndIcon(element, style, rect) {
       const tag = element.tagName.toLowerCase();
-      const className = String(element.className || '');
+      const className = String(element.getAttribute('class') || '');
       const ariaHidden = element.getAttribute('aria-hidden') === 'true';
       const decorative = ariaHidden || element.getAttribute('role') === 'presentation';
       const sourceUrl = tag === 'img' ? (element.currentSrc || element.src || undefined) : undefined;
       const backgroundImage = style.backgroundImage && style.backgroundImage !== 'none' ? style.backgroundImage : undefined;
       const isFontIcon = tag === 'i' || (tag === 'span' && /(^|\s)(fa[srldb]?|fa-[\w-]+|bi|bi-[\w-]+)(\s|$)/.test(className));
-      const svgNode = tag === 'svg' ? element : element.querySelector('svg');
-      const isSvgIcon = Boolean(svgNode);
+      const directSvgChild = tag !== 'svg' && element.children.length === 1 && element.firstElementChild instanceof SVGElement ? element.firstElementChild : null;
+      const svgNode = tag === 'svg' ? element : (directSvgChild && !(element.textContent || '').trim() ? directSvgChild : null);
+      const isSvgIcon = Boolean(svgNode) && (tag === 'svg' || element.children.length <= 1);
       const icon = isFontIcon ? {
         sourceType: 'font-icon',
         textLabel: className || tag,
@@ -466,7 +467,7 @@ const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: 
     }
 
     function nearestChildren(element) {
-      return Array.from(element.children || []).filter((child) => child instanceof HTMLElement).filter((child) => {
+      return Array.from(element.children || []).filter((child) => child instanceof HTMLElement || child instanceof SVGElement).filter((child) => {
         if (child.hasAttribute('data-ui-id')) return true;
         if (isMeaningful(child)) return true;
         return Array.from(child.querySelectorAll('*')).some((desc) => desc instanceof HTMLElement && (desc.hasAttribute('data-ui-id') || isMeaningful(desc)));
@@ -502,7 +503,7 @@ const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: 
       const privateNode = ((tagLower === 'input') && ['password','email','tel'].includes((element.getAttribute('type') || '').toLowerCase())) || Boolean(element.matches('[data-private="true"]')) || containsPrivateText(normalizedText);
       const dynamicStatefulBlock = unstable || ['input','textarea','select','video','canvas'].includes(tagLower) || element.hasAttribute('contenteditable') || element.hasAttribute('data-state') || element.hasAttribute('aria-expanded') || Boolean(element.closest('[data-carousel], .carousel, .swiper, .slick-slider'));
       const textValue = privateNode && !args.allowPrivateDataCapture ? undefined : normalizedText;
-      return { contractVersion: args.contractVersion, uiId, tag, domId: element.id || undefined, className: element.className || undefined, text: textValue, placeholder: element.getAttribute('placeholder') || undefined, inputType: element.getAttribute('type') || undefined, checked: element instanceof HTMLInputElement ? Boolean(element.checked) : undefined, treePath, clientRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, computedStyle, visibility: { visible, display: style.display || undefined, visibility: style.visibility || undefined, opacity: Number(style.opacity || '1') }, media, asset, icon, semantics: { role, ariaLabel: element.getAttribute('aria-label') || undefined, headingLevel: /^h[1-6]$/.test(tag) ? Number(tag.slice(1)) : undefined, clickTarget: typeof element.onclick === 'function' || ['button', 'link'].includes(role || '') || tag === 'button' || tag === 'a', hidden: element.hidden }, guardrails: { privateDataRedacted: privateNode && !args.allowPrivateDataCapture, runtimeBaseline: dynamicStatefulBlock && !args.allowRuntimeDataAsBaseline ? 'untrusted' : 'trusted', dynamicStatefulBlock, unsupportedRegions }, breakpoint: { viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, name: args.breakpointName || undefined }, syncRelevantFields: args.syncRelevantFields, children: nearestChildren(element).map((child) => buildNode(child, treePath, unstable)).filter(Boolean) };
+      return { contractVersion: args.contractVersion, uiId, tag, domId: element.id || undefined, className: element.getAttribute('class') || undefined, text: textValue, placeholder: element.getAttribute('placeholder') || undefined, inputType: element.getAttribute('type') || undefined, checked: element instanceof HTMLInputElement ? Boolean(element.checked) : undefined, treePath, clientRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, computedStyle, visibility: { visible, display: style.display || undefined, visibility: style.visibility || undefined, opacity: Number(style.opacity || '1') }, media, asset, icon, semantics: { role, ariaLabel: element.getAttribute('aria-label') || undefined, headingLevel: /^h[1-6]$/.test(tag) ? Number(tag.slice(1)) : undefined, clickTarget: typeof element.onclick === 'function' || ['button', 'link'].includes(role || '') || tag === 'button' || tag === 'a', hidden: element.hidden }, guardrails: { privateDataRedacted: privateNode && !args.allowPrivateDataCapture, runtimeBaseline: dynamicStatefulBlock && !args.allowRuntimeDataAsBaseline ? 'untrusted' : 'trusted', dynamicStatefulBlock, unsupportedRegions }, breakpoint: { viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, name: args.breakpointName || undefined }, syncRelevantFields: args.syncRelevantFields, children: nearestChildren(element).map((child) => buildNode(child, treePath, unstable)).filter(Boolean) };
     }
     const selected = selectRoot();
     const tree = buildNode(selected.root, '', selected.selectionMode !== 'explicit-ui-id' && !selected.root.hasAttribute('data-ui-id'));

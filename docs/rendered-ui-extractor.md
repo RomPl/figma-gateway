@@ -159,3 +159,11 @@ Why this matters:
 Rendered extraction now preserves inline SVG markup for icon-bearing nodes when available.
 
 This allows the plugin runtime to recreate SVG icons through native Figma SVG import instead of degrading all icons to text placeholders.
+
+## SVG icons must not contaminate ancestor containers
+
+Inline SVG detection must stay local to the actual icon node or a narrow icon host.
+
+A generic ancestor container must not be normalized as `svg-icon` only because it contains a descendant `<svg>` somewhere deeper in the subtree.
+
+Otherwise planner may collapse large layout containers into a tiny asset/icon-only batch and lose most of the visual tree.
