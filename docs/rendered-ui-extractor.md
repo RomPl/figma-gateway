@@ -167,3 +167,9 @@ Inline SVG detection must stay local to the actual icon node or a narrow icon ho
 A generic ancestor container must not be normalized as `svg-icon` only because it contains a descendant `<svg>` somewhere deeper in the subtree.
 
 Otherwise planner may collapse large layout containers into a tiny asset/icon-only batch and lose most of the visual tree.
+
+## Synthetic auto ids must work for SVGElement too
+
+Synthetic rendered ids are not only for `HTMLElement` nodes.
+
+Nested SVG elements that become visual nodes in the extracted tree must also receive a stable non-root tree path. Otherwise multiple unrelated SVG nodes can collapse into the same synthetic id like `__auto__/` and break live parent-child attachment in plugin batches.

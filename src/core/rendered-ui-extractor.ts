@@ -363,10 +363,10 @@ const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: 
       return score;
     }
     function domPath(element) {
-      if (!(element instanceof HTMLElement) || element === document.body) return '';
+      if (!(element instanceof Element) || element === document.body || element === document.documentElement) return '';
       const parts = [];
       let current = element;
-      while (current && current instanceof HTMLElement && current !== document.body) {
+      while (current && current instanceof Element && current !== document.body && current !== document.documentElement) {
         const tag = current.tagName.toLowerCase();
         const parent = current.parentElement;
         const siblings = parent ? Array.from(parent.children).filter((child) => child.tagName === current.tagName) : [current];

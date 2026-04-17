@@ -190,3 +190,31 @@ test('rendered extractor does not promote generic ancestor containers to svg-ico
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
 });
+
+test('rendered extractor assigns non-root synthetic auto ids to nested svg elements without data-ui-id', async () => {
+  const html = `<!doctype html><html><body>
+    <div data-ui-id="layout.root">
+      <span data-ui-id="layout.badge">
+        <svg viewBox="0 0 24 24"><path d="M5 12h14"></path></svg>
+      </span>
+    </div>
+  </body></html>`;
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(html);
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Failed to get server address');
+  const url = `http://127.0.0.1:${address.port}`;
+  try {
+    const service = new RenderedUiExtractorService();
+    const document = await service.extract({ target: { mode: 'existing_url', url }, rootUiId: 'layout.root', browserExecutablePath: '/usr/bin/google-chrome', breakpointName: 'desktop' });
+    const badge = document.root.children[0];
+    const icon = badge.children[0];
+    assert.equal(icon.uiId === '__auto__/', false);
+    assert.equal(icon.uiId.startsWith('__auto__/span[1]/svg[') || icon.uiId.includes('/svg['), true);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  }
+});

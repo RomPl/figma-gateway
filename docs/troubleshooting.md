@@ -234,3 +234,15 @@ Fix:
 
 - SVG icon detection is now local to the actual `<svg>` node or a narrow icon host only
 - generic ancestor wrappers must stay ordinary layout containers even when they contain deeper SVG descendants
+
+## Live batch still duplicates nodes after the main tree appears
+
+Cause:
+
+- nested SVG nodes were still receiving the root synthetic id `__auto__/`
+- multiple icon nodes then collided on the same ref/uiId and later text children lost their intended parent chain
+
+Fix:
+
+- synthetic tree-path generation now supports SVG elements too
+- nested SVG nodes must receive their own non-root `__auto__/.../svg[n]` identities
