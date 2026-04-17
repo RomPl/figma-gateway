@@ -8,6 +8,8 @@ import type { FigmaToCodePipelineService } from './figma-to-code-pipeline';
 import type { FigmaUiExtractorService } from './figma-ui-extractor';
 import type { PluginBridgeService } from './plugin-bridge';
 import type { ReconcilePipelineService } from './reconcile-pipeline';
+import type { RenderedToCodeMapperService } from './rendered-to-code-mapper';
+import type { RenderedUiExtractorService } from './rendered-ui-extractor';
 import type { UiMappingService } from './ui-mapping-registry';
 import type { UiModelDocument, UiNode } from './ui-model';
 
@@ -31,6 +33,7 @@ export const executeIntentSchema = z.object({
 export type IntentExecutionResult = {
   intent: z.infer<typeof intentCommandSchema>;
   phases: string[];
+  artifacts?: Record<string, unknown>;
   result: unknown;
 };
 
@@ -45,6 +48,25 @@ const toUiMap = (document: UiModelDocument): Map<string, UiNode> => {
   return map;
 };
 
+const countNodes = (document: UiModelDocument): number => {
+  let count = 0;
+  walk(document.root, () => { count += 1; });
+  return count;
+};
+
+const countTokenBoundNodes = (document: UiModelDocument): number => {
+  let count = 0;
+  walk(document.root, (node) => {
+    const bindings = node.meta && typeof node.meta.tokenBindings === 'object' ? node.meta.tokenBindings as Record<string, unknown> : undefined;
+    if (bindings && Object.keys(bindings).length) count += 1;
+  });
+  return count;
+};
+
+const VISUAL_INTENT_PHASES = ['snapshot_code', 'render_ui', 'normalize', 'token_resolve', 'diff', 'plan', 'batch'];
+const RECONCILE_PHASES = ['snapshot_code', 'snapshot_figma', 'render_ui', 'normalize', 'token_resolve', 'diff', 'plan'];
+const APPLY_TOKENS_PHASES = ['snapshot_code', 'render_ui', 'normalize', 'token_resolve', 'diff', 'plan', 'batch'];
+
 export class IntentApiService {
   constructor(
     private readonly codeToFigmaPipelineService: CodeToFigmaPipelineService,
@@ -52,11 +74,20 @@ export class IntentApiService {
     private readonly reconcilePipelineService: ReconcilePipelineService,
     private readonly codeUiParserService: CodeUiParserService,
     private readonly figmaUiExtractorService: FigmaUiExtractorService,
+    private readonly renderedUiExtractorService: RenderedUiExtractorService,
+    private readonly renderedToCodeMapperService: RenderedToCodeMapperService,
     private readonly uiMappingService: UiMappingService,
     private readonly pluginBridgeService: PluginBridgeService,
     private readonly designTokenService: DesignTokenService,
     private readonly selectorResolverService: any
   ) {}
+
+  private requireRender(payload: Record<string, unknown>, intent: z.infer<typeof intentCommandSchema>): Record<string, unknown> {
+    if (!payload.render || typeof payload.render !== 'object') {
+      throw new AppError(`Intent ${intent} requires a render payload so the agent can operate on rendered UI instead of AST-only guesses`, 400, 'INTENT_RENDER_REQUIRED');
+    }
+    return payload.render as Record<string, unknown>;
+  }
 
   private async resolveUiIdsFromPayload(payload: Record<string, unknown>): Promise<string[] | undefined> {
     const selector = typeof payload.selector === 'string' ? payload.selector.trim() : '';
@@ -73,61 +104,128 @@ export class IntentApiService {
     return resolved.matches.map((item: { uiId: string }) => item.uiId);
   }
 
+  private async snapshotVisualChain(payload: Record<string, unknown>): Promise<{ codeComponentCount: number; renderedNodeCount: number; tokenBoundNodeCount: number; rendered: UiModelDocument; }> {
+    const project = payload.project as string | undefined;
+    const rootDir = payload.rootDir as string | undefined;
+    const render = this.requireRender(payload, 'reconstruct_design_from_code');
+    const code = this.codeUiParserService.parseProject({ rootDir, project, componentName: payload.componentName as string | undefined, filePath: payload.filePath as string | undefined, limit: 200 });
+    const rendered = await this.renderedToCodeMapperService.map({ project, rootDir, render });
+    return {
+      codeComponentCount: code.componentCount,
+      renderedNodeCount: countNodes(rendered.rendered),
+      tokenBoundNodeCount: countTokenBoundNodes(rendered.rendered),
+      rendered: rendered.rendered
+    };
+  }
+
+
+  private assertCodeToFigmaAcceptance(result: any, intent: z.infer<typeof intentCommandSchema>): void {
+    if (!result || !result.acceptance || result.acceptance.passed !== false) return;
+    throw new AppError(
+      `Intent ${intent} did not pass first-pass visual acceptance and was blocked from being treated as final`,
+      409,
+      'INTENT_FIRST_PASS_ACCEPTANCE_FAILED',
+      { acceptance: result.acceptance, notes: result.notes, needsReview: result.needsReview }
+    );
+  }
+
   public async execute(input: z.input<typeof executeIntentSchema>): Promise<IntentExecutionResult> {
     const data = executeIntentSchema.parse(input);
     switch (data.intent) {
-      case 'reconstruct_design_from_code':
+      case 'reconstruct_design_from_code': {
+        const render = this.requireRender(data.payload, data.intent);
+        const visual = await this.snapshotVisualChain(data.payload);
+        const result = await this.codeToFigmaPipelineService.run({ ...(data.payload as any), render });
+        this.assertCodeToFigmaAcceptance(result, data.intent);
         return {
           intent: data.intent,
-          phases: ['snapshot', 'normalize', 'batch_low_level_operations'],
-          result: this.codeToFigmaPipelineService.run(data.payload as any)
+          phases: [...VISUAL_INTENT_PHASES],
+          artifacts: {
+            codeComponentCount: visual.codeComponentCount,
+            renderedNodeCount: visual.renderedNodeCount,
+            tokenBoundNodeCount: visual.tokenBoundNodeCount,
+            visualSource: 'rendered_ui_snapshot'
+          },
+          result
         };
-      case 'sync_block_to_figma':
+      }
+      case 'sync_block_to_figma': {
+        const render = this.requireRender(data.payload, data.intent);
+        const uiIds = (await this.resolveUiIdsFromPayload(data.payload as any)) ?? [(data.payload as any).uiId];
+        const visual = await this.snapshotVisualChain({ ...(data.payload as any), uiIds, render });
+        const result = await this.codeToFigmaPipelineService.run({ ...(data.payload as any), uiIds, render });
+        this.assertCodeToFigmaAcceptance(result, data.intent);
+        return { intent: data.intent, phases: [...VISUAL_INTENT_PHASES], artifacts: { codeComponentCount: visual.codeComponentCount, renderedNodeCount: visual.renderedNodeCount, tokenBoundNodeCount: visual.tokenBoundNodeCount, visualSource: 'rendered_ui_snapshot' }, result };
+      }
+      case 'sync_page_to_figma': {
+        const render = this.requireRender(data.payload, data.intent);
+        const visual = await this.snapshotVisualChain(data.payload);
+        const result = await this.codeToFigmaPipelineService.run({ ...(data.payload as any), render });
+        this.assertCodeToFigmaAcceptance(result, data.intent);
+        return { intent: data.intent, phases: [...VISUAL_INTENT_PHASES], artifacts: { codeComponentCount: visual.codeComponentCount, renderedNodeCount: visual.renderedNodeCount, tokenBoundNodeCount: visual.tokenBoundNodeCount, visualSource: 'rendered_ui_snapshot' }, result };
+      }
+      case 'sync_block_to_code': {
+        const render = this.requireRender(data.payload, data.intent);
+        const uiIds = (await this.resolveUiIdsFromPayload(data.payload as any)) ?? [(data.payload as any).uiId];
+        const visual = await this.snapshotVisualChain({ ...(data.payload as any), uiIds, render });
+        const result = await this.figmaToCodePipelineService.run({ ...(data.payload as any), uiIds, render });
+        return { intent: data.intent, phases: [...VISUAL_INTENT_PHASES], artifacts: { codeComponentCount: visual.codeComponentCount, renderedNodeCount: visual.renderedNodeCount, tokenBoundNodeCount: visual.tokenBoundNodeCount, visualSource: 'rendered_ui_snapshot' }, result };
+      }
+      case 'sync_page_to_code': {
+        const render = this.requireRender(data.payload, data.intent);
+        const visual = await this.snapshotVisualChain(data.payload);
+        const result = await this.figmaToCodePipelineService.run({ ...(data.payload as any), render });
+        return { intent: data.intent, phases: [...VISUAL_INTENT_PHASES], artifacts: { codeComponentCount: visual.codeComponentCount, renderedNodeCount: visual.renderedNodeCount, tokenBoundNodeCount: visual.tokenBoundNodeCount, visualSource: 'rendered_ui_snapshot' }, result };
+      }
+      case 'reconcile_design_and_code': {
+        const render = this.requireRender(data.payload, data.intent);
+        const project = String((data.payload as any).project || '');
+        const fileKey = String((data.payload as any).fileKey || '');
+        const code = this.codeUiParserService.parseProject({ rootDir: (data.payload as any).rootDir as string | undefined, project, limit: 200 });
+        const figma = await this.figmaUiExtractorService.extract({ fileKey, project, nodeId: (data.payload as any).nodeId });
+        const rendered = await this.renderedToCodeMapperService.map({ project, rootDir: (data.payload as any).rootDir as string | undefined, render });
+        const result = await this.reconcilePipelineService.run({ ...(data.payload as any), mode: 'reconcile', render });
         return {
           intent: data.intent,
-          phases: ['snapshot', 'normalize', 'diff', 'batch_low_level_operations'],
-          result: this.codeToFigmaPipelineService.run({ ...(data.payload as any), uiIds: (await this.resolveUiIdsFromPayload(data.payload as any)) ?? [(data.payload as any).uiId] })
+          phases: [...RECONCILE_PHASES],
+          artifacts: {
+            codeComponentCount: code.componentCount,
+            figmaNodeCount: countNodes(figma),
+            renderedNodeCount: countNodes(rendered.rendered),
+            tokenBoundNodeCount: countTokenBoundNodes(rendered.rendered),
+            visualSource: 'rendered_ui_snapshot'
+          },
+          result
         };
-      case 'sync_page_to_figma':
+      }
+      case 'apply_tokens_to_figma': {
+        const render = this.requireRender(data.payload, data.intent);
+        const project = String((data.payload as any).project || '');
+        const rootDir = (data.payload as any).rootDir as string | undefined;
+        const visual = await this.renderedToCodeMapperService.map({ project, rootDir, render });
+        const uiIds = (await this.resolveUiIdsFromPayload(data.payload as any)) ?? (Array.isArray((data.payload as any).uiIds) ? (data.payload as any).uiIds.map(String) : undefined);
+        const result = this.applyTokensToFigmaFromRendered({ ...(data.payload as any), uiIds }, visual.rendered);
         return {
           intent: data.intent,
-          phases: ['snapshot', 'normalize', 'diff', 'batch_low_level_operations'],
-          result: this.codeToFigmaPipelineService.run(data.payload as any)
+          phases: [...APPLY_TOKENS_PHASES],
+          artifacts: {
+            renderedNodeCount: countNodes(visual.rendered),
+            tokenBoundNodeCount: countTokenBoundNodes(visual.rendered),
+            visualSource: 'rendered_ui_snapshot'
+          },
+          result
         };
-      case 'sync_block_to_code':
-        return {
-          intent: data.intent,
-          phases: ['snapshot', 'normalize', 'diff', 'batch_low_level_operations'],
-          result: await this.figmaToCodePipelineService.run({ ...(data.payload as any), uiIds: (await this.resolveUiIdsFromPayload(data.payload as any)) ?? [(data.payload as any).uiId] })
-        };
-      case 'sync_page_to_code':
-        return {
-          intent: data.intent,
-          phases: ['snapshot', 'normalize', 'diff', 'batch_low_level_operations'],
-          result: await this.figmaToCodePipelineService.run(data.payload as any)
-        };
-      case 'reconcile_design_and_code':
-        return {
-          intent: data.intent,
-          phases: ['snapshot', 'normalize', 'diff', 'merge_plan'],
-          result: await this.reconcilePipelineService.run({ ...(data.payload as any), mode: 'reconcile' })
-        };
-      case 'apply_tokens_to_figma':
-        return {
-          intent: data.intent,
-          phases: ['snapshot', 'normalize', 'diff', 'batch_low_level_operations'],
-          result: this.applyTokensToFigma({ ...(data.payload as any), uiIds: (await this.resolveUiIdsFromPayload(data.payload as any)) ?? (data.payload as any).uiIds })
-        };
+      }
       case 'rebind_mappings':
         return {
           intent: data.intent,
-          phases: ['snapshot', 'normalize', 'diff'],
+          phases: ['snapshot_code', 'snapshot_figma', 'normalize', 'diff'],
           result: await this.rebindMappings({ ...(data.payload as any), uiIds: (await this.resolveUiIdsFromPayload(data.payload as any)) ?? (data.payload as any).uiIds })
         };
       case 'annotate_ui_ids':
         return {
           intent: data.intent,
-          phases: ['snapshot', 'normalize', 'batch_low_level_operations'],
+          phases: ['snapshot_figma', 'normalize', 'batch'],
           result: this.annotateUiIds({ ...(data.payload as any), uiIds: (await this.resolveUiIdsFromPayload(data.payload as any)) ?? (data.payload as any).uiIds })
         };
       default:
@@ -135,26 +233,34 @@ export class IntentApiService {
     }
   }
 
-  private applyTokensToFigma(payload: Record<string, unknown>) {
+  private applyTokensToFigmaFromRendered(payload: Record<string, unknown>, rendered: UiModelDocument) {
     const project = String(payload.project || '');
     const fileKey = String(payload.fileKey || '');
-    const session = this.pluginBridgeService.resolveSession({
+    const session = this.pluginBridgeService.assertSingleActiveSessionForFile({
       sessionId: payload.sessionId as string | undefined,
       fileKey,
       clientName: payload.clientName as string | undefined
     });
     const requestedUiIds = Array.isArray(payload.uiIds) ? payload.uiIds.map(String) : [];
     const mappings = this.uiMappingService.listUiMappings({ project, fileKey, limit: 100 }).filter((mapping) => !requestedUiIds.length || requestedUiIds.includes(mapping.uiId));
+    const renderedMap = toUiMap(rendered);
     const commands: Array<Record<string, unknown>> = [];
     for (const mapping of mappings) {
-      const snapshot = mapping.code.snapshot as unknown as UiNode | undefined;
-      const bindings = snapshot?.meta && typeof snapshot.meta.tokenBindings === 'object' ? snapshot.meta.tokenBindings as Record<string, any> : {};
+      const snapshot = renderedMap.get(mapping.uiId) ?? mapping.code.snapshot as unknown as UiNode | undefined;
+      if (!snapshot) continue;
+      if (snapshot.confidence?.needsReview) {
+        commands.push({ type: 'set_plugin_data', payload: { nodeId: mapping.figma.nodeId, key: 'needsReview', value: 'true' } });
+        continue;
+      }
+      const bindings = snapshot.meta && typeof snapshot.meta.tokenBindings === 'object' ? snapshot.meta.tokenBindings as Record<string, any> : {};
       const fill = bindings.fill;
       const typography = bindings.typography;
       const radius = bindings.radius;
       if (fill?.raw) commands.push({ type: 'set_fill', payload: { nodeId: mapping.figma.nodeId, token: fill.token, fills: [{ type: 'SOLID', color: hexToColor(fill.raw) }] } });
-      if (snapshot?.style?.radius !== undefined) commands.push({ type: 'set_corner_radius', payload: { nodeId: mapping.figma.nodeId, token: radius?.token, cornerRadius: snapshot.style.radius } });
-      if (snapshot?.style?.text) commands.push({ type: 'set_text_style', payload: { nodeId: mapping.figma.nodeId, token: typography?.token, fontFamily: snapshot.style.text.fontFamily, fontStyle: snapshot.style.text.fontStyle, fontSize: snapshot.style.text.fontSize } });
+      const radiusValue = snapshot.declarativeStyle?.radius ?? snapshot.style?.radius ?? snapshot.computedStyle?.borderRadius;
+      if (radiusValue !== undefined) commands.push({ type: 'set_corner_radius', payload: { nodeId: mapping.figma.nodeId, token: radius?.token, cornerRadius: radiusValue } });
+      const textStyle = snapshot.declarativeStyle?.text ?? snapshot.style?.text;
+      if (textStyle || snapshot.computedStyle?.fontSize) commands.push({ type: 'set_text_style', payload: { nodeId: mapping.figma.nodeId, token: typography?.token, fontFamily: snapshot.computedStyle?.fontFamily ?? textStyle?.fontFamily, fontStyle: textStyle?.fontStyle, fontSize: snapshot.computedStyle?.fontSize ?? textStyle?.fontSize } });
     }
     const command = this.pluginBridgeService.queueExecutePluginBatch({
       sessionId: session.sessionId,
@@ -210,20 +316,14 @@ export class IntentApiService {
   private annotateUiIds(payload: Record<string, unknown>) {
     const project = String(payload.project || '');
     const fileKey = String(payload.fileKey || '');
-    const session = this.pluginBridgeService.resolveSession({
+    const session = this.pluginBridgeService.assertSingleActiveSessionForFile({
       sessionId: payload.sessionId as string | undefined,
       fileKey,
       clientName: payload.clientName as string | undefined
     });
     const requestedUiIds = Array.isArray(payload.uiIds) ? payload.uiIds.map(String) : [];
     const mappings = this.uiMappingService.listUiMappings({ project, fileKey, limit: 100 }).filter((mapping) => !requestedUiIds.length || requestedUiIds.includes(mapping.uiId));
-    const commands = mappings.map((mapping) => ({
-      type: 'set_plugin_data',
-      payload: {
-        nodeId: mapping.figma.nodeId,
-        uiId: mapping.uiId
-      }
-    }));
+    const commands = mappings.map((mapping) => ({ type: 'set_plugin_data', payload: { nodeId: mapping.figma.nodeId, uiId: mapping.uiId } }));
     const command = this.pluginBridgeService.queueExecutePluginBatch({
       sessionId: session.sessionId,
       fileKey: fileKey || session.fileKey,

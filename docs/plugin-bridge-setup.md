@@ -164,3 +164,9 @@ This bridge currently supports the queued `create-page` flow. It does not yet cr
   "dryRun": false
 }
 ```
+
+## Important operational rule
+
+Keep only one active plugin bridge session per Figma file during live import and reconcile work.
+
+If multiple active sessions exist for the same file, the server now rejects live import batches with `MULTIPLE_ACTIVE_SESSIONS` instead of guessing which plugin should execute the command bus.

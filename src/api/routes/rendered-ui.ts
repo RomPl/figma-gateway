@@ -61,13 +61,16 @@ renderedUiRouter.post(
       throw new AppError('Write operation is not allowed: execute-plugin-batch', 403, 'WRITE_OPERATION_NOT_ALLOWED');
     }
     const data = importToFigmaRenderedUiSchema.parse(req.body);
+    const liveSession = !data.dryRun
+      ? req.app.locals.pluginBridgeService.assertSingleActiveSessionForFile({ sessionId: data.sessionId, fileKey: data.fileKey, clientName: data.clientName })
+      : undefined;
     const mapped = data.project
       ? await req.app.locals.renderedToCodeMapperService.map({ project: data.project, rootDir: data.rootDir, render: data })
       : null;
     const model = mapped?.rendered ?? await req.app.locals.renderedUiExtractorService.extract(data);
     const plan = buildCodeToFigmaPlan(model, data.componentName, data.filePath);
     if (!data.dryRun) {
-      plan.commands = [{ type: 'delete_matching_nodes' as const, payload: { query: { uiId: plan.model.root.uiId, name: plan.model.root.name } } }, ...plan.commands];
+      plan.commands = [{ type: 'delete_matching_nodes' as const, payload: { query: { uiId: plan.model.root.uiId, name: plan.model.root.name, uiIdPrefix: '__auto__/' } } }, ...plan.commands];
     }
     const acceptance = auditFirstPassVisualAcceptance(plan.model);
     const notes = acceptance.passed
@@ -75,7 +78,7 @@ renderedUiRouter.post(
       : [`Rendered-first import acceptance failed: ${acceptance.issues.join('; ')}. Live Figma batch was blocked.`, mapped ? 'Rendered snapshot was enriched with code ownership before Figma planning.' : 'Rendered snapshot was used without code-side ownership enrichment.'];
     let queued: { sessionId: string; commandId: string; status: string } | undefined;
     if (!data.dryRun && acceptance.passed) {
-      const session = req.app.locals.pluginBridgeService.resolveSession({ sessionId: data.sessionId, fileKey: data.fileKey, clientName: data.clientName });
+      const session = liveSession!;
       const command = req.app.locals.pluginBridgeService.queueExecutePluginBatch({
         sessionId: session.sessionId,
         fileKey: data.fileKey ?? session.fileKey,

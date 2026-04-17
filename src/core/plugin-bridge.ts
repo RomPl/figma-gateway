@@ -97,12 +97,28 @@ type CompleteCommandInput = {
 type ResolveSessionInput = {
   sessionId?: string;
   fileKey?: string;
+  localFileKey?: string;
   clientName?: string;
 };
 
 const nowIso = () => new Date().toISOString();
 const makeId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 const ACTIVE_SESSION_MAX_AGE_MS = 60_000;
+
+const normalizePluginCommandStep = (step: FigmaCommandStep | Record<string, unknown>): Record<string, unknown> => {
+  if (!step || typeof step !== 'object' || Array.isArray(step)) {
+    return step as Record<string, unknown>;
+  }
+  const value = step as Record<string, unknown>;
+  if (value.payload && typeof value.payload === 'object' && !Array.isArray(value.payload)) {
+    return value;
+  }
+  const { type, ...rest } = value;
+  return {
+    type,
+    ...(Object.keys(rest).length ? { payload: rest } : {})
+  };
+};
 
 const createQueuedCommand = (
   type: PluginBridgeCommandType,
@@ -159,6 +175,10 @@ export class PluginBridgeService {
       sessions = sessions.filter((session) => session.fileKey === input.fileKey);
     }
 
+    if (input.localFileKey) {
+      sessions = sessions.filter((session) => session.localFileKey === input.localFileKey);
+    }
+
     if (input.clientName) {
       sessions = sessions.filter((session) => session.clientName === input.clientName);
     }
@@ -168,6 +188,38 @@ export class PluginBridgeService {
     }
 
     return sessions[0];
+  }
+
+  assertSingleActiveSessionForFile(input: ResolveSessionInput): PluginBridgeSession {
+    const resolved = this.resolveSession(input);
+    const fileKey = resolved.fileKey ?? input.fileKey;
+    const localFileKey = resolved.localFileKey ?? input.localFileKey;
+
+    if (!fileKey && !localFileKey) {
+      return resolved;
+    }
+
+    const matching = this.listActiveSessions().filter((session) => {
+      if (fileKey && session.fileKey === fileKey) return true;
+      if (localFileKey && session.localFileKey === localFileKey) return true;
+      return false;
+    });
+
+    if (matching.length > 1) {
+      throw new AppError(
+        'Multiple active plugin sessions found for the same Figma file. Live import is blocked until only one session remains active.',
+        409,
+        'MULTIPLE_ACTIVE_SESSIONS',
+        {
+          requestedSessionId: input.sessionId ?? resolved.sessionId,
+          fileKey: fileKey ?? null,
+          localFileKey: localFileKey ?? null,
+          activeSessionIds: matching.map((session) => session.sessionId)
+        }
+      );
+    }
+
+    return resolved;
   }
 
   getSession(sessionId: string): PluginBridgeSession {
@@ -299,7 +351,7 @@ export class PluginBridgeService {
       input.sessionId,
       createQueuedCommand('execute-plugin-command', {
         fileKey: input.fileKey ?? session.fileKey ?? null,
-        command: input.command,
+        command: normalizePluginCommandStep(input.command as Record<string, unknown>),
         actorId: input.actorId
       })
     );
@@ -311,10 +363,20 @@ export class PluginBridgeService {
       input.sessionId,
       createQueuedCommand('execute-plugin-batch', {
         fileKey: input.fileKey ?? session.fileKey ?? null,
-        commands: input.commands,
+        commands: input.commands.map((step) => normalizePluginCommandStep(step as Record<string, unknown>)),
         actorId: input.actorId
       })
     );
+  }
+
+  getCommand(sessionId: string, commandId: string, sessionToken?: string): PluginBridgeCommand {
+    this.authenticateSession(sessionId, sessionToken);
+    const queue = this.commandsBySession.get(sessionId) ?? [];
+    const command = queue.find((item) => item.commandId === commandId);
+    if (!command) {
+      throw new AppError(`Plugin command not found: ${commandId}`, 404, 'PLUGIN_COMMAND_NOT_FOUND');
+    }
+    return command;
   }
 
   getPendingCommands(sessionId: string, sessionToken?: string): PluginBridgeCommand[] {

@@ -62,3 +62,31 @@ Fix:
 
 - cleanup now matches by both `uiId` and root name before the new tree is created
 - rendered-first containers are created as frames, not sections, to avoid stale page-organization nodes staying behind
+
+## Text disappeared or batch failed with NODE_NOT_FOUND
+
+Typical causes:
+
+- synthetic auto-node ids were generated from mixed path strategies
+- a child text node was planned under a parent ref that no longer matched the final frame-only tree
+- decorated inline text containers were collapsed into plain text instead of `frame + label`
+
+Fix:
+
+- use a single tree-based synthetic `uiId` strategy
+- create visual text containers as frames with an internal label when they carry background/padding/radius
+- validate fill payloads before queueing `set_fill`
+
+## Live import failed with MULTIPLE_ACTIVE_SESSIONS
+
+Cause:
+
+- more than one plugin bridge session is currently active for the same Figma file
+- server-side live import protection blocks the batch on purpose
+
+Fix:
+
+- leave only one plugin bridge connected for that file
+- in stale plugin windows, click `Reconnect session` or close the extra plugin instance
+- verify the expected session with `listActivePluginSessions`
+- retry the live import only after a single active session remains

@@ -163,6 +163,9 @@ const isMeaningfulPaintRaw = (raw: string | undefined): boolean => Boolean(raw &
 const resolvedBackgroundPaintRaw = (node: UiNode): string | undefined => { const explicit = paintRaw(node.declarativeStyle?.fill ?? node.style?.fill); if (isMeaningfulPaintRaw(explicit)) return explicit; const bgColor = node.computedStyle?.backgroundColor; if (isMeaningfulPaintRaw(bgColor)) return bgColor; const bgImage = node.computedStyle?.backgroundImage; if (isMeaningfulPaintRaw(bgImage)) return bgImage; return undefined; };
 const isWrapperLikeNode = (node: UiNode): boolean => { const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined; const className = String(dom?.className || '').toLowerCase(); const tag = String(dom?.tag || '').toLowerCase(); const transparentBackground = !isMeaningfulPaintRaw(node.computedStyle?.backgroundColor) && !isMeaningfulPaintRaw(node.computedStyle?.backgroundImage); const noBorder = (node.computedStyle?.borderWidth ?? 0) <= 0; const noRadius = (node.computedStyle?.borderRadius ?? 0) <= 0; const noShadow = !hasMeaningfulEffects(node.computedStyle?.boxShadow); const wrapperClass = /(row|col(-|$)|justify-content-|align-items-|text-center|mt-|mb-|form-check|form-switch)/.test(className); return transparentBackground && noBorder && noRadius && noShadow && (tag === 'div' || tag === 'form') && wrapperClass; };
 const shouldForceTransparentFill = (node: UiNode): boolean => { const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined; const className = String(dom?.className || '').toLowerCase(); const transparentBackground = !isMeaningfulPaintRaw(node.computedStyle?.backgroundColor) && !isMeaningfulPaintRaw(node.computedStyle?.backgroundImage); if (isWrapperLikeNode(node)) return true; if (node.kind === 'icon' && transparentBackground) return true; if (node.kind === 'button' && transparentBackground && (node.computedStyle?.borderWidth ?? 0) > 0) return true; if (transparentBackground && /(uploadform|text-center|form-check|form-switch|\bmb-\d+\b|\bmt-\d+\b)/.test(className)) return true; return false; };
+const firstColorFromGradient = (raw: string | undefined): string | undefined => { if (!raw) return undefined; const match = String(raw).match(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/); return match ? match[1] : undefined; };
+const hasRenderablePaint = (raw: string | undefined, opacity = 1): boolean => Boolean(lowerAnyPaint(raw, opacity)?.length);
+const shouldCenterWithinParent = (node: UiNode, parentNode: UiNode | undefined): boolean => { const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined; const className = String(dom?.className || '').toLowerCase(); return Boolean(parentNode && (className.includes('mx-auto') || ((node.computedStyle?.marginLeft ?? 0) > 0 && (node.computedStyle?.marginRight ?? 0) > 0))); };
 const supportsLayoutBoxNode = (node: UiNode): boolean => ['frame','section','card','list','form','button','input'].includes(node.kind);
 const supportsCornerRadiusNode = (node: UiNode): boolean => ['frame','section','card','list','form','button','input','image'].includes(node.kind);
 const shouldEmitFillReset = (node: UiNode): boolean => shouldForceTransparentFill(node) && supportsLayoutBoxNode(node);
@@ -332,8 +335,9 @@ const planTextNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: s
   actions.push({ id: `${ref}:create_text`, type: 'create_text', uiId: node.uiId, payload: { ref, parentRef, uiId: node.uiId, name: figmaName, text: node.text ?? '', x: plannedX, y: plannedY } });
   commands.push({ type: 'create_text', payload: { ref, parentRef, uiId: node.uiId, name: figmaName, text: node.text ?? '', x: plannedX, y: plannedY } });
 
-  const colorRaw = paintRaw(node.declarativeStyle?.fill ?? node.style?.fill) ?? node.computedStyle?.color;
-  if (colorRaw) {
+  const transparentText = (() => { const c = node.computedStyle?.color; return c === 'rgba(0, 0, 0, 0)' || c === 'transparent'; })();
+  const colorRaw = (transparentText ? undefined : (paintRaw(node.declarativeStyle?.fill ?? node.style?.fill) ?? node.computedStyle?.color)) ?? firstColorFromGradient(node.computedStyle?.backgroundImage);
+  if (colorRaw && hasRenderablePaint(colorRaw, node.computedStyle?.opacity ?? 1)) {
     actions.push({ id: `${ref}:fill`, type: 'set_fill', uiId: node.uiId, payload: { nodeRef: ref, source: 'rendered' } });
     commands.push({ type: 'set_fill', payload: { nodeRef: ref, fills: lowerAnyPaint(colorRaw, node.computedStyle?.opacity ?? 1), token: node.semanticTokens?.fill ?? node.tokens?.fill, figmaVariableId: getTokenBinding(node, 'fill')?.figmaVariableId, figmaStyleId: getTokenBinding(node, 'fill')?.figmaStyleId } });
   }
@@ -377,7 +381,8 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
   const viewportHeight = node.responsive?.viewportHeight;
   const width = isRoot ? Math.max(node.boundingBox?.width ?? node.size?.width ?? node.computedStyle?.width ?? 0, viewportWidth ?? 1440) : (node.boundingBox?.width ?? node.size?.width ?? node.computedStyle?.width ?? 320);
   const height = isRoot ? Math.max(node.boundingBox?.height ?? node.size?.height ?? node.computedStyle?.height ?? 0, viewportHeight ?? 900) : (node.boundingBox?.height ?? node.size?.height ?? node.computedStyle?.height ?? 120);
-  const x = isRoot ? (node.boundingBox?.x ?? node.position?.x ?? 0) : relativeCoordinate(node.boundingBox?.x ?? node.position?.x, parentNode?.boundingBox?.x ?? parentNode?.position?.x);
+  let x = isRoot ? (node.boundingBox?.x ?? node.position?.x ?? 0) : relativeCoordinate(node.boundingBox?.x ?? node.position?.x, parentNode?.boundingBox?.x ?? parentNode?.position?.x);
+  if (!isRoot && shouldCenterWithinParent(node, parentNode) && parentNode) { const pw = parentNode.boundingBox?.width ?? parentNode.size?.width; if (pw !== undefined && width !== undefined) x = Math.max(0, (pw - width) / 2); }
   const y = isRoot ? (node.boundingBox?.y ?? node.position?.y ?? 0) : relativeCoordinate(node.boundingBox?.y ?? node.position?.y, parentNode?.boundingBox?.y ?? parentNode?.position?.y);
   const parentUsesAutoLayout = Boolean(parentNode && inferAutoLayoutPayload(parentNode));
 
@@ -405,7 +410,7 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
     actions.push({ id: `${ref}:fill_clear`, type: 'set_fill', uiId: node.uiId, payload: { nodeRef: ref, source: 'rendered-transparent' } });
     commands.push({ type: 'set_fill', payload: { nodeRef: ref, fills: [] } });
   }
-  if (isMeaningfulPaintRaw(fillRaw) && !shouldEmitFillReset(node) && !isWrapperLikeNode(node)) {
+  if (isMeaningfulPaintRaw(fillRaw) && !shouldEmitFillReset(node) && !isWrapperLikeNode(node) && hasRenderablePaint(fillRaw, node.computedStyle?.opacity ?? 1)) {
     actions.push({ id: `${ref}:fill`, type: 'set_fill', uiId: node.uiId, payload: { nodeRef: ref, source: 'rendered' } });
     commands.push({ type: 'set_fill', payload: { nodeRef: ref, fills: lowerAnyPaint(fillRaw, node.computedStyle?.opacity ?? 1), token: node.semanticTokens?.fill ?? node.tokens?.fill, figmaVariableId: getTokenBinding(node, 'fill')?.figmaVariableId, figmaStyleId: getTokenBinding(node, 'fill')?.figmaStyleId } });
   }
@@ -470,10 +475,10 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
     commands.push({ type: 'set_icon_reference', payload: { nodeRef: ref, sourceType: node.icon.sourceType, textLabel: node.icon.textLabel, fill: node.icon.fill, stroke: node.icon.stroke, size: node.icon.size, placement: node.icon.placement, spriteRef: node.icon.spriteRef, hash: node.icon.hash, assetId: node.icon.assetId, figmaStrategy } });
   }
 
-  if (node.kind === 'button' && !node.children.some((child) => child.kind === 'text') && (node.text || node.name)) {
+  if ((node.kind === 'button' || ((node.kind === 'frame' || node.kind === 'group') && node.text && !node.children.some((child) => child.kind === 'text'))) && (node.text || node.name)) {
     const labelUiId = `${node.uiId}.label`;
     const font = node.computedStyle ?? {};
-    const labelText = node.text ?? node.name ?? 'Button';
+    const labelText = node.text ?? node.name ?? 'Label';
     commands.push({
       type: 'create_text',
       payload: {
@@ -545,6 +550,10 @@ export class CodeToFigmaPipelineService {
       needsReview.push({ uiId: plan.model.root.uiId, visual: plan.model.root.confidence?.visual ?? 0, reasons: ['first-pass visual acceptance failed', ...acceptance.issues] });
       plan.model.root.meta = { ...(plan.model.root.meta ?? {}), needsReview: true, firstPassAcceptance: acceptance };
     }
+    const liveSession = !data.dryRun
+      ? this.pluginBridgeService.assertSingleActiveSessionForFile({ sessionId: data.sessionId, fileKey: data.fileKey, clientName: data.clientName })
+      : undefined;
+
     const notes: string[] = [
       renderedUsed ? 'Planner used rendered snapshot as primary visual source.' : 'Planner used code model only; AST values served as visual fallback.',
       'AST remained the source for mapping, semantic structure and fallback values.',
@@ -555,7 +564,7 @@ export class CodeToFigmaPipelineService {
 
     let queued: CodeToFigmaPipelineResult['queued'];
     if (!data.dryRun && acceptance.passed) {
-      const session = this.pluginBridgeService.resolveSession({ sessionId: data.sessionId, fileKey: data.fileKey, clientName: data.clientName });
+      const session = liveSession!;
       const command = this.pluginBridgeService.queueExecutePluginBatch({ sessionId: session.sessionId, fileKey: data.fileKey ?? session.fileKey, commands: plan.commands, actorId: 'code-to-figma-pipeline' });
       queued = { sessionId: session.sessionId, commandId: command.commandId, status: command.status };
     }

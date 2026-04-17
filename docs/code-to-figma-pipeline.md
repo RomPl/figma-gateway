@@ -161,3 +161,28 @@ Do not promote browser sections/wrappers to Figma `section` during normal page r
 Planner must not emit layout mutations blindly. Before sending write steps such as padding, corner radius or transparent fill reset, it should restrict them to node kinds that are expected to support those operations in Figma.
 
 This avoids partial-failure batches on larger projects with mixed group/frame/text structures.
+
+## Stable auto-node identity
+
+All rendered-first synthetic nodes should use one stable tree-based identity scheme for `uiId`. Mixed identity schemes cause parent-child ref drift and lead to `NODE_NOT_FOUND` errors during batch execution.
+
+## Decorated text containers
+
+Inline-flex pills, badges, chips and other text-bearing containers with padding/background/radius should be reconstructed as `frame + label`, not as bare text nodes.
+
+## Auto-centered containers
+
+Containers centered by `mx-auto` or equivalent auto margins should be positioned from parent width, not only replayed from raw DOM coordinates.
+
+## Single active plugin session rule for live import
+
+Live Code -> Figma and rendered-first imports must be blocked when more than one active plugin bridge session exists for the same Figma file.
+
+Server behavior:
+
+- resolve the requested session or auto-resolve the active file session
+- collect active sessions for the same `fileKey` or `localFileKey`
+- if more than one active session exists, reject the live batch with `MULTIPLE_ACTIVE_SESSIONS`
+- allow dry-run planning to continue because no plugin-side mutation is queued
+
+This guard prevents duplicate batch execution, repeated `complete` calls, 429 noise and the false impression that the import loop is stuck.
