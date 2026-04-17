@@ -275,3 +275,82 @@ test('planner emits atomic create_text payload for rendered-first text nodes ins
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+test('planner suppresses white fill on transparent centered layout wrapper containers', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'css-regression-transparent-wrapper-'));
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(rootDir, 'src', 'components', 'Page.tsx'), `
+      import React from 'react';
+      export function Page() {
+        return (
+          <div data-ui-id="page.root">
+            <div data-ui-id="page.shell">
+              <section data-ui-id="page.hero">Hello</section>
+            </div>
+          </div>
+        );
+      }
+    `, 'utf8');
+
+    const runtime: RenderedUiRuntime = {
+      capture: async () => ({
+        uiId: 'page.root', tag: 'body', text: 'Hello', treePath: 'page.root',
+        clientRect: { x: 0, y: 0, width: 1440, height: 900 },
+        computedStyle: { display: 'block', width: 1440, height: 900, backgroundColor: 'rgb(255,255,255)' },
+        visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [], children: [
+          { uiId: 'page.shell', tag: 'div', text: 'Hello', treePath: 'page.root > page.shell', clientRect: { x: 120, y: 40, width: 1200, height: 500 }, computedStyle: { display: 'block', width: 1200, height: 500, backgroundColor: 'rgb(255,255,255)', marginLeftAuto: true, marginRightAuto: true }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [], meta: { rendered: { dom: { tag: 'div', className: 'relative mx-auto max-w-screen-xl' } } }, children: [
+            { uiId: 'page.hero', tag: 'section', text: 'Hello', treePath: 'page.root > page.shell > page.hero', clientRect: { x: 120, y: 40, width: 1200, height: 500 }, computedStyle: { display: 'block', width: 1200, height: 500, backgroundColor: 'rgb(10,10,10)', borderRadius: 24 }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [], children: [] }
+          ] }
+        ]
+      })
+    };
+
+    const pipeline = buildPipeline(rootDir, runtime);
+    const result = await pipeline.run({ project: 'template-engine', componentName: 'Page', rootDir, dryRun: true, render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3001' }, breakpointName: 'desktop' } });
+    const shellFill = result.plan.commands.find((item: any) => item.type === 'set_fill' && item.payload?.nodeRef === 'page.shell' && Array.isArray(item.payload?.fills) && item.payload.fills.length > 0);
+    const shellFillReset = result.plan.commands.find((item: any) => item.type === 'set_fill' && item.payload?.nodeRef === 'page.shell' && Array.isArray(item.payload?.fills) && item.payload.fills.length === 0);
+    assert.equal(Boolean(shellFill), false);
+    assert.equal(Boolean(shellFillReset), true);
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('planner keeps centered hero child aligned from parent width for justify-center flex wrappers', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'css-regression-center-flex-'));
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(rootDir, 'src', 'components', 'Page.tsx'), `
+      import React from 'react';
+      export function Page() {
+        return <div data-ui-id="page.root"><div data-ui-id="page.centerWrap"><div data-ui-id="page.card">Hello</div></div></div>;
+      }
+    `, 'utf8');
+
+    const runtime: RenderedUiRuntime = {
+      capture: async () => ({
+        uiId: 'page.root', tag: 'body', text: 'Hello', treePath: 'page.root',
+        clientRect: { x: 0, y: 0, width: 1200, height: 800 },
+        computedStyle: { display: 'block', width: 1200, height: 800 },
+        visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1200, viewportHeight: 800, name: 'desktop' }, syncRelevantFields: [], children: [
+          { uiId: 'page.centerWrap', tag: 'div', text: 'Hello', treePath: 'page.root > page.centerWrap', clientRect: { x: 0, y: 40, width: 1200, height: 200 }, computedStyle: { display: 'flex', justifyContent: 'center', alignItems: 'center', width: 1200, height: 200 }, visibility: { visible: true, display: 'flex', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1200, viewportHeight: 800, name: 'desktop' }, syncRelevantFields: [], children: [
+            { uiId: 'page.card', tag: 'div', text: 'Hello', treePath: 'page.root > page.centerWrap > page.card', clientRect: { x: 300, y: 70, width: 600, height: 140 }, computedStyle: { display: 'block', width: 600, height: 140, backgroundColor: 'rgb(20,20,20)', borderRadius: 24 }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1200, viewportHeight: 800, name: 'desktop' }, syncRelevantFields: [], children: [] }
+          ] }
+        ]
+      })
+    };
+
+    const pipeline = buildPipeline(rootDir, runtime);
+    const result = await pipeline.run({ project: 'template-engine', componentName: 'Page', rootDir, dryRun: true, render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3001' }, breakpointName: 'desktop' } });
+    const cardPosition = result.plan.commands.find((item: any) => item.type === 'set_position' && item.payload?.nodeRef === 'page.card');
+    assert.equal(Boolean(cardPosition), false);
+    const wrapAutoLayout = result.plan.commands.find((item: any) => item.type === 'set_auto_layout' && item.payload?.nodeRef === 'page.centerWrap');
+    const wrapAlign = result.plan.commands.find((item: any) => item.type === 'set_alignment' && item.payload?.nodeRef === 'page.centerWrap');
+    assert.equal(Boolean(wrapAutoLayout), true);
+    assert.equal(wrapAlign?.payload?.alignment?.primaryAxisAlignItems, 'CENTER');
+    assert.equal(wrapAlign?.payload?.alignment?.counterAxisAlignItems, 'CENTER');
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
