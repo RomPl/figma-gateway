@@ -90,3 +90,15 @@ Fix:
 - in stale plugin windows, click `Reconnect session` or close the extra plugin instance
 - verify the expected session with `listActivePluginSessions`
 - retry the live import only after a single active session remains
+
+## Live import failed with Playwright executable missing
+
+Cause:
+
+- Chromium browser binaries are missing for the runtime user of `figma-gateway.service`
+- installing Playwright under another user cache does not fix the service process
+
+Fix:
+
+- install Chromium for `figma5001` into `/home/figma-gateway.vazovski.art/.cache/ms-playwright`
+- retry rendered extraction or live import after installation

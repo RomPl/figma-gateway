@@ -95,3 +95,14 @@ npm run self-check
 4. Проверить audit trail.
 
 Не включать write-доступ без отдельного контролируемого процесса.
+
+## Browser renderer recovery
+
+If rendered extraction or rendered-first live import fails with a Playwright executable error, reinstall Chromium for the service runtime user:
+
+```bash
+cd /home/figma-gateway.vazovski.art
+mkdir -p /home/figma-gateway.vazovski.art/.cache/ms-playwright
+chown -R figma5001:figma5001 /home/figma-gateway.vazovski.art/.cache
+runuser -u figma5001 -- env HOME=/home/figma-gateway.vazovski.art PLAYWRIGHT_BROWSERS_PATH=/home/figma-gateway.vazovski.art/.cache/ms-playwright npx playwright install chromium
+```
