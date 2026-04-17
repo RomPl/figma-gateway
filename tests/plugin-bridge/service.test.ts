@@ -50,6 +50,7 @@ test('plugin bridge authenticates pending command access and marks completion st
   const pending = service.getPendingCommands(session.sessionId, session.sessionToken);
   assert.equal(pending.length, 1);
   assert.equal(pending[0].commandId, queued.commandId);
+  assert.equal(pending[0].status, 'dispatched');
 
   const completed = service.completeCommand({ sessionId: session.sessionId, commandId: queued.commandId, result: { nodeId: '10:1' } }, session.sessionToken);
   assert.equal(completed.status, 'completed');

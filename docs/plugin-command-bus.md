@@ -177,3 +177,30 @@ This is not unrestricted system access. It is a broad write runtime on top of th
 - the currently open file
 - the connected plugin session
 - capabilities actually exposed by Figma Plugin API
+
+
+## Reading completed command results
+
+For debugging plugin-enriched exports and batch execution results, the server also supports:
+
+- `GET /api/plugin-bridge/sessions/{sessionId}/commands/{commandId}`
+
+This returns the queued/completed/failed command object, including `result` or `error` when available. Access requires the plugin session token via `x-plugin-session-token` or `sessionToken` query param.
+
+## Dispatch lease and duplicate prevention
+
+`GET /commands/pending` is no longer a pure read of all queued commands.
+
+Server behavior now:
+
+- if a command is already dispatched and its lease is still fresh, pending returns no new commands for that session
+- otherwise the next queued command is marked `dispatched` and returned once
+- if a plugin or server restart leaves a command stuck in `dispatched`, the lease expires and the command becomes queued again
+
+This prevents the same long live batch from being returned again on every poll cycle, which was a primary source of duplicate node creation.
+
+## Session persistence
+
+Plugin bridge sessions and queued commands are persisted in SQLite.
+
+This allows the backend to preserve plugin sessions and command state across gateway restarts instead of forcing a manual plugin reconnect every time the service restarts.

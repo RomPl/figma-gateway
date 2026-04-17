@@ -5,13 +5,17 @@ import { AliasRegistry, createAliasService } from '../core/alias-registry';
 import { UiBlockRegistry, createUiBlockService } from '../core/ui-block-registry';
 import { UiMappingRegistry, createUiMappingService } from '../core/ui-mapping-registry';
 import { DesignTokenRegistry, createDesignTokenService } from '../core/design-token-registry';
+import { AssetRegistry, createAssetRegistryService } from '../core/asset-registry';
 import { AuditService, createAuditMiddleware } from '../core/audit';
 import { createCachedFigmaReadClient, defaultFigmaCacheTtlConfig, type CacheBackend } from '../core/cache';
 import { createMemoryCacheBackend } from '../core/cache-memory';
 import { createDesignContextService } from '../core/design-context';
 import { createCodeUiParserService, type CodeUiParserService } from '../core/code-ui-parser';
 import { createFigmaUiExtractorService, type FigmaUiExtractorService } from '../core/figma-ui-extractor';
+import { createRenderedUiExtractorService, type RenderedUiExtractorService } from '../core/rendered-ui-extractor';
+import { createBrowserRendererService, type BrowserRendererService } from '../core/browser-renderer';
 import { CodeToFigmaPipelineService } from '../core/code-to-figma-pipeline';
+import { RenderedToCodeMapperService } from '../core/rendered-to-code-mapper';
 import { FigmaToCodePipelineService } from '../core/figma-to-code-pipeline';
 import { ReconcilePipelineService } from '../core/reconcile-pipeline';
 import { IntentApiService } from '../core/intent-api';
@@ -46,6 +50,9 @@ export type ApiDependencies = {
   figmaWriteService?: FigmaWriteService;
   codeUiParserService?: CodeUiParserService;
   figmaUiExtractorService?: FigmaUiExtractorService;
+  renderedUiExtractorService?: RenderedUiExtractorService;
+  browserRendererService?: BrowserRendererService;
+  renderedToCodeMapperService?: RenderedToCodeMapperService;
   enableWriteActions?: boolean;
   writeAllowedOperations?: string[];
   apiBearerToken?: string;
@@ -99,22 +106,29 @@ export const createApp = (dependencies: ApiDependencies = {}) => {
   app.locals.uiMappingService = createUiMappingService(app.locals.uiMappingRegistry);
   app.locals.designTokenRegistry = new DesignTokenRegistry(db);
   app.locals.designTokenService = createDesignTokenService(app.locals.designTokenRegistry);
-  app.locals.pluginBridgeService = new PluginBridgeService();
+  app.locals.assetRegistry = new AssetRegistry(db);
+  app.locals.assetRegistryService = createAssetRegistryService(app.locals.assetRegistry);
+  app.locals.pluginBridgeService = new PluginBridgeService({ db });
+  app.locals.browserRendererService = dependencies.browserRendererService ?? createBrowserRendererService();
   app.locals.codeUiParserService = dependencies.codeUiParserService ?? createCodeUiParserService(config.codeUiRootDir, app.locals.designTokenService);
   app.locals.figmaUiExtractorService = dependencies.figmaUiExtractorService ?? createFigmaUiExtractorService(app.locals.figmaClient, app.locals.designTokenService);
+  app.locals.renderedUiExtractorService = dependencies.renderedUiExtractorService ?? createRenderedUiExtractorService(undefined, app.locals.designTokenService, app.locals.assetRegistryService);
+  app.locals.renderedToCodeMapperService = dependencies.renderedToCodeMapperService ?? new RenderedToCodeMapperService(app.locals.renderedUiExtractorService, app.locals.codeUiParserService);
   app.locals.codeToFigmaPipelineService = new CodeToFigmaPipelineService(
     app.locals.codeUiParserService,
+    app.locals.renderedToCodeMapperService,
     app.locals.pluginBridgeService,
     app.locals.uiMappingService
   );
   app.locals.figmaToCodePipelineService = new FigmaToCodePipelineService(
     app.locals.figmaUiExtractorService,
-    app.locals.codeUiParserService,
+    app.locals.renderedToCodeMapperService,
     app.locals.uiMappingService
   );
   app.locals.reconcilePipelineService = new ReconcilePipelineService(
     app.locals.figmaUiExtractorService,
     app.locals.codeUiParserService,
+    app.locals.renderedToCodeMapperService,
     app.locals.uiMappingService
   );
   app.locals.selectorResolverService = new SelectorResolverService(
@@ -128,6 +142,8 @@ export const createApp = (dependencies: ApiDependencies = {}) => {
     app.locals.reconcilePipelineService,
     app.locals.codeUiParserService,
     app.locals.figmaUiExtractorService,
+    app.locals.renderedUiExtractorService,
+    app.locals.renderedToCodeMapperService,
     app.locals.uiMappingService,
     app.locals.pluginBridgeService,
     app.locals.designTokenService,
@@ -149,8 +165,8 @@ export const createApp = (dependencies: ApiDependencies = {}) => {
   app.use(requestIdMiddleware);
   app.use(securityHeadersMiddleware);
   app.use(createCorsMiddleware(corsAllowedOrigins));
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: false }));
+  app.use(express.json({ limit: '5mb' }));
+  app.use(express.urlencoded({ extended: false, limit: '5mb' }));
   app.use(createAuditMiddleware(auditService));
   app.use(createRequestLoggingMiddleware(logger));
   app.use('/api', createAuthMiddleware(authToken), createRateLimitMiddleware(rateLimitWindowMs, rateLimitMaxRequests));

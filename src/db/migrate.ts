@@ -144,6 +144,66 @@ const MIGRATIONS = [
   `,
   `
     CREATE INDEX IF NOT EXISTS idx_design_tokens_code_refs ON design_tokens(code_class_name, code_css_var);
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS asset_registry (
+      asset_id TEXT PRIMARY KEY COLLATE NOCASE,
+      project TEXT NOT NULL,
+      ui_id TEXT,
+      asset_kind TEXT NOT NULL,
+      source_path TEXT,
+      resolved_url TEXT,
+      hash TEXT NOT NULL,
+      width REAL,
+      height REAL,
+      role TEXT,
+      figma_strategy TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_asset_registry_project_ui ON asset_registry(project, ui_id);
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_asset_registry_hash ON asset_registry(hash);
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS plugin_bridge_sessions (
+      session_id TEXT PRIMARY KEY COLLATE NOCASE,
+      session_token TEXT NOT NULL,
+      file_key TEXT,
+      local_file_key TEXT,
+      file_name TEXT,
+      client_name TEXT,
+      created_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      connected INTEGER NOT NULL DEFAULT 1
+    );
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_plugin_bridge_sessions_file ON plugin_bridge_sessions(file_key, local_file_key);
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_plugin_bridge_sessions_seen ON plugin_bridge_sessions(last_seen_at);
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS plugin_bridge_commands (
+      command_id TEXT PRIMARY KEY COLLATE NOCASE,
+      session_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      dispatched_at TEXT,
+      completed_at TEXT,
+      result_json TEXT,
+      error_json TEXT
+    );
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_plugin_bridge_commands_session_status ON plugin_bridge_commands(session_id, status, created_at);
   `
 ];
 

@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 
 import { AppError } from './errors';
 import type { FigmaCommandResult, FigmaCommandStep, FigmaLowLevelCommandType } from './figma-write-types';
+import type { SqliteDatabase } from '../db/sqlite';
 
 export type PluginBridgeCommandType =
   | 'create-page'
@@ -12,7 +13,7 @@ export type PluginBridgeCommandType =
   | 'apply-style-from-alias'
   | 'execute-plugin-command'
   | 'execute-plugin-batch';
-export type PluginBridgeCommandStatus = 'queued' | 'completed' | 'failed';
+export type PluginBridgeCommandStatus = 'queued' | 'dispatched' | 'completed' | 'failed';
 
 export type PluginBridgeSession = {
   sessionId: string;
@@ -32,6 +33,7 @@ export type PluginBridgeCommand = {
   payload: Record<string, unknown>;
   status: PluginBridgeCommandStatus;
   createdAt: string;
+  dispatchedAt?: string;
   completedAt?: string;
   result?: unknown;
   error?: {
@@ -101,10 +103,17 @@ type ResolveSessionInput = {
   clientName?: string;
 };
 
-const nowIso = () => new Date().toISOString();
-const makeId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
-const ACTIVE_SESSION_MAX_AGE_MS = 60_000;
+type PluginBridgeServiceOptions = {
+  db?: SqliteDatabase;
+  now?: () => string;
+  activeSessionMaxAgeMs?: number;
+  dispatchLeaseMs?: number;
+};
 
+const DEFAULT_ACTIVE_SESSION_MAX_AGE_MS = 60_000;
+const DEFAULT_DISPATCH_LEASE_MS = 30_000;
+
+const makeId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 const normalizePluginCommandStep = (step: FigmaCommandStep | Record<string, unknown>): Record<string, unknown> => {
   if (!step || typeof step !== 'object' || Array.isArray(step)) {
     return step as Record<string, unknown>;
@@ -122,20 +131,141 @@ const normalizePluginCommandStep = (step: FigmaCommandStep | Record<string, unkn
 
 const createQueuedCommand = (
   type: PluginBridgeCommandType,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  now: () => string
 ): PluginBridgeCommand => ({
   commandId: makeId('pbc'),
   type,
   payload,
   status: 'queued',
-  createdAt: nowIso()
+  createdAt: now()
 });
+
+const parseJson = <T>(value: string | null | undefined, fallback: T): T => {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+};
 
 export class PluginBridgeService {
   private readonly sessions = new Map<string, PluginBridgeSession>();
   private readonly commandsBySession = new Map<string, PluginBridgeCommand[]>();
+  private readonly db?: SqliteDatabase;
+  private readonly now: () => string;
+  private readonly activeSessionMaxAgeMs: number;
+  private readonly dispatchLeaseMs: number;
+
+  constructor(options: PluginBridgeServiceOptions = {}) {
+    this.db = options.db;
+    this.now = options.now ?? (() => new Date().toISOString());
+    this.activeSessionMaxAgeMs = options.activeSessionMaxAgeMs ?? DEFAULT_ACTIVE_SESSION_MAX_AGE_MS;
+    this.dispatchLeaseMs = options.dispatchLeaseMs ?? DEFAULT_DISPATCH_LEASE_MS;
+    this.loadPersistedState();
+  }
+
+  private loadPersistedState(): void {
+    if (!this.db) return;
+    const sessionRows = this.db
+      .prepare(`SELECT session_id, session_token, file_key, local_file_key, file_name, client_name, created_at, last_seen_at, connected FROM plugin_bridge_sessions ORDER BY created_at DESC`)
+      .all() as Array<Record<string, unknown>>;
+    for (const row of sessionRows) {
+      const session: PluginBridgeSession = {
+        sessionId: String(row.session_id),
+        sessionToken: String(row.session_token),
+        fileKey: row.file_key ? String(row.file_key) : undefined,
+        localFileKey: row.local_file_key ? String(row.local_file_key) : undefined,
+        fileName: row.file_name ? String(row.file_name) : undefined,
+        clientName: row.client_name ? String(row.client_name) : undefined,
+        createdAt: String(row.created_at),
+        lastSeenAt: String(row.last_seen_at),
+        connected: Boolean(row.connected)
+      };
+      this.sessions.set(session.sessionId, session);
+      this.commandsBySession.set(session.sessionId, []);
+    }
+    const commandRows = this.db
+      .prepare(`SELECT command_id, session_id, type, payload_json, status, created_at, dispatched_at, completed_at, result_json, error_json FROM plugin_bridge_commands ORDER BY created_at ASC`)
+      .all() as Array<Record<string, unknown>>;
+    for (const row of commandRows) {
+      const command: PluginBridgeCommand = {
+        commandId: String(row.command_id),
+        type: String(row.type) as PluginBridgeCommandType,
+        payload: parseJson<Record<string, unknown>>(row.payload_json ? String(row.payload_json) : null, {}),
+        status: String(row.status) as PluginBridgeCommandStatus,
+        createdAt: String(row.created_at),
+        dispatchedAt: row.dispatched_at ? String(row.dispatched_at) : undefined,
+        completedAt: row.completed_at ? String(row.completed_at) : undefined,
+        result: parseJson(row.result_json ? String(row.result_json) : null, undefined),
+        error: parseJson(row.error_json ? String(row.error_json) : null, undefined)
+      };
+      const sessionId = String(row.session_id);
+      const queue = this.commandsBySession.get(sessionId) ?? [];
+      queue.push(command);
+      this.commandsBySession.set(sessionId, queue);
+    }
+  }
+
+  private persistSession(session: PluginBridgeSession): void {
+    if (!this.db) return;
+    this.db.prepare(
+      `INSERT INTO plugin_bridge_sessions (session_id, session_token, file_key, local_file_key, file_name, client_name, created_at, last_seen_at, connected)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(session_id) DO UPDATE SET
+         session_token = excluded.session_token,
+         file_key = excluded.file_key,
+         local_file_key = excluded.local_file_key,
+         file_name = excluded.file_name,
+         client_name = excluded.client_name,
+         created_at = excluded.created_at,
+         last_seen_at = excluded.last_seen_at,
+         connected = excluded.connected`
+    ).run(
+      session.sessionId,
+      session.sessionToken,
+      session.fileKey ?? null,
+      session.localFileKey ?? null,
+      session.fileName ?? null,
+      session.clientName ?? null,
+      session.createdAt,
+      session.lastSeenAt,
+      session.connected ? 1 : 0
+    );
+  }
+
+  private persistCommand(sessionId: string, command: PluginBridgeCommand): void {
+    if (!this.db) return;
+    this.db.prepare(
+      `INSERT INTO plugin_bridge_commands (command_id, session_id, type, payload_json, status, created_at, dispatched_at, completed_at, result_json, error_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(command_id) DO UPDATE SET
+         session_id = excluded.session_id,
+         type = excluded.type,
+         payload_json = excluded.payload_json,
+         status = excluded.status,
+         created_at = excluded.created_at,
+         dispatched_at = excluded.dispatched_at,
+         completed_at = excluded.completed_at,
+         result_json = excluded.result_json,
+         error_json = excluded.error_json`
+    ).run(
+      command.commandId,
+      sessionId,
+      command.type,
+      JSON.stringify(command.payload ?? {}),
+      command.status,
+      command.createdAt,
+      command.dispatchedAt ?? null,
+      command.completedAt ?? null,
+      command.result === undefined ? null : JSON.stringify(command.result),
+      command.error === undefined ? null : JSON.stringify(command.error)
+    );
+  }
 
   registerSession(input: RegisterSessionInput): PluginBridgeSession {
+    const timestamp = this.now();
     const session: PluginBridgeSession = {
       sessionId: makeId('pbs'),
       sessionToken: makeId('pbt'),
@@ -143,12 +273,13 @@ export class PluginBridgeService {
       localFileKey: input.localFileKey,
       fileName: input.fileName,
       clientName: input.clientName,
-      createdAt: nowIso(),
-      lastSeenAt: nowIso(),
+      createdAt: timestamp,
+      lastSeenAt: timestamp,
       connected: true
     };
     this.sessions.set(session.sessionId, session);
     this.commandsBySession.set(session.sessionId, []);
+    this.persistSession(session);
     return session;
   }
 
@@ -157,7 +288,7 @@ export class PluginBridgeService {
   }
 
   listActiveSessions(): PluginBridgeSession[] {
-    const threshold = Date.now() - ACTIVE_SESSION_MAX_AGE_MS;
+    const threshold = Date.parse(this.now()) - this.activeSessionMaxAgeMs;
     return this.listSessions().filter((session) => {
       const seen = Date.parse(session.lastSeenAt || session.createdAt);
       return session.connected && Number.isFinite(seen) && seen >= threshold;
@@ -168,25 +299,13 @@ export class PluginBridgeService {
     if (input.sessionId) {
       return this.getSession(input.sessionId);
     }
-
     let sessions = this.listActiveSessions();
-
-    if (input.fileKey) {
-      sessions = sessions.filter((session) => session.fileKey === input.fileKey);
-    }
-
-    if (input.localFileKey) {
-      sessions = sessions.filter((session) => session.localFileKey === input.localFileKey);
-    }
-
-    if (input.clientName) {
-      sessions = sessions.filter((session) => session.clientName === input.clientName);
-    }
-
+    if (input.fileKey) sessions = sessions.filter((session) => session.fileKey === input.fileKey);
+    if (input.localFileKey) sessions = sessions.filter((session) => session.localFileKey === input.localFileKey);
+    if (input.clientName) sessions = sessions.filter((session) => session.clientName === input.clientName);
     if (sessions.length === 0) {
       throw new AppError('No active plugin bridge session found', 409, 'PLUGIN_SESSION_NOT_FOUND');
     }
-
     return sessions[0];
   }
 
@@ -194,17 +313,14 @@ export class PluginBridgeService {
     const resolved = this.resolveSession(input);
     const fileKey = resolved.fileKey ?? input.fileKey;
     const localFileKey = resolved.localFileKey ?? input.localFileKey;
-
     if (!fileKey && !localFileKey) {
       return resolved;
     }
-
     const matching = this.listActiveSessions().filter((session) => {
       if (fileKey && session.fileKey === fileKey) return true;
       if (localFileKey && session.localFileKey === localFileKey) return true;
       return false;
     });
-
     if (matching.length > 1) {
       throw new AppError(
         'Multiple active plugin sessions found for the same Figma file. Live import is blocked until only one session remains active.',
@@ -218,7 +334,6 @@ export class PluginBridgeService {
         }
       );
     }
-
     return resolved;
   }
 
@@ -235,8 +350,9 @@ export class PluginBridgeService {
     if (!sessionToken || session.sessionToken !== sessionToken) {
       throw new AppError('Invalid plugin session token', 403, 'PLUGIN_SESSION_FORBIDDEN');
     }
-    session.lastSeenAt = nowIso();
+    session.lastSeenAt = this.now();
     session.connected = true;
+    this.persistSession(session);
     return session;
   }
 
@@ -244,6 +360,7 @@ export class PluginBridgeService {
     const queue = this.commandsBySession.get(sessionId) ?? [];
     queue.push(command);
     this.commandsBySession.set(sessionId, queue);
+    this.persistCommand(sessionId, command);
     return command;
   }
 
@@ -259,11 +376,7 @@ export class PluginBridgeService {
     const session = this.assertSessionFileMatch(input.sessionId, input.fileKey);
     return this.enqueueCommand(
       input.sessionId,
-      createQueuedCommand('create-page', {
-        fileKey: input.fileKey ?? session.fileKey ?? null,
-        name: input.name,
-        actorId: input.actorId
-      })
+      createQueuedCommand('create-page', { fileKey: input.fileKey ?? session.fileKey ?? null, name: input.name, actorId: input.actorId }, this.now)
     );
   }
 
@@ -281,7 +394,7 @@ export class PluginBridgeService {
         x: input.x ?? null,
         y: input.y ?? null,
         actorId: input.actorId
-      })
+      }, this.now)
     );
   }
 
@@ -289,12 +402,7 @@ export class PluginBridgeService {
     const session = this.assertSessionFileMatch(input.sessionId, input.fileKey);
     return this.enqueueCommand(
       input.sessionId,
-      createQueuedCommand('update-text', {
-        fileKey: input.fileKey ?? session.fileKey ?? null,
-        nodeId: input.nodeId,
-        text: input.text,
-        actorId: input.actorId
-      })
+      createQueuedCommand('update-text', { fileKey: input.fileKey ?? session.fileKey ?? null, nodeId: input.nodeId, text: input.text, actorId: input.actorId }, this.now)
     );
   }
 
@@ -312,7 +420,7 @@ export class PluginBridgeService {
         x: input.x ?? null,
         y: input.y ?? null,
         actorId: input.actorId
-      })
+      }, this.now)
     );
   }
 
@@ -328,7 +436,7 @@ export class PluginBridgeService {
         x: input.x ?? null,
         y: input.y ?? null,
         actorId: input.actorId
-      })
+      }, this.now)
     );
   }
 
@@ -336,12 +444,7 @@ export class PluginBridgeService {
     const session = this.assertSessionFileMatch(input.sessionId, input.fileKey);
     return this.enqueueCommand(
       input.sessionId,
-      createQueuedCommand('apply-style-from-alias', {
-        fileKey: input.fileKey ?? session.fileKey ?? null,
-        alias: input.alias,
-        nodeId: input.nodeId,
-        actorId: input.actorId
-      })
+      createQueuedCommand('apply-style-from-alias', { fileKey: input.fileKey ?? session.fileKey ?? null, alias: input.alias, nodeId: input.nodeId, actorId: input.actorId }, this.now)
     );
   }
 
@@ -353,7 +456,7 @@ export class PluginBridgeService {
         fileKey: input.fileKey ?? session.fileKey ?? null,
         command: normalizePluginCommandStep(input.command as Record<string, unknown>),
         actorId: input.actorId
-      })
+      }, this.now)
     );
   }
 
@@ -365,7 +468,7 @@ export class PluginBridgeService {
         fileKey: input.fileKey ?? session.fileKey ?? null,
         commands: input.commands.map((step) => normalizePluginCommandStep(step as Record<string, unknown>)),
         actorId: input.actorId
-      })
+      }, this.now)
     );
   }
 
@@ -379,10 +482,33 @@ export class PluginBridgeService {
     return command;
   }
 
+  private reclaimExpiredDispatchedCommands(sessionId: string): void {
+    const queue = this.commandsBySession.get(sessionId) ?? [];
+    const threshold = Date.parse(this.now()) - this.dispatchLeaseMs;
+    for (const command of queue) {
+      if (command.status !== 'dispatched' || !command.dispatchedAt) continue;
+      const dispatchedAt = Date.parse(command.dispatchedAt);
+      if (!Number.isFinite(dispatchedAt) || dispatchedAt < threshold) {
+        command.status = 'queued';
+        command.dispatchedAt = undefined;
+        this.persistCommand(sessionId, command);
+      }
+    }
+  }
+
   getPendingCommands(sessionId: string, sessionToken?: string): PluginBridgeCommand[] {
     this.authenticateSession(sessionId, sessionToken);
+    this.reclaimExpiredDispatchedCommands(sessionId);
     const queue = this.commandsBySession.get(sessionId) ?? [];
-    return queue.filter((command) => command.status === 'queued');
+    if (queue.some((command) => command.status === 'dispatched')) {
+      return [];
+    }
+    const next = queue.find((command) => command.status === 'queued');
+    if (!next) return [];
+    next.status = 'dispatched';
+    next.dispatchedAt = this.now();
+    this.persistCommand(sessionId, next);
+    return [next];
   }
 
   completeCommand(input: CompleteCommandInput, sessionToken?: string): PluginBridgeCommand {
@@ -393,9 +519,11 @@ export class PluginBridgeService {
       throw new AppError(`Plugin command not found: ${input.commandId}`, 404, 'PLUGIN_COMMAND_NOT_FOUND');
     }
     command.status = input.error ? 'failed' : 'completed';
-    command.completedAt = nowIso();
+    command.dispatchedAt = command.dispatchedAt ?? this.now();
+    command.completedAt = this.now();
     command.result = input.result;
     command.error = input.error;
+    this.persistCommand(input.sessionId, command);
     return command;
   }
 }

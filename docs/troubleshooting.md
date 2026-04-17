@@ -269,3 +269,17 @@ Fix:
 
 - centered text-only wrappers are now promoted to vertical render-first auto-layout stacks
 - text children are attached through flow layout instead of a plain frame with manual child positioning
+
+## Live batch stays queued forever or creates duplicate branches on repeated polls
+
+Cause:
+
+- plugin bridge previously returned the same queued batch on every `/commands/pending` poll
+- long-running live batches could therefore be delivered multiple times before the first execution completed
+- server restarts also dropped in-memory session/queue state, forcing a manual plugin reconnect
+
+Fix:
+
+- plugin bridge now uses dispatch leasing so one session can have only one active in-flight command delivery at a time
+- queued commands are persisted in SQLite and recovered after gateway restart
+- stale dispatched commands are re-queued automatically after lease expiry
