@@ -114,3 +114,15 @@ Examples:
 - untrusted runtime-only visual regions
 
 This is expected behavior and is preferable to silently dropping size/alignment or creating a broken approximation.
+
+## Live import created only `body` and no deeper tree
+
+Cause:
+
+- planner treated page-level synthetic root guardrails such as `heuristic_node` or untrusted runtime baseline as a hard unsupported block
+- the whole rendered tree was collapsed into one placeholder root
+
+Fix:
+
+- synthetic rendered roots now remain traversable
+- only truly unsupported subtrees should turn into red placeholders

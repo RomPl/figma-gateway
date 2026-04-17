@@ -166,7 +166,17 @@ const shouldForceTransparentFill = (node: UiNode): boolean => { const dom = node
 const firstColorFromGradient = (raw: string | undefined): string | undefined => { if (!raw) return undefined; const match = String(raw).match(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/); return match ? match[1] : undefined; };
 const hasRenderablePaint = (raw: string | undefined, opacity = 1): boolean => Boolean(lowerAnyPaint(raw, opacity)?.length);
 const shouldCenterWithinParent = (node: UiNode, parentNode: UiNode | undefined): boolean => { const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined; const className = String(dom?.className || '').toLowerCase(); return Boolean(parentNode && (className.includes('mx-auto') || (node.computedStyle?.marginLeftAuto && node.computedStyle?.marginRightAuto) || (((node.computedStyle?.marginLeft ?? 0) > 0) && ((node.computedStyle?.marginRight ?? 0) > 0)))); };
-const placeholderReasonsForNode = (node: UiNode): string[] => { const guardrails = node.meta && typeof node.meta.guardrails === 'object' ? (node.meta.guardrails as Record<string, unknown>) : undefined; const reasons: string[] = []; if (guardrails?.runtimeBaseline === 'untrusted') reasons.push('runtime-baseline-untrusted'); if (guardrails?.dynamicStatefulBlock) reasons.push('dynamic-stateful-block'); if (Array.isArray(guardrails?.unsupportedRegions)) reasons.push(...guardrails.unsupportedRegions.map((item) => String(item))); const bgImage = node.computedStyle?.backgroundImage; if (isMeaningfulPaintRaw(bgImage) && !hasRenderablePaint(bgImage, node.computedStyle?.opacity ?? 1) && !String(bgImage).includes('gradient(')) reasons.push('background-image-unsupported'); if ((node.kind === 'image' || Boolean(node.asset?.layer)) && !node.asset?.sourceUrl && !node.asset?.resolvedAssetPath && node.asset?.layer !== 'decorative-asset') reasons.push('asset-source-missing'); return Array.from(new Set(reasons.filter(Boolean))); };
+const placeholderReasonsForNode = (node: UiNode): string[] => {
+  const guardrails = node.meta && typeof node.meta.guardrails === 'object' ? (node.meta.guardrails as Record<string, unknown>) : undefined;
+  const reasons: string[] = [];
+  if (Array.isArray(guardrails?.unsupportedRegions)) {
+    reasons.push(...guardrails.unsupportedRegions.map((item) => String(item)).filter((item) => item && item !== 'heuristic_node'));
+  }
+  const bgImage = node.computedStyle?.backgroundImage;
+  if (isMeaningfulPaintRaw(bgImage) && !hasRenderablePaint(bgImage, node.computedStyle?.opacity ?? 1) && !String(bgImage).includes('gradient(')) reasons.push('background-image-unsupported');
+  if ((node.kind === 'image' || Boolean(node.asset?.layer)) && !node.asset?.sourceUrl && !node.asset?.resolvedAssetPath && node.asset?.layer !== 'decorative-asset') reasons.push('asset-source-missing');
+  return Array.from(new Set(reasons.filter(Boolean)));
+};
 const shouldRenderAsRedPlaceholder = (node: UiNode): boolean => placeholderReasonsForNode(node).length > 0;
 const supportsLayoutBoxNode = (node: UiNode): boolean => ['frame','section','card','list','form','button','input'].includes(node.kind);
 const supportsCornerRadiusNode = (node: UiNode): boolean => ['frame','section','card','list','form','button','input','image'].includes(node.kind);

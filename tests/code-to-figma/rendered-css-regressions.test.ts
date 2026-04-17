@@ -111,3 +111,48 @@ test('planner renders unsupported blocks as red placeholders and skips impossibl
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+test('planner does not collapse the whole synthetic rendered root into a placeholder for heuristic root guardrails', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'css-regression-root-guardrails-'));
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(rootDir, 'src', 'components', 'Home.tsx'), `
+      import React from 'react';
+      export function Home() {
+        return (
+          <div data-ui-id="home.root">
+            <section data-ui-id="home.hero">
+              <h1 data-ui-id="home.hero.title">Hello</h1>
+            </section>
+          </div>
+        );
+      }
+    `, 'utf8');
+
+    const runtime: RenderedUiRuntime = {
+      capture: async () => ({
+        uiId: '__auto__/', tag: 'body', text: 'Hello', treePath: '__auto__/',
+        clientRect: { x: 0, y: 0, width: 1200, height: 800 },
+        computedStyle: { display: 'block', width: 1200, height: 800, backgroundColor: 'rgb(255,255,255)' },
+        visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: { layer: 'decorative-asset', role: 'content' }, icon: {}, semantics: {},
+        guardrails: { runtimeBaseline: 'untrusted', dynamicStatefulBlock: true, unsupportedRegions: ['heuristic_node'] },
+        breakpoint: { viewportWidth: 1200, viewportHeight: 800, name: 'desktop' }, syncRelevantFields: [],
+        children: [
+          { uiId: 'home.root', tag: 'div', text: 'Hello', treePath: '__auto__/ > home.root', clientRect: { x: 0, y: 0, width: 1200, height: 800 }, computedStyle: { display: 'block', width: 1200, height: 800 }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: { layer: 'decorative-asset', role: 'content' }, icon: {}, semantics: {}, guardrails: { runtimeBaseline: 'untrusted', dynamicStatefulBlock: true, unsupportedRegions: ['heuristic_node'] }, breakpoint: { viewportWidth: 1200, viewportHeight: 800, name: 'desktop' }, syncRelevantFields: [], children: [
+            { uiId: 'home.hero', tag: 'section', text: 'Hello', treePath: '__auto__/ > home.root > home.hero', clientRect: { x: 40, y: 40, width: 800, height: 240 }, computedStyle: { display: 'block', width: 800, height: 240, backgroundColor: 'rgb(20,20,20)' }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: { layer: 'decorative-asset', role: 'content' }, icon: {}, semantics: {}, guardrails: { runtimeBaseline: 'untrusted', dynamicStatefulBlock: true, unsupportedRegions: ['heuristic_node'] }, breakpoint: { viewportWidth: 1200, viewportHeight: 800, name: 'desktop' }, syncRelevantFields: [], children: [
+              { uiId: 'home.hero.title', tag: 'h1', text: 'Hello', treePath: '__auto__/ > home.root > home.hero > home.hero.title', clientRect: { x: 80, y: 80, width: 200, height: 40 }, computedStyle: { color: 'rgb(255,255,255)', fontSize: 32, width: 200, height: 40 }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, guardrails: { runtimeBaseline: 'untrusted', dynamicStatefulBlock: true, unsupportedRegions: ['heuristic_node'] }, breakpoint: { viewportWidth: 1200, viewportHeight: 800, name: 'desktop' }, syncRelevantFields: [], children: [] }
+            ] }
+          ] }
+        ]
+      })
+    };
+
+    const pipeline = buildPipeline(rootDir, runtime);
+    const result = await pipeline.run({ project: 'template-engine', componentName: 'Home', rootDir, dryRun: true, render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3001' }, breakpointName: 'desktop' } });
+    assert.equal(result.plan.commands.some((item: any) => item.type === 'set_plugin_data' && item.payload?.pluginData?.key === 'render-fallback'), false);
+    assert.equal(result.plan.commands.some((item: any) => item.type === 'create_text' && item.payload?.uiId === 'home.hero.title'), true);
+    assert.equal(result.plan.commands.length > 10, true);
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

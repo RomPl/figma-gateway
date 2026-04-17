@@ -217,3 +217,11 @@ Typical placeholder triggers:
 - untrusted runtime-only visual blocks
 - unsupported background-image reconstruction
 - missing required asset source for non-decorative assets
+
+## Heuristic rendered root should not collapse the whole page
+
+A synthetic rendered root such as `body` may legitimately carry page-level guardrails like `runtimeBaseline=untrusted`, `dynamicStatefulBlock`, or `heuristic_node` when no explicit `rootUiId` is provided.
+
+These guardrails should lower confidence, but must not automatically convert the entire page tree into one red placeholder block.
+
+The planner should still descend into the rendered subtree and reserve red placeholders for genuinely unsupported subregions only.
