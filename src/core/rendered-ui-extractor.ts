@@ -340,13 +340,17 @@ const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: 
     function isMeaningful(el) {
       const tag = el.tagName.toLowerCase();
       const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
       const text = directText(el) || normalizeText(el.innerText || el.textContent);
       const role = el.getAttribute('role') || '';
       const iconLike = tag === 'i' || (tag === 'span' && /(^|\s)(fa[srldb]?|fa-[\w-]+|bi|bi-[\w-]+)(\s|$)/.test(String(el.className || '')));
+      const directSvgChild = el.children.length === 1 && el.firstElementChild instanceof SVGElement;
+      const iconWrapperLike = hasOwnVisualContainerStyle(style) && rect.width > 0 && rect.height > 0 && rect.width <= 96 && rect.height <= 96 && (directSvgChild || Array.from(el.children || []).some((child) => child instanceof SVGElement));
       return isVisible(el) && (
         el.hasAttribute('data-ui-id') ||
         ['main','section','article','nav','header','footer','aside','button','a','input','textarea','select','img','picture','video','svg','canvas','form','ul','ol','li','h1','h2','h3','h4','h5','h6'].includes(tag) ||
         iconLike ||
+        iconWrapperLike ||
         ['button','textbox','link','list','navigation','banner','main','switch'].includes(role) ||
         Boolean(text && text.length >= 2) ||
         rect.width * rect.height > 12000
@@ -401,7 +405,9 @@ const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: 
       const backgroundImage = style.backgroundImage && style.backgroundImage !== 'none' ? style.backgroundImage : undefined;
       const isFontIcon = tag === 'i' || (tag === 'span' && /(^|\s)(fa[srldb]?|fa-[\w-]+|bi|bi-[\w-]+)(\s|$)/.test(className));
       const directSvgChild = tag !== 'svg' && element.children.length === 1 && element.firstElementChild instanceof SVGElement ? element.firstElementChild : null;
-      const svgNode = tag === 'svg' ? element : (directSvgChild && !(element.textContent || '').trim() ? directSvgChild : null);
+      const containerHasOwnVisualStyle = hasOwnVisualContainerStyle(style);
+      const shouldPromoteSingleSvgChild = Boolean(directSvgChild) && !(element.textContent || '').trim() && !containerHasOwnVisualStyle;
+      const svgNode = tag === 'svg' ? element : (shouldPromoteSingleSvgChild ? directSvgChild : null);
       const isSvgIcon = Boolean(svgNode) && (tag === 'svg' || element.children.length <= 1);
       const icon = isFontIcon ? {
         sourceType: 'font-icon',

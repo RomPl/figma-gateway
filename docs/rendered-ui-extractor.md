@@ -179,3 +179,15 @@ Nested SVG elements that become visual nodes in the extracted tree must also rec
 Render-first extraction must preserve direct text for badge/link/button-like inline containers even when they also contain an inline SVG child.
 
 Otherwise planner cannot synthesize the label layer and icon-only containers appear truncated in Figma.
+
+## Visual icon-holder wrappers must not be promoted to giant icons
+
+A container with its own visual style (background, radius, shadow, padding) and a single inline SVG child should remain a frame wrapper.
+
+Only the SVG child should become the icon node. Otherwise the wrapper is incorrectly promoted to one oversized icon and the visual holder disappears.
+
+## Small icon-holder wrappers are layout-critical visual containers
+
+Small visual containers such as `48x48` and `64x64` icon holders with background/radius/shadow must remain separate wrapper nodes during render extraction.
+
+They should not be collapsed by heuristic child promotion, and they should not be promoted into one oversized icon node when they simply contain a single SVG child.

@@ -246,3 +246,41 @@ test('rendered extractor keeps text for inline-flex badge containers that have s
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
 });
+
+test('rendered extractor preserves small visual icon-holder wrappers with svg children', async () => {
+  const html = `<!doctype html><html><body>
+    <div data-ui-id="layout.root">
+      <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10" style="display:flex;width:48px;height:48px;align-items:center;justify-content:center;border-radius:8px;background:rgba(36,99,235,0.1)">
+        <svg viewBox="0 0 24 24" width="24" height="24"><path d="M5 12h14"></path></svg>
+      </div>
+      <div class="-mt-6 flex h-16 w-16 items-center justify-center rounded-full bg-primary shadow-lg shadow-primary/30" style="display:flex;width:64px;height:64px;align-items:center;justify-content:center;border-radius:9999px;background:rgb(36,99,235);box-shadow:rgba(36,99,235,0.3) 0px 10px 15px -3px, rgba(36,99,235,0.3) 0px 4px 6px -4px;margin-top:-24px;">
+        <svg viewBox="0 0 24 24" width="28" height="28"><path d="M12 3 10 9 3 12"></path></svg>
+      </div>
+    </div>
+  </body></html>`;
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(html);
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Failed to get server address');
+  const url = `http://127.0.0.1:${address.port}`;
+  try {
+    const service = new RenderedUiExtractorService();
+    const document = await service.extract({ target: { mode: 'existing_url', url }, rootUiId: 'layout.root', browserExecutablePath: '/usr/bin/google-chrome', breakpointName: 'desktop' });
+    const wrappers = document.root.children.filter((child) => child.kind === 'frame').sort((a, b) => (a.boundingBox?.width ?? 0) - (b.boundingBox?.width ?? 0));
+    assert.equal(wrappers.length, 2);
+    const small = wrappers.find((child) => child.boundingBox?.width === 48 && child.boundingBox?.height === 48);
+    const large = wrappers.find((child) => child.boundingBox?.width === 64 && child.boundingBox?.height === 64);
+    assert.equal(Boolean(small), true);
+    assert.equal(Boolean(large), true);
+    assert.equal((small?.icon as any)?.sourceType ?? null, null);
+    assert.equal((large?.icon as any)?.sourceType ?? null, null);
+    assert.equal(small?.children[0]?.kind, 'icon');
+    assert.equal(large?.children[0]?.kind, 'icon');
+    assert.equal((large?.style as any)?.radius !== undefined, true);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  }
+});
