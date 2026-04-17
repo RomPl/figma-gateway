@@ -28,6 +28,7 @@ export const registerGracefulShutdown = (server: Server): void => {
       if (error) {
         logger.error({ err: error }, 'Server shutdown failed');
         process.exit(1);
+        return;
       }
 
       logger.info('Server stopped gracefully');

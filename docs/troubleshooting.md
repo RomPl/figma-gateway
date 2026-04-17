@@ -210,3 +210,15 @@ Fix:
 
 - extractor now forwards inline SVG markup when available
 - plugin runtime prefers native `createNodeFromSvg` for icon recreation
+
+## Graceful shutdown reports failure but still exits 0
+
+Cause:
+
+- the shutdown callback could call `process.exit(1)` on `server.close()` error and then continue into the success path
+- this produced contradictory exit behavior in tests and could mask shutdown failures
+
+Fix:
+
+- graceful shutdown now returns immediately after the error exit path
+- shutdown failure and success paths are now mutually exclusive
