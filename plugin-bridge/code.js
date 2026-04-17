@@ -510,6 +510,15 @@ async function executeLowLevelCommand(step, refMap) {
   if (commandType === 'set_asset_reference') {
     const node = await getNodeFromPayload(payload, commandType, refMap);
     if (payload.placeholder && 'setPluginData' in node) node.setPluginData('figma-gateway:asset-placeholder', String(payload.alt || payload.sourceUrl || payload.resolvedAssetPath || 'asset'));
+    if (!payload.placeholder && canReceiveImageFill(node)) {
+      const imageSource = payload.resolvedAssetPath || payload.sourceUrl;
+      if (typeof imageSource === 'string' && imageSource.trim()) {
+        try {
+          const image = await figma.createImageAsync(imageSource.trim());
+          node.fills = [{ type: 'IMAGE', scaleMode: 'FILL', imageHash: image.hash }];
+        } catch (error) {}
+      }
+    }
     return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: Boolean(payload.placeholder), layer: payload.layer || null } });
   }
   if (commandType === 'set_icon_reference') {
@@ -525,13 +534,28 @@ async function executeLowLevelCommand(step, refMap) {
         iconNode = null;
       }
     }
+    if (!iconNode && payload.svgMarkup) {
+      try {
+        const rect = figma.createRectangle();
+        rect.name = 'icon-image';
+        const imageHash = await createImageHashFromSvgMarkup(String(payload.svgMarkup));
+        rect.fills = [{ type: 'IMAGE', scaleMode: 'FIT', imageHash }];
+        if (payload.size && Number(payload.size.width) > 0 && Number(payload.size.height) > 0) rect.resizeWithoutConstraints(Number(payload.size.width), Number(payload.size.height));
+        iconNode = rect;
+      } catch (error) {
+        iconNode = null;
+      }
+    }
     if (!iconNode) {
       const textNode = figma.createText();
       await figma.loadFontAsync(textNode.fontName);
       textNode.name = 'icon-placeholder';
       textNode.characters = mapIconText(payload.textLabel || payload.assetId || payload.hash || payload.sourceType || 'icon');
       if (payload.size && payload.size.height) textNode.fontSize = Number(payload.size.height);
-      if (payload.fill) { const paint = Array.isArray(payload.fill) ? payload.fill : [{ type:'SOLID', color:(function(raw){ const rgb=String(raw).match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i); return rgb?{r:Number(rgb[1])/255,g:Number(rgb[2])/255,b:Number(rgb[3])/255}:{r:0.2,g:0.2,b:0.2}; })(payload.fill), opacity:1 }]; textNode.fills = paint; }
+      if (payload.fill) {
+        const paint = Array.isArray(payload.fill) ? payload.fill : [parseRgbPaint(payload.fill)].filter(Boolean);
+        if (paint.length) textNode.fills = paint;
+      }
       iconNode = textNode;
     }
     node.appendChild(iconNode);

@@ -107,3 +107,11 @@ test('server allows debug_runtime_info as low-level diagnostic command', async (
   assert.match(writeTypes, /'debug_runtime_info'/);
   assert.match(guardrails, /'debug_runtime_info'/);
 });
+
+test('plugin runtime supports image-based svg icon fallback and real image fills', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /createImageHashFromSvgMarkup/);
+  assert.match(source, /rect\.name = 'icon-image'/);
+  assert.match(source, /type: 'IMAGE', scaleMode: 'FIT', imageHash/);
+  assert.match(source, /if \(!payload\.placeholder && canReceiveImageFill\(node\)\)/);
+});

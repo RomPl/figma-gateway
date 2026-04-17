@@ -318,3 +318,9 @@ Current sanitation includes:
 - ensure `xmlns`
 - strip noisy `class` / `data-*` / `aria-*` attributes
 - replace `currentColor` with explicit fill/stroke when available
+
+Additional compatibility step for older runtimes:
+
+- after `set_text_style`, planner also reapplies `set_text_content`
+
+This is intended to preserve the requested font style in runtimes that may reset text styling during character assignment.

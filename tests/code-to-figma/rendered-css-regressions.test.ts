@@ -270,6 +270,9 @@ test('planner emits atomic create_text payload for rendered-first text nodes ins
     const styleCommand = result.plan.commands.find((item: any) => item.type === 'set_text_style' && item.payload?.nodeRef === 'home.title');
     assert.equal(Boolean(styleCommand), true);
     assert.equal(styleCommand.payload.fontStyle, 'Bold');
+    const contentCommand = result.plan.commands.find((item: any) => item.type === 'set_text_content' && item.payload?.nodeRef === 'home.title');
+    assert.equal(Boolean(contentCommand), true);
+    assert.equal(contentCommand.payload.text, 'Hello');
     assert.equal(result.plan.commands.some((item: any) => item.type === 'set_fill' && item.payload?.nodeRef === 'home.title'), false);
     assert.equal(result.plan.commands.some((item: any) => item.type === 'set_size' && item.payload?.nodeRef === 'home.title'), false);
     assert.equal(result.plan.commands.some((item: any) => item.type === 'set_position' && item.payload?.nodeRef === 'home.title'), false);

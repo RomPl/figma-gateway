@@ -448,6 +448,7 @@ const planTextNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: s
   actions.push({ id: `${ref}:create_text`, type: 'create_text', uiId: node.uiId, payload: { ref, parentRef, uiId: node.uiId, name: figmaName, text: node.text ?? '', x: plannedX, y: plannedY } });
   commands.push({ type: 'create_text', payload: createTextPayload });
   commands.push({ type: 'set_text_style', payload: { nodeRef: ref, fontFamily: createTextPayload.fontFamily, fontStyle: createTextPayload.fontStyle, fontSize: createTextPayload.fontSize, lineHeight: createTextPayload.lineHeight, letterSpacing: createTextPayload.letterSpacing, fontWeight: createTextPayload.fontWeight, textAlignHorizontal: createTextPayload.textAlignHorizontal } });
+  commands.push({ type: 'set_text_content', payload: { nodeRef: ref, text: node.text ?? '' } });
 };
 
 const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: string | undefined, actions: PlannerAction[], commands: FigmaCommandStep[], isRoot: boolean): void => {

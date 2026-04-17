@@ -343,3 +343,15 @@ Fix:
 
 - live import cleanup now deletes the exact planned synthetic `uiId` set in deep-first order
 - this avoids relying on a broad page-wide prefix scan and stays compatible with older runtime behavior
+
+## SVG icon import still falls back to placeholder on some plugin runtimes
+
+Cause:
+
+- `createNodeFromSvg()` may fail for some inline SVG payloads even after sanitation
+- older or inconsistent runtimes then degrade to text placeholders
+
+Fix:
+
+- plugin runtime now tries a second visual fallback: render the sanitized SVG as an image-backed rectangle (`icon-image`)
+- only if that also fails does it fall back to the red text placeholder path
