@@ -20,7 +20,7 @@ export const RENDERED_BREAKPOINT_PRESETS: Record<RenderedBreakpointPreset, { wid
 };
 
 export const RENDERED_UI_MVP_COMPUTED_STYLE_PROPERTIES = [
-  'color','backgroundColor','backgroundImage','borderColor','borderWidth','borderStyle','borderRadius','boxShadow','opacity','fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','textAlign','display','flexDirection','alignItems','alignContent','justifyContent','justifyItems','justifySelf','gap','rowGap','columnGap','paddingTop','paddingRight','paddingBottom','paddingLeft','marginTop','marginRight','marginBottom','marginLeft','width','height','position','overflowX','overflowY'
+  'color','backgroundColor','backgroundImage','borderColor','borderWidth','borderStyle','borderRadius','boxShadow','opacity','fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','textAlign','display','flexDirection','flexWrap','alignItems','alignContent','justifyContent','justifyItems','justifySelf','gap','rowGap','columnGap','paddingTop','paddingRight','paddingBottom','paddingLeft','marginTop','marginRight','marginBottom','marginLeft','marginLeftAuto','marginRightAuto','width','height','position','overflowX','overflowY'
 ] as const;
 
 export const RENDERED_UI_MVP_SYNC_RELEVANT_FIELDS = [
@@ -82,6 +82,7 @@ const computedStyleSubsetSchema = z.object({
   textAlign: z.string().optional(),
   display: z.string().optional(),
   flexDirection: z.string().optional(),
+  flexWrap: z.string().optional(),
   alignItems: z.string().optional(),
   alignContent: z.string().optional(),
   justifyContent: z.string().optional(),
@@ -98,6 +99,8 @@ const computedStyleSubsetSchema = z.object({
   marginRight: z.number().optional(),
   marginBottom: z.number().optional(),
   marginLeft: z.number().optional(),
+  marginLeftAuto: z.boolean().optional(),
+  marginRightAuto: z.boolean().optional(),
   width: z.number().optional(),
   height: z.number().optional(),
   position: z.string().optional(),
@@ -223,7 +226,10 @@ const inferKind = (snapshot: RenderedNodeSnapshot): UiKind => {
     (snapshot.computedStyle.borderRadius && snapshot.computedStyle.borderRadius > 0) ||
     (snapshot.computedStyle.boxShadow && snapshot.computedStyle.boxShadow !== 'none')
   );
-  if (/^h[1-6]$/.test(tag) || ['p', 'span', 'label', 'strong', 'em', 'small'].includes(tag)) return 'text';
+  if (tag === 'body' || tag === 'main' || tag === 'article' || tag === 'div' || tag === 'form') return 'frame';
+  if (/^h[1-6]$/.test(tag) || ['p', 'strong', 'em', 'small'].includes(tag)) return 'text';
+  if (['span','label'].includes(tag) && hasDecoratedContainerStyle) return 'frame';
+  if (['span','label'].includes(tag)) return 'text';
   if (tag === 'section') return 'section';
   if (tag === 'button' || role === 'button' || (tag === 'a' && /(^|\s)btn(\s|$)/.test(className))) return 'button';
   if (tag === 'input' || tag === 'textarea' || role === 'textbox' || role === 'switch' || role === 'checkbox') return 'input';
@@ -260,7 +266,7 @@ const buildUiNode = (snapshot: RenderedNodeSnapshot, sourceUrl: string): UiNode 
     name: buildRenderedNodeName(snapshot),
     role: inferRole(snapshot),
     visible: snapshot.visibility.visible,
-    text: kind === 'text' || kind === 'button' ? normalizeText(snapshot.text) : undefined,
+    text: kind === 'text' || kind === 'button' || ((kind === 'frame' || kind === 'group') && snapshot.semantics.clickTarget && normalizeText(snapshot.text) && normalizeText(snapshot.text)!.length <= 120) || ((kind === 'frame') && normalizeText(snapshot.text) && (!snapshot.children || snapshot.children.length === 0) && normalizeText(snapshot.text)!.length <= 120) ? normalizeText(snapshot.text) : undefined,
     source: { codeSelector: `[data-ui-id="${snapshot.uiId}"]`, codePath: sourceUrl },
     size: { width: snapshot.clientRect.width, height: snapshot.clientRect.height },
     position: { x: snapshot.clientRect.x, y: snapshot.clientRect.y },
@@ -269,6 +275,7 @@ const buildUiNode = (snapshot: RenderedNodeSnapshot, sourceUrl: string): UiNode 
     layout: {
       type: styleSubset.display === 'flex' || styleSubset.display === 'inline-flex' ? (styleSubset.flexDirection === 'column' || styleSubset.flexDirection === 'column-reverse' ? 'vertical' : 'horizontal') : styleSubset.display === 'grid' ? 'stack' : 'none',
       gap: styleSubset.gap,
+      wrap: styleSubset.flexWrap === 'wrap' || styleSubset.flexWrap === 'wrap-reverse',
       padding: hasPadding ? { top: styleSubset.paddingTop ?? 0, right: styleSubset.paddingRight ?? 0, bottom: styleSubset.paddingBottom ?? 0, left: styleSubset.paddingLeft ?? 0 } : undefined,
       alignment: {
         primary: styleSubset.justifyContent === 'center' ? 'center' : styleSubset.justifyContent === 'flex-end' ? 'end' : styleSubset.justifyContent === 'space-between' ? 'space-between' : 'start',
@@ -465,7 +472,7 @@ const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: 
       const htmlStyle = window.getComputedStyle(document.documentElement);
       const inheritedRootBackgroundColor = (!parentPath && (!style.backgroundColor || style.backgroundColor === 'rgba(0, 0, 0, 0)' || style.backgroundColor === 'transparent')) ? ((bodyStyle.backgroundColor && bodyStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' ? bodyStyle.backgroundColor : undefined) || (htmlStyle.backgroundColor && htmlStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' ? htmlStyle.backgroundColor : undefined)) : undefined;
       const inheritedRootBackgroundImage = (!parentPath && (!style.backgroundImage || style.backgroundImage === 'none')) ? ((bodyStyle.backgroundImage && bodyStyle.backgroundImage !== 'none' ? bodyStyle.backgroundImage : undefined) || (htmlStyle.backgroundImage && htmlStyle.backgroundImage !== 'none' ? htmlStyle.backgroundImage : undefined)) : undefined;
-      const computedStyle = { color: style.color || undefined, backgroundColor: inheritedRootBackgroundColor || style.backgroundColor || undefined, backgroundImage: inheritedRootBackgroundImage || style.backgroundImage || undefined, borderColor: style.borderColor || undefined, borderWidth: toNumber(style.borderTopWidth), borderStyle: style.borderTopStyle || undefined, borderRadius: toNumber(style.borderRadius), boxShadow: style.boxShadow || undefined, opacity: Number(style.opacity || '1'), fontFamily: style.fontFamily || undefined, fontSize: toNumber(style.fontSize), fontWeight: style.fontWeight || undefined, lineHeight: toNumber(style.lineHeight), letterSpacing: toNumber(style.letterSpacing), textAlign: style.textAlign || undefined, display: style.display || undefined, flexDirection: style.flexDirection || undefined, alignItems: style.alignItems || undefined, alignContent: style.alignContent || undefined, justifyContent: style.justifyContent || undefined, justifyItems: style.justifyItems || undefined, justifySelf: style.justifySelf || undefined, gap: toNumber(style.gap), rowGap: toNumber(style.rowGap), columnGap: toNumber(style.columnGap), paddingTop: toNumber(style.paddingTop), paddingRight: toNumber(style.paddingRight), paddingBottom: toNumber(style.paddingBottom), paddingLeft: toNumber(style.paddingLeft), marginTop: toNumber(style.marginTop), marginRight: toNumber(style.marginRight), marginBottom: toNumber(style.marginBottom), marginLeft: toNumber(style.marginLeft), width: rect.width, height: rect.height, position: style.position || undefined, overflowX: style.overflowX || undefined, overflowY: style.overflowY || undefined };
+      const computedStyle = { color: style.color || undefined, backgroundColor: inheritedRootBackgroundColor || style.backgroundColor || undefined, backgroundImage: inheritedRootBackgroundImage || style.backgroundImage || undefined, borderColor: style.borderColor || undefined, borderWidth: toNumber(style.borderTopWidth), borderStyle: style.borderTopStyle || undefined, borderRadius: toNumber(style.borderRadius), boxShadow: style.boxShadow || undefined, opacity: Number(style.opacity || '1'), fontFamily: style.fontFamily || undefined, fontSize: toNumber(style.fontSize), fontWeight: style.fontWeight || undefined, lineHeight: toNumber(style.lineHeight), letterSpacing: toNumber(style.letterSpacing), textAlign: style.textAlign || undefined, display: style.display || undefined, flexDirection: style.flexDirection || undefined, flexWrap: style.flexWrap || undefined, alignItems: style.alignItems || undefined, alignContent: style.alignContent || undefined, justifyContent: style.justifyContent || undefined, justifyItems: style.justifyItems || undefined, justifySelf: style.justifySelf || undefined, gap: toNumber(style.gap), rowGap: toNumber(style.rowGap), columnGap: toNumber(style.columnGap), paddingTop: toNumber(style.paddingTop), paddingRight: toNumber(style.paddingRight), paddingBottom: toNumber(style.paddingBottom), paddingLeft: toNumber(style.paddingLeft), marginTop: toNumber(style.marginTop), marginRight: toNumber(style.marginRight), marginBottom: toNumber(style.marginBottom), marginLeft: toNumber(style.marginLeft), marginLeftAuto: style.marginLeft === 'auto', marginRightAuto: style.marginRight === 'auto', width: rect.width, height: rect.height, position: style.position || undefined, overflowX: style.overflowX || undefined, overflowY: style.overflowY || undefined };
       const ai = inferAssetAndIcon(element, style, rect); const asset = ai.asset; const icon = ai.icon;
       const media = {};
       if (asset.layer === 'image') { media.kind = tag === 'picture' ? 'picture' : tag === 'video' ? 'video' : 'img'; media.sourceUrl = asset.sourceUrl; media.alt = asset.alt; media.poster = tag === 'video' ? (element.poster || undefined) : undefined; media.sources = tag === 'picture' ? Array.from(element.querySelectorAll('source')).map((item) => item.getAttribute('srcset') || item.getAttribute('src')).filter(Boolean) : undefined; media.contentRole = asset.role; }

@@ -165,7 +165,9 @@ const isWrapperLikeNode = (node: UiNode): boolean => { const dom = node.meta && 
 const shouldForceTransparentFill = (node: UiNode): boolean => { const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined; const className = String(dom?.className || '').toLowerCase(); const transparentBackground = !isMeaningfulPaintRaw(node.computedStyle?.backgroundColor) && !isMeaningfulPaintRaw(node.computedStyle?.backgroundImage); if (isWrapperLikeNode(node)) return true; if (node.kind === 'icon' && transparentBackground) return true; if (node.kind === 'button' && transparentBackground && (node.computedStyle?.borderWidth ?? 0) > 0) return true; if (transparentBackground && /(uploadform|text-center|form-check|form-switch|\bmb-\d+\b|\bmt-\d+\b)/.test(className)) return true; return false; };
 const firstColorFromGradient = (raw: string | undefined): string | undefined => { if (!raw) return undefined; const match = String(raw).match(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/); return match ? match[1] : undefined; };
 const hasRenderablePaint = (raw: string | undefined, opacity = 1): boolean => Boolean(lowerAnyPaint(raw, opacity)?.length);
-const shouldCenterWithinParent = (node: UiNode, parentNode: UiNode | undefined): boolean => { const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined; const className = String(dom?.className || '').toLowerCase(); return Boolean(parentNode && (className.includes('mx-auto') || ((node.computedStyle?.marginLeft ?? 0) > 0 && (node.computedStyle?.marginRight ?? 0) > 0))); };
+const shouldCenterWithinParent = (node: UiNode, parentNode: UiNode | undefined): boolean => { const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined; const className = String(dom?.className || '').toLowerCase(); return Boolean(parentNode && (className.includes('mx-auto') || (node.computedStyle?.marginLeftAuto && node.computedStyle?.marginRightAuto) || (((node.computedStyle?.marginLeft ?? 0) > 0) && ((node.computedStyle?.marginRight ?? 0) > 0)))); };
+const placeholderReasonsForNode = (node: UiNode): string[] => { const guardrails = node.meta && typeof node.meta.guardrails === 'object' ? (node.meta.guardrails as Record<string, unknown>) : undefined; const reasons: string[] = []; if (guardrails?.runtimeBaseline === 'untrusted') reasons.push('runtime-baseline-untrusted'); if (guardrails?.dynamicStatefulBlock) reasons.push('dynamic-stateful-block'); if (Array.isArray(guardrails?.unsupportedRegions)) reasons.push(...guardrails.unsupportedRegions.map((item) => String(item))); const bgImage = node.computedStyle?.backgroundImage; if (isMeaningfulPaintRaw(bgImage) && !hasRenderablePaint(bgImage, node.computedStyle?.opacity ?? 1) && !String(bgImage).includes('gradient(')) reasons.push('background-image-unsupported'); if ((node.kind === 'image' || Boolean(node.asset?.layer)) && !node.asset?.sourceUrl && !node.asset?.resolvedAssetPath && node.asset?.layer !== 'decorative-asset') reasons.push('asset-source-missing'); return Array.from(new Set(reasons.filter(Boolean))); };
+const shouldRenderAsRedPlaceholder = (node: UiNode): boolean => placeholderReasonsForNode(node).length > 0;
 const supportsLayoutBoxNode = (node: UiNode): boolean => ['frame','section','card','list','form','button','input'].includes(node.kind);
 const supportsCornerRadiusNode = (node: UiNode): boolean => ['frame','section','card','list','form','button','input','image'].includes(node.kind);
 const shouldEmitFillReset = (node: UiNode): boolean => shouldForceTransparentFill(node) && supportsLayoutBoxNode(node);
@@ -294,7 +296,7 @@ const inferAutoLayoutPayload = (node: UiNode): Record<string, unknown> | null =>
     itemSpacing: gap ?? (isButtonLikeContainer && node.icon?.sourceType ? 8 : gap),
     primaryAxisAlignItems: mapPrimaryAlign(isButtonLikeContainer ? 'center' : (node.layout?.alignment?.primary ?? (justifyContent === 'center' ? 'center' : justifyContent === 'flex-end' ? 'end' : justifyContent === 'space-between' ? 'space-between' : 'start'))),
     counterAxisAlignItems: mapCrossAlign(isButtonLikeContainer ? 'center' : (node.layout?.alignment?.cross ?? (alignItems === 'center' ? 'center' : alignItems === 'flex-end' ? 'end' : alignItems === 'stretch' ? 'stretch' : 'start'))),
-    layoutWrap: node.layout?.wrap ? 'WRAP' : 'NO_WRAP',
+    layoutWrap: (node.layout?.wrap || node.computedStyle?.flexWrap === 'wrap' || node.computedStyle?.flexWrap === 'wrap-reverse') ? 'WRAP' : 'NO_WRAP',
     strokesIncludedInLayout: (node.computedStyle?.borderWidth ?? 0) > 0,
     padding
   };
@@ -375,6 +377,8 @@ const planTextNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: s
 
 const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: string | undefined, actions: PlannerAction[], commands: FigmaCommandStep[], isRoot: boolean): void => {
   const needsReview = Boolean(node.confidence?.needsReview);
+  const placeholderReasons = placeholderReasonsForNode(node);
+  const renderAsPlaceholder = shouldRenderAsRedPlaceholder(node);
   const ref = node.uiId;
   const createType = inferContainerCommand(node, isRoot);
   const viewportWidth = node.responsive?.viewportWidth;
@@ -435,6 +439,13 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
     actions.push({ id: `${ref}:size`, type: 'set_size', uiId: node.uiId, payload: { nodeRef: ref } });
     commands.push({ type: 'set_size', payload: { nodeRef: ref, width, height } });
   }
+  if (renderAsPlaceholder) {
+    actions.push({ id: `${ref}:placeholder_fill`, type: 'set_fill', uiId: node.uiId, payload: { nodeRef: ref, source: 'placeholder' } });
+    commands.push({ type: 'set_fill', payload: { nodeRef: ref, fills: lowerAnyPaint('rgba(255, 0, 0, 0.22)', 1) } });
+    actions.push({ id: `${ref}:placeholder_stroke`, type: 'set_stroke', uiId: node.uiId, payload: { nodeRef: ref, source: 'placeholder' } });
+    commands.push({ type: 'set_stroke', payload: { nodeRef: ref, strokes: lowerAnyPaint('rgb(255, 0, 0)', 1), strokeWeight: Math.max(2, node.computedStyle?.borderWidth ?? 2) } });
+    commands.push({ type: 'set_plugin_data', payload: { nodeRef: ref, pluginData: { namespace: 'figma-gateway', key: 'render-fallback', value: placeholderReasons.join(', ') || 'unsupported-render-block' } } });
+  }
   const isAbsoluteNode = ['absolute', 'fixed', 'sticky'].includes(node.computedStyle?.position ?? '');
   if ((x !== undefined || y !== undefined) && !isRoot && (!parentUsesAutoLayout || isAbsoluteNode)) {
     actions.push({ id: `${ref}:position`, type: 'set_position', uiId: node.uiId, payload: { nodeRef: ref } });
@@ -466,11 +477,12 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
   }
 
   if (node.asset?.layer) {
-    const figmaStrategy = needsReview ? 'placeholder' : (node.asset.figmaStrategy ?? (node.asset.sourceUrl || node.asset.resolvedAssetPath ? 'image_fill' : 'placeholder'));
+    const figmaStrategy = (needsReview || renderAsPlaceholder) ? 'placeholder' : (node.asset.figmaStrategy ?? (node.asset.sourceUrl || node.asset.resolvedAssetPath ? 'image_fill' : 'placeholder'));
+    commands.push({ type: 'set_asset_reference', payload: { nodeRef: ref, layer: node.asset.layer, sourceUrl: node.asset.sourceUrl, resolvedAssetPath: node.asset.resolvedAssetPath, alt: node.asset.alt, placeholder: figmaStrategy === 'placeholder', figmaStrategy } });
   }
 
   if (node.icon?.sourceType) {
-    const figmaStrategy = needsReview ? 'placeholder' : (node.icon.figmaStrategy ?? 'vector_icon');
+    const figmaStrategy = (needsReview || renderAsPlaceholder) ? 'placeholder' : (node.icon.figmaStrategy ?? 'vector_icon');
     actions.push({ id: `${ref}:icon`, type: 'set_icon', uiId: node.uiId, payload: { nodeRef: ref, sourceType: node.icon.sourceType } });
     commands.push({ type: 'set_icon_reference', payload: { nodeRef: ref, sourceType: node.icon.sourceType, textLabel: node.icon.textLabel, fill: node.icon.fill, stroke: node.icon.stroke, size: node.icon.size, placement: node.icon.placement, spriteRef: node.icon.spriteRef, hash: node.icon.hash, assetId: node.icon.assetId, figmaStrategy } });
   }
@@ -504,6 +516,7 @@ const planNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: strin
     return;
   }
   planContainerNode(node, parentNode, parentRef, actions, commands, isRoot);
+  if (shouldRenderAsRedPlaceholder(node)) return;
   for (const child of node.children) planNode(child, node, node.uiId, actions, commands, false);
 };
 

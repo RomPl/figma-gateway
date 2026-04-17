@@ -119,3 +119,13 @@ This model is intended to become the visual baseline for:
 When no explicit `rootUiId` is provided, rendered extraction should default to `document.body` instead of choosing a heuristic inner container.
 
 This preserves browser-level centering and wrapper offsets for layout reconstruction.
+
+## Additional CSS fidelity signals
+
+Rendered extraction now preserves extra CSS signals needed by the planner:
+
+- `flexWrap`
+- `marginLeftAuto`
+- `marginRightAuto`
+
+These values are used to recover wrapped flex rows and CSS-centered containers more reliably than geometry-only heuristics.

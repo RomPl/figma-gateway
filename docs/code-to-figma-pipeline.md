@@ -186,3 +186,34 @@ Server behavior:
 - allow dry-run planning to continue because no plugin-side mutation is queued
 
 This guard prevents duplicate batch execution, repeated `complete` calls, 429 noise and the false impression that the import loop is stuck.
+
+## CSS-aware alignment recovery
+
+Rendered-first planner should preserve block centering and wrapping from real CSS, not only from guessed geometry.
+
+Important signals:
+
+- `margin-left: auto` + `margin-right: auto` for centered blocks such as `mx-auto`
+- `flex-wrap` for wrapped chip/tag rows
+- parent-relative flow placement for ordinary non-absolute children
+
+This allows centered wrappers and wrapped inline-flex groups to map into more stable Figma layout.
+
+## Unsupported block placeholder rule
+
+If a rendered block is detected as unsupported for faithful reconstruction, planner should stop descending into that subtree and create a visible placeholder with the same block size.
+
+Current placeholder behavior:
+
+- keep the container size
+- fill the block with red placeholder paint
+- add red stroke
+- write plugin data with the fallback reason
+- skip impossible inner children to avoid misleading partial reconstruction
+
+Typical placeholder triggers:
+
+- unsupported rendered regions such as `canvas`
+- untrusted runtime-only visual blocks
+- unsupported background-image reconstruction
+- missing required asset source for non-decorative assets

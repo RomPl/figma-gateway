@@ -102,3 +102,15 @@ Fix:
 
 - install Chromium for `figma5001` into `/home/figma-gateway.vazovski.art/.cache/ms-playwright`
 - retry rendered extraction or live import after installation
+
+## A block should not be recreated literally
+
+If a subtree is driven by unsupported browser runtime features, the planner may intentionally render it as a red placeholder block instead of attempting a misleading partial clone.
+
+Examples:
+
+- canvas-driven visual blocks
+- unsupported background-image reconstruction
+- untrusted runtime-only visual regions
+
+This is expected behavior and is preferable to silently dropping size/alignment or creating a broken approximation.
