@@ -225,3 +225,21 @@ A synthetic rendered root such as `body` may legitimately carry page-level guard
 These guardrails should lower confidence, but must not automatically convert the entire page tree into one red placeholder block.
 
 The planner should still descend into the rendered subtree and reserve red placeholders for genuinely unsupported subregions only.
+
+## Visual segmentation layer
+
+Rendered-first planning should not translate raw DOM fragments directly into Figma.
+
+A segmentation pass now runs before planning so that the pipeline can distinguish between:
+
+- stable component boundaries
+- visual blocks
+- layout wrappers
+- text carriers
+- unsupported visual islands
+
+Compatibility rule:
+
+- `uiId` remains unchanged for durable sync
+- segmentation metadata is added under node `meta`
+- wrapper collapse is conservative and only targets synthetic rendered wrappers that are visually empty and single-child

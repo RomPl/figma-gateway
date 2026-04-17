@@ -7,6 +7,7 @@ import type { FigmaCommandStep } from './figma-write-types';
 import type { PluginBridgeService } from './plugin-bridge';
 import type { UiModelDocument, UiNode, UiPaint } from './ui-model';
 import { annotateVisualConfidence } from './visual-confidence';
+import { segmentVisualBlocks } from './visual-segmentation';
 import { visualLogger, summarizeNode } from './visual-debug';
 import type { UiMappingService } from './ui-mapping-registry';
 import { extractRenderedUiSchema } from './rendered-ui-extractor';
@@ -558,7 +559,7 @@ export class CodeToFigmaPipelineService {
     if (data.render) {
       const rendered = await this.renderedToCodeMapperService.map({ project: data.project, rootDir: data.rootDir, render: data.render as unknown as Record<string, unknown> });
       const renderedRoot = data.uiIds?.length ? findNodeByUiId(rendered.rendered.root, codeRoot.uiId) ?? rendered.rendered.root : rendered.rendered.root;
-      model = { version: 'ui-model.v1', root: mergeNode(codeRoot, renderedRoot) };
+      model = segmentVisualBlocks({ version: 'ui-model.v1', root: mergeNode(codeRoot, renderedRoot) });
       renderedUsed = true;
     }
 

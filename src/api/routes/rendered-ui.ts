@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import { extractRenderedUiSchema, extractRenderedUiBreakpointsSchema, diagnoseRenderedUiSchema } from '../../core/rendered-ui-extractor';
 import { buildCodeToFigmaPlan, auditFirstPassVisualAcceptance } from '../../core/code-to-figma-pipeline';
+import { segmentVisualBlocks } from '../../core/visual-segmentation';
 import { z } from 'zod';
 
 import { mapRenderedToCodeSchema } from '../../core/rendered-to-code-mapper';
@@ -67,7 +68,7 @@ renderedUiRouter.post(
     const mapped = data.project
       ? await req.app.locals.renderedToCodeMapperService.map({ project: data.project, rootDir: data.rootDir, render: data })
       : null;
-    const model = mapped?.rendered ?? await req.app.locals.renderedUiExtractorService.extract(data);
+    const model = segmentVisualBlocks(mapped?.rendered ?? await req.app.locals.renderedUiExtractorService.extract(data));
     const plan = buildCodeToFigmaPlan(model, data.componentName, data.filePath);
     if (!data.dryRun) {
       plan.commands = [{ type: 'delete_matching_nodes' as const, payload: { query: { uiId: plan.model.root.uiId, name: plan.model.root.name, uiIdPrefix: '__auto__/' } } }, ...plan.commands];
