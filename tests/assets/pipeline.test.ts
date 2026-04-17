@@ -139,7 +139,7 @@ test('code-to-figma planner forwards svgMarkup for inline svg icons', async () =
         computedStyle: { display: 'block', width: 24, height: 24, color: 'rgb(255,255,255)' },
         visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 },
         media: { kind: 'svg', inlineSvg: true, iconRole: 'leading', contentRole: 'content' },
-        asset: { layer: 'svg-icon', role: 'content' },
+        asset: { layer: 'svg-icon', role: 'content', figmaStrategy: 'image_fill' },
         icon: { sourceType: 'inline-svg', textLabel: 'Arrow right', svgMarkup: '<svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>', fill: 'rgb(255,255,255)', size: { width: 24, height: 24 }, placement: 'leading' },
         semantics: {}, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [], children: []
       })
@@ -164,7 +164,7 @@ test('code-to-figma planner sanitizes svg markup for figma icon import', async (
     const document: any = {
       version: 'ui-model.v1',
       root: {
-        kind: 'frame', uiId: 'icon.page', name: 'Page', visible: true, children: [{
+        kind: 'frame', uiId: 'icon.page', name: 'Page', visible: true, computedStyle: { backgroundColor: 'rgb(255,255,255)', width: 100, height: 100 }, boundingBox: { x: 0, y: 0, width: 100, height: 100 }, children: [{
           kind: 'icon', uiId: 'icon.root', name: 'svg-lucide', visible: true,
           boundingBox: { x: 0, y: 0, width: 16, height: 16 },
           computedStyle: { width: 16, height: 16 },
@@ -184,3 +184,6 @@ test('code-to-figma planner sanitizes svg markup for figma icon import', async (
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+
+

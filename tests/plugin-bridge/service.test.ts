@@ -84,7 +84,8 @@ test('normalizePluginCommandResult preserves ok/error contract and default nodeI
 test('plugin bridge font selection prefers fontWeight over generic Regular style hint', async () => {
   const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
   assert.match(source, /normalizedStyle === 'regular'[\s\S]*numericWeight >= 500/);
-  assert.match(source, /styleAttempts = Array\.from\(new Set\(\[styleGuess,[\s\S]*'Black',[\s\S]*'Extra Bold',[\s\S]*'Bold',[\s\S]*'Semibold',[\s\S]*'Medium',[\s\S]*'Regular'/);
+  assert.match(source, /buildStyleCandidates\(styleGuess\)/);
+  assert.match(source, /'Black',[\s\S]*'Extra Bold',[\s\S]*'ExtraBold',[\s\S]*'Bold',[\s\S]*'Semi Bold',[\s\S]*'Semibold',[\s\S]*'Medium',[\s\S]*'Regular'/);
 });
 
 test('plugin bridge create_text applies requested font before characters assignment', async () => {
@@ -114,4 +115,19 @@ test('plugin runtime supports image-based svg icon fallback and real image fills
   assert.match(source, /rect\.name = 'icon-image'/);
   assert.match(source, /type: 'IMAGE', scaleMode: 'FIT', imageHash/);
   assert.match(source, /if \(!payload\.placeholder && canReceiveImageFill\(node\)\)/);
+});
+
+test('plugin runtime font loader uses available font inventory and normalized style matching', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /figma\.listAvailableFontsAsync\(\)/);
+  assert.match(source, /normalizeFontStyleName/);
+  assert.match(source, /ExtraBold/);
+  assert.match(source, /familyFonts = availableFonts\.filter/);
+});
+
+test('plugin runtime parses multiple box-shadow entries and inner shadows', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /splitBoxShadowEntries/);
+  assert.match(source, /INNER_SHADOW/);
+  assert.match(source, /map\(parseSingleShadowEntry\)\.filter\(Boolean\)/);
 });

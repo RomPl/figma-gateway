@@ -212,3 +212,7 @@ For live troubleshooting, the plugin runtime also supports:
 - `debug_runtime_info`
 
 This returns a runtime build marker plus the list of available `Inter` font styles visible to the running plugin session. It is only intended for debugging runtime font resolution mismatches.
+
+## Runtime shadow parsing
+
+`set_effects` now supports parsing multiple CSS box-shadow entries, including `inset` shadows, into Figma-compatible effect payloads.

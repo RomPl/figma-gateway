@@ -355,3 +355,15 @@ Fix:
 
 - plugin runtime now tries a second visual fallback: render the sanitized SVG as an image-backed rectangle (`icon-image`)
 - only if that also fails does it fall back to the red text placeholder path
+
+## Text still falls back to the wrong family/style on some plugin runtimes
+
+Cause:
+
+- generic font fallback attempts were too naive and could miss the exact available style name exposed by Figma
+- this could lead to a wrong family/style being used after character assignment
+
+Fix:
+
+- plugin runtime now resolves fonts against `figma.listAvailableFontsAsync()`
+- style matching is normalized (`Semi Bold`, `Semibold`, `ExtraBold`, etc.) before choosing the final font
