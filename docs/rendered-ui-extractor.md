@@ -129,3 +129,15 @@ Rendered extraction now preserves extra CSS signals needed by the planner:
 - `marginRightAuto`
 
 These values are used to recover wrapped flex rows and CSS-centered containers more reliably than geometry-only heuristics.
+
+## Generic containers are not assets by default
+
+Plain layout containers must not be normalized as `decorative-asset` by default.
+
+Asset metadata should be emitted only for real visual assets such as:
+
+- real images
+- background-image layers
+- icon-bearing nodes
+
+This prevents placeholder asset planning on ordinary frames and keeps rendered-first imports from overproducing placeholder branches.

@@ -433,19 +433,19 @@ const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: 
         hash: undefined,
         assetId: undefined,
         figmaStrategy: 'image_fill'
-      } : {
-        layer: icon.sourceType ? 'svg-icon' : 'decorative-asset',
+      } : icon.sourceType ? {
+        layer: 'svg-icon',
         sourceUrl: undefined,
         resolvedAssetPath: undefined,
         objectFit: undefined,
         role: decorative ? 'decorative' : 'content',
         naturalSize: undefined,
-        renderedSize: undefined,
-        alt: undefined,
+        renderedSize: { width: rect.width, height: rect.height },
+        alt: icon.textLabel || undefined,
         hash: undefined,
         assetId: undefined,
-        figmaStrategy: icon.sourceType ? 'vector_icon' : 'placeholder'
-      };
+        figmaStrategy: 'vector_icon'
+      } : {};
       return { asset, icon };
     }
 

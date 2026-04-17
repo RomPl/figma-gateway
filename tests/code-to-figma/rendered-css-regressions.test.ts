@@ -156,3 +156,48 @@ test('planner does not collapse the whole synthetic rendered root into a placeho
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+test('planner does not emit placeholder asset references for plain generic containers without real asset media', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'css-regression-generic-container-assets-'));
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(rootDir, 'src', 'components', 'Home.tsx'), `
+      import React from 'react';
+      export function Home() {
+        return (
+          <div data-ui-id="home.root">
+            <section data-ui-id="home.hero">
+              <div data-ui-id="home.hero.panel">
+                <h2 data-ui-id="home.hero.title">Hello</h2>
+              </div>
+            </section>
+          </div>
+        );
+      }
+    `, 'utf8');
+
+    const runtime: RenderedUiRuntime = {
+      capture: async () => ({
+        uiId: 'home.root', tag: 'body', text: 'Hello', treePath: 'home.root',
+        clientRect: { x: 0, y: 0, width: 1280, height: 800 },
+        computedStyle: { display: 'block', width: 1280, height: 800, backgroundColor: 'rgb(255,255,255)' },
+        visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1280, viewportHeight: 800, name: 'desktop' }, syncRelevantFields: [],
+        children: [
+          { uiId: 'home.hero', tag: 'section', text: 'Hello', treePath: 'home.root > home.hero', clientRect: { x: 40, y: 40, width: 900, height: 400 }, computedStyle: { display: 'block', width: 900, height: 400, backgroundColor: 'rgb(20,20,20)' }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1280, viewportHeight: 800, name: 'desktop' }, syncRelevantFields: [], children: [
+            { uiId: 'home.hero.panel', tag: 'div', text: 'Hello', treePath: 'home.root > home.hero > home.hero.panel', clientRect: { x: 80, y: 80, width: 500, height: 200 }, computedStyle: { display: 'block', width: 500, height: 200, backgroundColor: 'rgb(30,30,30)' }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1280, viewportHeight: 800, name: 'desktop' }, syncRelevantFields: [], children: [
+              { uiId: 'home.hero.title', tag: 'h2', text: 'Hello', treePath: 'home.root > home.hero > home.hero.panel > home.hero.title', clientRect: { x: 120, y: 120, width: 160, height: 40 }, computedStyle: { color: 'rgb(255,255,255)', fontSize: 32, lineHeight: 40, width: 160, height: 40 }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1280, viewportHeight: 800, name: 'desktop' }, syncRelevantFields: [], children: [] }
+            ] }
+          ] }
+        ]
+      })
+    };
+
+    const pipeline = buildPipeline(rootDir, runtime);
+    const result = await pipeline.run({ project: 'template-engine', componentName: 'Home', rootDir, dryRun: true, render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3001' }, breakpointName: 'desktop' } });
+    const genericAssetRefs = result.plan.commands.filter((item: any) => item.type === 'set_asset_reference' && ['home.root', 'home.hero', 'home.hero.panel'].includes(String(item.payload?.nodeRef)));
+    assert.equal(genericAssetRefs.length, 0);
+    assert.equal(result.plan.commands.some((item: any) => item.type === 'create_text' && item.payload?.uiId === 'home.hero.title'), true);
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

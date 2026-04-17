@@ -126,3 +126,15 @@ Fix:
 
 - synthetic rendered roots now remain traversable
 - only truly unsupported subtrees should turn into red placeholders
+
+## Too many placeholder asset blocks on normal containers
+
+Cause:
+
+- extractor normalized ordinary layout containers as `decorative-asset`
+- planner then emitted placeholder asset references for generic frames that were not real assets
+
+Fix:
+
+- generic containers no longer get asset metadata by default
+- only real images, background-image layers and icon-bearing nodes should carry asset info
