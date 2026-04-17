@@ -153,3 +153,9 @@ Why this matters:
 - parent refs and child refs must remain in the same path space
 - mixed truncated/full paths cause missing parents during plugin batch execution
 - mixed path spaces also create duplicate branches in Figma because the same subtree appears under different synthetic identities
+
+## Inline SVG icon path
+
+Rendered extraction now preserves inline SVG markup for icon-bearing nodes when available.
+
+This allows the plugin runtime to recreate SVG icons through native Figma SVG import instead of degrading all icons to text placeholders.

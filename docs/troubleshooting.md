@@ -186,3 +186,27 @@ Fix:
 
 - rendered-first text creation is now more atomic
 - typography, fills, size and initial position are pushed into `create_text` whenever possible
+
+## Old rendered-first duplicates keep surviving new imports
+
+Cause:
+
+- cleanup query used `uiIdPrefix`, but plugin runtime only matched exact `uiId`
+- stale rendered-first nodes with `__auto__/...` identities remained in the page and accumulated across retries
+
+Fix:
+
+- plugin-side query matching now supports `uiIdPrefix`
+- rendered-first cleanup can remove stale synthetic nodes before the new batch starts
+
+## SVG icons degrade to text placeholders
+
+Cause:
+
+- inline SVG icons were not preserved as actual SVG markup through the rendered-first pipeline
+- plugin runtime had to fall back to text placeholders
+
+Fix:
+
+- extractor now forwards inline SVG markup when available
+- plugin runtime prefers native `createNodeFromSvg` for icon recreation

@@ -122,6 +122,7 @@ const assetLayerSchema = z.object({
 const iconLayerSchema = z.object({
   sourceType: z.enum(['inline-svg', 'component', 'sprite', 'font-icon']).optional(),
   textLabel: z.string().optional(),
+  svgMarkup: z.string().optional(),
   fill: z.string().optional(),
   stroke: z.string().optional(),
   size: z.object({ width: z.number().optional(), height: z.number().optional() }).partial().optional(),
@@ -397,9 +398,12 @@ const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: 
       const sourceUrl = tag === 'img' ? (element.currentSrc || element.src || undefined) : undefined;
       const backgroundImage = style.backgroundImage && style.backgroundImage !== 'none' ? style.backgroundImage : undefined;
       const isFontIcon = tag === 'i' || (tag === 'span' && /(^|\s)(fa[srldb]?|fa-[\w-]+|bi|bi-[\w-]+)(\s|$)/.test(className));
+      const svgNode = tag === 'svg' ? element : element.querySelector('svg');
+      const isSvgIcon = Boolean(svgNode);
       const icon = isFontIcon ? {
         sourceType: 'font-icon',
         textLabel: className || tag,
+        svgMarkup: undefined,
         fill: style.color || undefined,
         stroke: undefined,
         size: { width: rect.width, height: rect.height },
@@ -408,7 +412,19 @@ const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: 
         hash: undefined,
         assetId: undefined,
         figmaStrategy: 'vector_icon'
-      } : { sourceType: undefined, textLabel: undefined, fill: undefined, stroke: undefined, size: undefined, placement: undefined, spriteRef: undefined, hash: undefined, assetId: undefined, figmaStrategy: undefined };
+      } : isSvgIcon ? {
+        sourceType: svgNode && svgNode.querySelector && svgNode.querySelector('use') ? 'sprite' : 'inline-svg',
+        textLabel: element.getAttribute('aria-label') || element.getAttribute('title') || (svgNode ? svgNode.getAttribute('aria-label') || svgNode.getAttribute('title') || className || tag : className || tag),
+        svgMarkup: svgNode && svgNode.outerHTML ? svgNode.outerHTML : undefined,
+        fill: style.color || undefined,
+        stroke: style.stroke || undefined,
+        size: { width: rect.width, height: rect.height },
+        placement: decorative ? 'decorative' : (tag === 'svg' ? 'standalone' : 'leading'),
+        spriteRef: svgNode && svgNode.querySelector && svgNode.querySelector('use') ? svgNode.querySelector('use').getAttribute('href') || svgNode.querySelector('use').getAttribute('xlink:href') || undefined : undefined,
+        hash: undefined,
+        assetId: undefined,
+        figmaStrategy: 'vector_icon'
+      } : { sourceType: undefined, textLabel: undefined, svgMarkup: undefined, fill: undefined, stroke: undefined, size: undefined, placement: undefined, spriteRef: undefined, hash: undefined, assetId: undefined, figmaStrategy: undefined };
       const asset = sourceUrl ? {
         layer: 'image',
         sourceUrl,

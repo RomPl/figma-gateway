@@ -146,6 +146,7 @@ const assetInfoSchema = z.object({
 const iconInfoSchema = z.object({
   sourceType: z.enum(['inline-svg', 'component', 'sprite', 'font-icon']).optional(),
   textLabel: z.string().optional(),
+  svgMarkup: z.string().optional(),
   fill: z.string().trim().min(1).optional(),
   stroke: z.string().trim().min(1).optional(),
   size: sizeSchema.optional(),

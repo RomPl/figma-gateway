@@ -157,7 +157,26 @@ function setSize(node, width, height, commandType) { if (width === undefined && 
 function setFills(node, fills) { if (!('fills' in node)) throw appError('UNSUPPORTED_OPERATION', 'Target node does not support fills: ' + node.id); node.fills = Array.isArray(fills) ? fills : [fills]; }
 function setStrokes(node, strokes, strokeWeight) { if (!('strokes' in node)) throw appError('UNSUPPORTED_OPERATION', 'Target node does not support strokes: ' + node.id); node.strokes = Array.isArray(strokes) ? strokes : [strokes]; if (strokeWeight !== undefined && 'strokeWeight' in node) node.strokeWeight = Number(strokeWeight); }
 async function ensureTextNode(node, commandType) { if (!('characters' in node)) throw appError('UNSUPPORTED_OPERATION', 'Target node does not support text operations: ' + node.id); if (node.fontName && node.fontName !== figma.mixed) await figma.loadFontAsync(node.fontName); return node; }
-async function loadRequestedFont(payload) { const rawFamily = payload && payload.fontFamily ? String(payload.fontFamily) : ''; const requestedWeight = payload && payload.fontWeight ? String(payload.fontWeight) : ''; const requestedStyle = payload && payload.fontStyle ? String(payload.fontStyle) : ''; const fontFamily = rawFamily ? rawFamily.split(',')[0].replace(/["']/g, '').trim() : ''; const numericWeight = Number.parseInt(requestedWeight || '400', 10); const styleGuess = requestedStyle || ((numericWeight >= 700) ? 'Bold' : (numericWeight >= 600) ? 'Semibold' : 'Regular'); if (fontFamily) { const attempts = [styleGuess, styleGuess.includes('Italic') ? styleGuess : `${styleGuess} Italic`, 'Regular', 'Bold']; for (const style of attempts) { try { await figma.loadFontAsync({ family: fontFamily, style }); return { family: fontFamily, style }; } catch (error) {} } } return null; }
+async function loadRequestedFont(payload) {
+  const rawFamily = payload && payload.fontFamily ? String(payload.fontFamily) : '';
+  const requestedWeight = payload && payload.fontWeight ? String(payload.fontWeight) : '';
+  const requestedStyle = payload && payload.fontStyle ? String(payload.fontStyle) : '';
+  const numericWeight = Number.parseInt(requestedWeight || '400', 10);
+  const styleGuess = requestedStyle || ((numericWeight >= 700) ? 'Bold' : (numericWeight >= 600) ? 'Semibold' : 'Regular');
+  const familyParts = rawFamily.split(',').map(function (item) { return String(item || '').replace(/["']/g, '').trim(); }).filter(Boolean);
+  const genericFamilies = new Set(['ui-sans-serif','ui-serif','ui-monospace','system-ui','sans-serif','serif','monospace','emoji','math','fangsong']);
+  const candidateFamilies = familyParts.filter(function (item) { return !genericFamilies.has(String(item).toLowerCase()); });
+  if (!candidateFamilies.length && familyParts.length) candidateFamilies.push(familyParts[0]);
+  candidateFamilies.push('Inter', 'Roboto', 'Arial');
+  const uniqueFamilies = Array.from(new Set(candidateFamilies.filter(Boolean)));
+  const styleAttempts = Array.from(new Set([styleGuess, styleGuess.includes('Italic') ? styleGuess : `${styleGuess} Italic`, 'Regular', 'Medium', 'Semibold', 'Bold']));
+  for (const family of uniqueFamilies) {
+    for (const style of styleAttempts) {
+      try { await figma.loadFontAsync({ family, style }); return { family, style }; } catch (error) {}
+    }
+  }
+  return null;
+}
 function applyAutoLayout(node, payload) { if (!('layoutMode' in node)) throw appError('UNSUPPORTED_OPERATION', 'Target node does not support auto layout: ' + node.id); if (payload.layoutMode !== undefined) node.layoutMode = String(payload.layoutMode); if (payload.primaryAxisAlignItems !== undefined) node.primaryAxisAlignItems = String(payload.primaryAxisAlignItems); if (payload.counterAxisAlignItems !== undefined) node.counterAxisAlignItems = String(payload.counterAxisAlignItems); if (payload.layoutWrap !== undefined && 'layoutWrap' in node) node.layoutWrap = String(payload.layoutWrap); if (payload.itemSpacing !== undefined) node.itemSpacing = Number(payload.itemSpacing); if (payload.strokesIncludedInLayout !== undefined && 'strokesIncludedInLayout' in node) node.strokesIncludedInLayout = Boolean(payload.strokesIncludedInLayout); }
 function applyPadding(node, payload) { if (!('paddingTop' in node)) throw appError('UNSUPPORTED_OPERATION', 'Target node does not support padding: ' + node.id); const padding = payload.padding || {}; if (payload.paddingTop !== undefined || padding.top !== undefined) node.paddingTop = Number(payload.paddingTop !== undefined ? payload.paddingTop : padding.top); if (payload.paddingRight !== undefined || padding.right !== undefined) node.paddingRight = Number(payload.paddingRight !== undefined ? payload.paddingRight : padding.right); if (payload.paddingBottom !== undefined || padding.bottom !== undefined) node.paddingBottom = Number(payload.paddingBottom !== undefined ? payload.paddingBottom : padding.bottom); if (payload.paddingLeft !== undefined || padding.left !== undefined) node.paddingLeft = Number(payload.paddingLeft !== undefined ? payload.paddingLeft : padding.left); }
 function applyTextMetrics(textNode, payload) { if (payload.lineHeight !== undefined) textNode.lineHeight = { value: Number(payload.lineHeight), unit: 'PIXELS' }; if (payload.letterSpacing !== undefined) textNode.letterSpacing = { value: Number(payload.letterSpacing), unit: 'PIXELS' }; }
@@ -171,12 +190,12 @@ function findNodesByQuery(query) {
   return scopeRoot.findAll(function (node) {
     if (query.nodeId && node.id !== String(query.nodeId)) return false;
     if (query.name && node.name !== String(query.name)) return false;
+    if (query.namePrefix && !String(node.name || '').startsWith(String(query.namePrefix))) return false;
     if (query.type && node.type !== String(query.type)) return false;
     if (query.visible !== undefined && 'visible' in node && node.visible !== Boolean(query.visible)) return false;
-    if (query.uiId) {
-      const uiId = getUiIdFromNode(node);
-      if (uiId !== String(query.uiId)) return false;
-    }
+    const uiId = getUiIdFromNode(node);
+    if (query.uiId && uiId !== String(query.uiId)) return false;
+    if (query.uiIdPrefix && !String(uiId || '').startsWith(String(query.uiIdPrefix))) return false;
     return true;
   });
 }
@@ -466,16 +485,29 @@ async function executeLowLevelCommand(step, refMap) {
   if (commandType === 'set_icon_reference') {
     const node = await getNodeFromPayload(payload, commandType, refMap);
     if (!('appendChild' in node)) throw appError('UNSUPPORTED_OPERATION', 'Target node cannot contain icon placeholder: ' + node.id);
-    const textNode = figma.createText();
-    await figma.loadFontAsync(textNode.fontName);
-    textNode.name = 'icon-placeholder';
-    textNode.characters = mapIconText(payload.textLabel || payload.assetId || payload.hash || payload.sourceType || 'icon');
-    if (payload.size && payload.size.height) textNode.fontSize = Number(payload.size.height);
-    if (payload.fill) { const paint = Array.isArray(payload.fill) ? payload.fill : [{ type:'SOLID', color:(function(raw){ const rgb=String(raw).match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i); return rgb?{r:Number(rgb[1])/255,g:Number(rgb[2])/255,b:Number(rgb[3])/255}:{r:0.2,g:0.2,b:0.2}; })(payload.fill), opacity:1 }]; textNode.fills = paint; }
-    node.appendChild(textNode);
-    if ('x' in textNode) textNode.x = 0;
-    if ('y' in textNode) textNode.y = 0;
-    return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, iconNodeId: textNode.id } });
+    let iconNode = null;
+    if (payload.svgMarkup) {
+      try {
+        iconNode = figma.createNodeFromSvg(String(payload.svgMarkup));
+        iconNode.name = 'icon-svg';
+        if (payload.size && Number(payload.size.width) > 0 && Number(payload.size.height) > 0 && 'resizeWithoutConstraints' in iconNode) iconNode.resizeWithoutConstraints(Number(payload.size.width), Number(payload.size.height));
+      } catch (error) {
+        iconNode = null;
+      }
+    }
+    if (!iconNode) {
+      const textNode = figma.createText();
+      await figma.loadFontAsync(textNode.fontName);
+      textNode.name = 'icon-placeholder';
+      textNode.characters = mapIconText(payload.textLabel || payload.assetId || payload.hash || payload.sourceType || 'icon');
+      if (payload.size && payload.size.height) textNode.fontSize = Number(payload.size.height);
+      if (payload.fill) { const paint = Array.isArray(payload.fill) ? payload.fill : [{ type:'SOLID', color:(function(raw){ const rgb=String(raw).match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i); return rgb?{r:Number(rgb[1])/255,g:Number(rgb[2])/255,b:Number(rgb[3])/255}:{r:0.2,g:0.2,b:0.2}; })(payload.fill), opacity:1 }]; textNode.fills = paint; }
+      iconNode = textNode;
+    }
+    node.appendChild(iconNode);
+    if ('x' in iconNode) iconNode.x = 0;
+    if ('y' in iconNode) iconNode.y = 0;
+    return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, iconNodeId: iconNode.id } });
   }
   if (commandType === 'set_plugin_data') {
     const node = await getNodeFromPayload(payload, commandType, refMap);
