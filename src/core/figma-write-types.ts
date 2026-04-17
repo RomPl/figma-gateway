@@ -37,7 +37,12 @@ export const FIGMA_LOW_LEVEL_COMMAND_TYPES = [
   'set_plugin_data',
   'get_plugin_data',
   'find_nodes',
-  'export_ui_snapshot'
+  'delete_matching_nodes',
+  'export_ui_snapshot',
+  'set_effects',
+  'set_asset_reference',
+  'set_icon_reference',
+  'debug_runtime_info'
 ] as const;
 
 export type FigmaWriteOperation = (typeof FIGMA_WRITE_OPERATIONS)[number];

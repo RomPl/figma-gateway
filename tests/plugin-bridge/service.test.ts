@@ -93,3 +93,17 @@ test('plugin bridge create_text applies requested font before characters assignm
   assert.match(source, /await figma\.loadFontAsync\(effectiveFont\);[\s\S]*if \(requestedFont\) textNode\.fontName = requestedFont;[\s\S]*textNode\.characters =/);
   assert.match(source, /fontName: textNode\.fontName/);
 });
+
+test('plugin runtime source exposes debug_runtime_info command for font diagnostics', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /RUNTIME_BUILD = '2026-04-17-font-debug-1'/);
+  assert.match(source, /'debug_runtime_info'/);
+  assert.match(source, /listAvailableFontsAsync\(\)/);
+});
+
+test('server allows debug_runtime_info as low-level diagnostic command', async () => {
+  const writeTypes = require('node:fs').readFileSync('src/core/figma-write-types.ts', 'utf8');
+  const guardrails = require('node:fs').readFileSync('src/core/mvp-guardrails.ts', 'utf8');
+  assert.match(writeTypes, /'debug_runtime_info'/);
+  assert.match(guardrails, /'debug_runtime_info'/);
+});

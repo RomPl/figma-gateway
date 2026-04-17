@@ -296,3 +296,15 @@ This keeps child hierarchy editable and avoids flattening the grid into unrelate
 The planner may skip a synthetic transparent text-only wrapper only when it is a passive block wrapper.
 
 If the wrapper is a real layout container (`flex`, `inline-flex`, or `grid`), it must stay in the plan so nested text stacks remain attached to their own item frame instead of leaking directly into the outer grid/flex parent.
+
+## Typography compatibility pass for older plugin runtimes
+
+Even when `create_text` carries full typography payload, planner now also emits an immediate `set_text_style` compatibility command.
+
+This is intentionally redundant for newer runtimes, but helps older running plugin sessions apply the intended font family/style/weight after text creation instead of collapsing to `Regular`.
+
+## Semantic Figma-facing naming with stable sync identity
+
+Render-first planning should expose cleaner Figma-facing names such as `Header`, `Main`, `Footer`, `Section`, `Container`, `Card`, `Text`, `Icon`, and `Button`.
+
+This naming layer must not change the stable `uiId`. Reverse sync and selector resolution continue to use `uiId` as the primary durable identity.

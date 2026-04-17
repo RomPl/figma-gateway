@@ -93,6 +93,31 @@ const mapIconPlaceholderText = (label: string | undefined): string => {
 
 const buildFigmaNodeName = (node: UiNode, fallbackTag?: string): string => {
   const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined;
+  const tagRaw = String(typeof dom?.tag === 'string' ? dom.tag : fallbackTag ?? node.kind).toLowerCase();
+  const classRaw = String(dom?.className || '').toLowerCase();
+  const roleRaw = String(node.role || '').toLowerCase();
+  const headingLevel = typeof dom?.tag === 'string' && /^h[1-6]$/i.test(String(dom.tag)) ? String(dom.tag).toUpperCase() : '';
+  const semanticName = (() => {
+    if (tagRaw === 'header' || classRaw.includes('header')) return 'Header';
+    if (tagRaw === 'main' || classRaw.includes('main')) return 'Main';
+    if (tagRaw === 'footer' || classRaw.includes('footer')) return 'Footer';
+    if (tagRaw === 'nav' || roleRaw.includes('nav')) return 'Navigation';
+    if (tagRaw === 'section' || node.kind === 'section') return 'Section';
+    if (node.kind === 'button' || tagRaw === 'button' || roleRaw.includes('button')) return 'Button';
+    if (node.kind === 'icon' || Boolean(node.icon?.sourceType) || tagRaw === 'svg') return 'Icon';
+    if (node.kind === 'image' || tagRaw === 'img' || Boolean(node.asset?.sourceUrl)) return 'Image';
+    if (node.kind === 'text') {
+      if (headingLevel) return headingLevel;
+      if (tagRaw === 'p') return 'Paragraph';
+      if (tagRaw === 'span' && /label/.test(classRaw)) return 'Label';
+      return 'Text';
+    }
+    if (classRaw.includes('container') || classRaw.includes('mx-auto') || classRaw.includes('max-w-')) return 'Container';
+    if (classRaw.includes('card') || ((node.computedStyle?.borderRadius ?? 0) >= 12 && !!resolvedBackgroundPaintRaw(node) && (node.children?.length ?? 0) > 0)) return 'Card';
+    if (classRaw.includes('grid') || classRaw.includes('flex') || classRaw.includes('wrap') || node.children.length > 0) return 'Container';
+    return '';
+  })();
+  if (semanticName) return semanticName;
   const tag = sanitizeFigmaNamePart(typeof dom?.tag === 'string' ? dom.tag : fallbackTag ?? node.kind);
   const domId = sanitizeFigmaNamePart(typeof dom?.id === 'string' ? dom.id : undefined);
   const className = sanitizeFigmaNamePart(typeof dom?.className === 'string' ? String(dom.className).split(/\s+/).filter(Boolean).slice(0, 3).join('.') : undefined);
@@ -237,6 +262,18 @@ const mergeNode = (codeNode: UiNode, renderedNode: UiNode | null): UiNode => {
   };
 };
 
+const inferFigmaFontStyle = (fontWeight: unknown, explicitStyle: unknown): string | undefined => {
+  if (typeof explicitStyle === 'string' && explicitStyle.trim()) return explicitStyle.trim();
+  const numericWeight = Number.parseInt(String(fontWeight ?? ''), 10);
+  if (!Number.isFinite(numericWeight)) return undefined;
+  if (numericWeight >= 900) return 'Black';
+  if (numericWeight >= 800) return 'Extra Bold';
+  if (numericWeight >= 700) return 'Bold';
+  if (numericWeight >= 600) return 'Semibold';
+  if (numericWeight >= 500) return 'Medium';
+  return 'Regular';
+};
+
 const lowerTextAlign = (value: string | undefined): string | undefined =>
   value === 'center' ? 'CENTER' : value === 'right' ? 'RIGHT' : value === 'justify' ? 'JUSTIFIED' : value ? 'LEFT' : undefined;
 
@@ -368,6 +405,7 @@ const planTextNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: s
   const plannedTextAutoResize = shouldUseParentContentWidth ? 'HEIGHT' : undefined;
   const transparentText = (() => { const c = node.computedStyle?.color; return c === 'rgba(0, 0, 0, 0)' || c === 'transparent'; })();
   const colorRaw = (transparentText ? undefined : (paintRaw(node.declarativeStyle?.fill ?? node.style?.fill) ?? node.computedStyle?.color)) ?? firstColorFromGradient(node.computedStyle?.backgroundImage);
+  const resolvedFontStyle = inferFigmaFontStyle(font.fontWeight, declaredText?.fontStyle);
   const createTextPayload: Record<string, unknown> = {
     ref,
     parentRef,
@@ -379,7 +417,7 @@ const planTextNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: s
     width: plannedWidth,
     height: plannedHeight,
     fontFamily: font.fontFamily ?? declaredText?.fontFamily,
-    fontStyle: declaredText?.fontStyle,
+    fontStyle: resolvedFontStyle,
     fontSize: font.fontSize ?? declaredText?.fontSize,
     lineHeight: font.lineHeight ?? declaredText?.lineHeight,
     letterSpacing: font.letterSpacing ?? declaredText?.letterSpacing,
@@ -392,6 +430,7 @@ const planTextNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: s
   }
   actions.push({ id: `${ref}:create_text`, type: 'create_text', uiId: node.uiId, payload: { ref, parentRef, uiId: node.uiId, name: figmaName, text: node.text ?? '', x: plannedX, y: plannedY } });
   commands.push({ type: 'create_text', payload: createTextPayload });
+  commands.push({ type: 'set_text_style', payload: { nodeRef: ref, fontFamily: createTextPayload.fontFamily, fontStyle: createTextPayload.fontStyle, fontSize: createTextPayload.fontSize, lineHeight: createTextPayload.lineHeight, letterSpacing: createTextPayload.letterSpacing, fontWeight: createTextPayload.fontWeight, textAlignHorizontal: createTextPayload.textAlignHorizontal } });
 };
 
 const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: string | undefined, actions: PlannerAction[], commands: FigmaCommandStep[], isRoot: boolean): void => {

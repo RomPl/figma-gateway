@@ -7,6 +7,7 @@ const SUPPORTED_MVP_COMMANDS = new Set<FigmaLowLevelCommandType>([
   'create_text',
   'create_group',
   'move_node',
+  'delete_node',
   'rename_node',
   'set_fill',
   'set_stroke',
@@ -25,7 +26,11 @@ const SUPPORTED_MVP_COMMANDS = new Set<FigmaLowLevelCommandType>([
   'set_plugin_data',
   'get_plugin_data',
   'find_nodes',
-  'export_ui_snapshot'
+  'set_icon_reference',
+  'set_effects',
+  'delete_matching_nodes',
+  'export_ui_snapshot',
+  'debug_runtime_info'
 ]);
 
 const SUPPORTED_MVP_KINDS = new Set([

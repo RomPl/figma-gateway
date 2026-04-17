@@ -2,6 +2,7 @@ const GATEWAY_URL = 'https://figma-gateway.vazovski.art';
 const API_BEARER_TOKEN = '8f6c2d4e7a0b1c9d3e5f7a8b2c4d6e8f9a1b3c5d7e9f0a2b4c6d8e0f1a3b5c7d';
 const CLIENT_NAME = 'figma-plugin-bridge';
 const POLL_INTERVAL_MS = 3000;
+const RUNTIME_BUILD = '2026-04-17-font-debug-1';
 const SESSION_STORAGE_KEY = 'figma-gateway-plugin-session-v1';
 let pollInFlight = false;
 const SUPPORTED_GENERIC_COMMANDS = new Set([
@@ -307,6 +308,21 @@ async function executeLowLevelCommand(step, refMap) {
   const commandType = step && step.type ? String(step.type) : '';
   const payload = step && step.payload ? step.payload : {};
   if (!SUPPORTED_GENERIC_COMMANDS.has(commandType)) throw appError('UNSUPPORTED_COMMAND', 'Unsupported generic plugin command: ' + commandType);
+  if (commandType === 'debug_runtime_info') {
+    const fonts = await figma.listAvailableFontsAsync();
+    const interFonts = fonts.filter(function (item) {
+      try { return String(item.fontName.family || '') === 'Inter'; } catch (error) { return false; }
+    }).map(function (item) { return { family: item.fontName.family, style: item.fontName.style }; });
+    return normalizeCommandResult(commandType, 'ok', {
+      nodeId: null,
+      data: {
+        runtimeBuild: RUNTIME_BUILD,
+        interFonts: interFonts,
+        interStyles: Array.from(new Set(interFonts.map(function (item) { return item.style; }))).sort()
+      }
+    });
+  }
+
   if (commandType === 'export_ui_snapshot') {
     const document = await exportUiSnapshot(payload);
     return normalizeCommandResult(commandType, 'ok', { nodeId: document.root && document.root.source ? document.root.source.nodeId || null : null, data: document });

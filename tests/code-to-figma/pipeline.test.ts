@@ -84,7 +84,7 @@ test('code-to-figma planner builds editable Figma-native execution plan from ren
     assert.equal(result.plan.actions.some((action) => action.type === 'set_icon'), true);
     assert.equal(result.plan.commands.some((command) => command.type === 'set_icon_reference'), true);
     assert.equal(result.plan.commands.some((command) => command.type === 'create_text'), true);
-    assert.equal(result.plan.commands.some((command) => command.type === 'set_text_style'), false);
+    assert.equal(result.plan.commands.some((command) => command.type === 'set_text_style'), true);
     assert.equal(result.plan.model.root.boundingBox?.width, 1280);
     assert.equal((result.plan.model.root.meta as any)?.planner?.visualSource, 'rendered-first');
     assert.equal(result.queued, undefined);

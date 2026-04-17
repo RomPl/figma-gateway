@@ -267,7 +267,9 @@ test('planner emits atomic create_text payload for rendered-first text nodes ins
     assert.equal(createText.payload.fontSize, 20);
     assert.equal(createText.payload.width, 220);
     assert.equal(Array.isArray(createText.payload.fills), true);
-    assert.equal(result.plan.commands.some((item: any) => item.type === 'set_text_style' && item.payload?.nodeRef === 'home.title'), false);
+    const styleCommand = result.plan.commands.find((item: any) => item.type === 'set_text_style' && item.payload?.nodeRef === 'home.title');
+    assert.equal(Boolean(styleCommand), true);
+    assert.equal(styleCommand.payload.fontStyle, 'Bold');
     assert.equal(result.plan.commands.some((item: any) => item.type === 'set_fill' && item.payload?.nodeRef === 'home.title'), false);
     assert.equal(result.plan.commands.some((item: any) => item.type === 'set_size' && item.payload?.nodeRef === 'home.title'), false);
     assert.equal(result.plan.commands.some((item: any) => item.type === 'set_position' && item.payload?.nodeRef === 'home.title'), false);
@@ -584,4 +586,37 @@ test('planner keeps transparent flex text stack wrappers inside grid items inste
   assert.equal(leakedTexts.length, 0);
   const nestedTexts = cmds.filter((c: any) => c.type === 'create_text' && c.payload?.parentRef === 'how.item.stack');
   assert.equal(nestedTexts.length, 3);
+});
+
+test('planner emits semantic figma-facing names while keeping stable uiIds for reverse sync', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: {
+      kind: 'frame', uiId: '__auto__/', name: 'body-root', visible: true,
+      meta: { rendered: { dom: { tag: 'body', className: 'min-h-screen' } } },
+      children: [
+        { kind: 'frame', uiId: '__auto__/header[1]', name: 'header-classic', visible: true, meta: { rendered: { dom: { tag: 'header', className: 'sticky top-0 z-50' } } }, computedStyle: { display: 'block', width: 1440, height: 80 }, children: [] },
+        { kind: 'frame', uiId: '__auto__/main[1]', name: 'main-root', visible: true, meta: { rendered: { dom: { tag: 'main', className: 'flex-1' } } }, computedStyle: { display: 'block', width: 1440, height: 1200 }, children: [
+          { kind: 'section', uiId: '__auto__/main[1]/section[1]', name: 'hero', visible: true, meta: { rendered: { dom: { tag: 'section', className: 'relative overflow-hidden' } } }, computedStyle: { display: 'block', width: 1440, height: 600 }, children: [
+            { kind: 'frame', uiId: '__auto__/main[1]/section[1]/div[1]', name: 'div-container', visible: true, meta: { rendered: { dom: { tag: 'div', className: 'container mx-auto max-w-screen-xl' } } }, computedStyle: { display: 'block', width: 1200, height: 400 }, children: [
+              { kind: 'text', uiId: '__auto__/main[1]/section[1]/div[1]/h2[1]', name: 'h2-text-3xl.font-bold', text: 'Why Template Engine?', visible: true, meta: { rendered: { dom: { tag: 'h2', className: 'text-3xl font-bold' } } }, computedStyle: { fontSize: 36, fontWeight: '700', width: 600, height: 48 }, children: [] },
+              { kind: 'icon', uiId: '__auto__/main[1]/section[1]/div[1]/svg[1]', name: 'svg-lucide', visible: true, meta: { rendered: { dom: { tag: 'svg', className: 'lucide lucide-sparkles' } } }, icon: { sourceType: 'inline-svg' }, computedStyle: { width: 24, height: 24 }, children: [] },
+              { kind: 'button', uiId: '__auto__/main[1]/section[1]/div[1]/button[1]', name: 'cta', text: 'Get started', visible: true, meta: { rendered: { dom: { tag: 'button', className: 'inline-flex items-center' } } }, computedStyle: { display: 'inline-flex', width: 180, height: 48 }, children: [] }
+            ] }
+          ] }
+        ] },
+        { kind: 'frame', uiId: '__auto__/footer[1]', name: 'footer-classic', visible: true, meta: { rendered: { dom: { tag: 'footer', className: 'border-t' } } }, computedStyle: { display: 'block', width: 1440, height: 200 }, children: [] }
+      ]
+    }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'Home', 'src/app/page.tsx');
+  const createNames = new Map(plan.commands.filter((c: any) => ['create_frame','create_text'].includes(c.type)).map((c: any) => [c.payload?.uiId, c.payload?.name]));
+  assert.equal(createNames.get('__auto__/header[1]'), 'Header');
+  assert.equal(createNames.get('__auto__/main[1]'), 'Main');
+  assert.equal(createNames.get('__auto__/main[1]/section[1]'), 'Section');
+  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]'), 'Container');
+  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]/h2[1]'), 'H2');
+  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]/svg[1]'), 'Icon');
+  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]/button[1]'), 'Button');
+  assert.equal(createNames.get('__auto__/footer[1]'), 'Footer');
 });
