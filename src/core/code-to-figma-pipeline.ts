@@ -164,6 +164,20 @@ const isMeaningfulPaintRaw = (raw: string | undefined): boolean => Boolean(raw &
 const resolvedBackgroundPaintRaw = (node: UiNode): string | undefined => { const explicit = paintRaw(node.declarativeStyle?.fill ?? node.style?.fill); if (isMeaningfulPaintRaw(explicit)) return explicit; const bgColor = node.computedStyle?.backgroundColor; if (isMeaningfulPaintRaw(bgColor)) return bgColor; const bgImage = node.computedStyle?.backgroundImage; if (isMeaningfulPaintRaw(bgImage)) return bgImage; return undefined; };
 const isWrapperLikeNode = (node: UiNode): boolean => { const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined; const className = String(dom?.className || '').toLowerCase(); const tag = String(dom?.tag || '').toLowerCase(); const explicitBg = paintRaw(node.declarativeStyle?.fill ?? node.style?.fill); const computedBg = node.computedStyle?.backgroundColor; const bgImage = node.computedStyle?.backgroundImage; const transparentBackground = !isMeaningfulPaintRaw(explicitBg) && !isMeaningfulPaintRaw(bgImage) && (!isMeaningfulPaintRaw(computedBg) || ['rgb(255, 255, 255)','rgb(255,255,255)','#ffffff','#fff'].includes(String(computedBg).trim().toLowerCase())); const noBorder = (node.computedStyle?.borderWidth ?? 0) <= 0; const noRadius = (node.computedStyle?.borderRadius ?? 0) <= 0; const noShadow = !hasMeaningfulEffects(node.computedStyle?.boxShadow); const wrapperClass = /(row|col(-|$)|justify-content-|align-items-|text-center|mt-|mb-|form-check|form-switch|container|mx-auto|max-w-screen|justify-center|items-center)/.test(className); return transparentBackground && noBorder && noRadius && noShadow && (tag === 'div' || tag === 'form' || tag === 'section'); };
 const shouldForceTransparentFill = (node: UiNode): boolean => { const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined; const className = String(dom?.className || '').toLowerCase(); const transparentBackground = !isMeaningfulPaintRaw(node.computedStyle?.backgroundColor) && !isMeaningfulPaintRaw(node.computedStyle?.backgroundImage); if (isWrapperLikeNode(node)) return true; if (node.kind === 'icon' && transparentBackground) return true; if (node.kind === 'button' && transparentBackground && (node.computedStyle?.borderWidth ?? 0) > 0) return true; if (transparentBackground && /(uploadform|text-center|form-check|form-switch|\bmb-\d+\b|\bmt-\d+\b)/.test(className)) return true; return false; };
+const shouldSkipTransparentTextWrapper = (node: UiNode): boolean => {
+  if (!String(node.uiId || '').startsWith('__auto__/')) return false;
+  if (node.kind === 'text' || node.kind === 'icon' || node.kind === 'button' || node.kind === 'input') return false;
+  if (!node.children.length) return false;
+  if (!node.children.every((child) => child.kind === 'text')) return false;
+  const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined;
+  const className = String(dom?.className || '').toLowerCase();
+  const transparentBackground = !isMeaningfulPaintRaw(node.computedStyle?.backgroundColor) && !isMeaningfulPaintRaw(node.computedStyle?.backgroundImage);
+  const noDecoration = (node.computedStyle?.borderWidth ?? 0) <= 0 && (node.computedStyle?.borderRadius ?? 0) <= 0 && !hasMeaningfulEffects(node.computedStyle?.boxShadow);
+  if (!transparentBackground || !noDecoration) return false;
+  if (Boolean(node.asset?.layer) || Boolean(node.icon?.sourceType)) return false;
+  if (!/(^|\s)(text-center|max-w-|mx-auto)(\s|$)|text-center|max-w-|mx-auto/.test(className)) return false;
+  return true;
+};
 const firstColorFromGradient = (raw: string | undefined): string | undefined => { if (!raw) return undefined; const match = String(raw).match(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/); return match ? match[1] : undefined; };
 const hasRenderablePaint = (raw: string | undefined, opacity = 1): boolean => Boolean(lowerAnyPaint(raw, opacity)?.length);
 const shouldCenterWithinParent = (node: UiNode, parentNode: UiNode | undefined): boolean => { const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined; const className = String(dom?.className || '').toLowerCase(); return Boolean(parentNode && (className.includes('mx-auto') || (node.computedStyle?.marginLeftAuto && node.computedStyle?.marginRightAuto) || (((node.computedStyle?.marginLeft ?? 0) > 0) && ((node.computedStyle?.marginRight ?? 0) > 0)))); };
@@ -528,6 +542,10 @@ const emitDeferredContainerSize = (node: UiNode, actions: PlannerAction[], comma
 const planNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: string | undefined, actions: PlannerAction[], commands: FigmaCommandStep[], isRoot = false): void => {
   if (node.kind === 'text') {
     planTextNode(node, parentNode, parentRef, actions, commands);
+    return;
+  }
+  if (shouldSkipTransparentTextWrapper(node)) {
+    for (const child of node.children) planNode(child, parentNode, parentRef, actions, commands, false);
     return;
   }
   planContainerNode(node, parentNode, parentRef, actions, commands, isRoot);
