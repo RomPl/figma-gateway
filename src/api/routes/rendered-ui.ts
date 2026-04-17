@@ -8,10 +8,26 @@ import { z } from 'zod';
 import { mapRenderedToCodeSchema } from '../../core/rendered-to-code-mapper';
 import { asyncHandler, sendSuccess, validateRequest } from './helpers';
 import { AppError } from '../../core/errors';
+import type { UiNode } from '../../core/ui-model';
 
 export const renderedUiRouter = Router();
 
 const stableUiIdPattern = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/i;
+
+
+const collectUiIdsDeepFirst = (node: UiNode): string[] => {
+  const seen = new Set<string>();
+  const items: Array<{ uiId: string; depth: number }> = [];
+  const walk = (current: UiNode, depth: number): void => {
+    if (current.uiId && !seen.has(current.uiId)) {
+      seen.add(current.uiId);
+      items.push({ uiId: current.uiId, depth });
+    }
+    for (const child of current.children) walk(child, depth + 1);
+  };
+  walk(node, 0);
+  return items.sort((a, b) => b.depth - a.depth).map((item) => item.uiId);
+};
 
 const importToFigmaRenderedUiSchema = extractRenderedUiSchema.extend({
   rootDir: z.string().trim().min(1).optional(),
@@ -71,11 +87,9 @@ renderedUiRouter.post(
     const model = segmentVisualBlocks(mapped?.rendered ?? await req.app.locals.renderedUiExtractorService.extract(data));
     const plan = buildCodeToFigmaPlan(model, data.componentName, data.filePath);
     if (!data.dryRun) {
-      plan.commands = [
-        { type: 'delete_matching_nodes' as const, payload: { query: { uiId: plan.model.root.uiId, name: plan.model.root.name } } },
-        { type: 'delete_matching_nodes' as const, payload: { query: { uiIdPrefix: '__auto__/' } } },
-        ...plan.commands
-      ];
+      const cleanupUiIds = collectUiIdsDeepFirst(plan.model.root);
+      const cleanupCommands = cleanupUiIds.map((uiId) => ({ type: 'delete_matching_nodes' as const, payload: { query: { uiId } } }));
+      plan.commands = [...cleanupCommands, ...plan.commands];
     }
     const acceptance = auditFirstPassVisualAcceptance(plan.model);
     const notes = acceptance.passed

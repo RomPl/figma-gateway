@@ -331,3 +331,15 @@ Fix:
 
 - plugin-side query traversal now ignores detached/stale nodes safely during `findAll`
 - cleanup can continue scanning the page for remaining `__auto__/...` nodes after the root body removal
+
+## Legacy plugin runtime still duplicates synthetic nodes after import
+
+Cause:
+
+- some older running plugin runtimes can fail during broad synthetic-prefix cleanup
+- when that happens, stale `__auto__/...` nodes survive and later reappear as duplicate `uiId` branches
+
+Fix:
+
+- live import cleanup now deletes the exact planned synthetic `uiId` set in deep-first order
+- this avoids relying on a broad page-wide prefix scan and stays compatible with older runtime behavior

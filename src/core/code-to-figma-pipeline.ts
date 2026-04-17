@@ -262,6 +262,23 @@ const mergeNode = (codeNode: UiNode, renderedNode: UiNode | null): UiNode => {
   };
 };
 
+
+const sanitizeSvgMarkupForFigma = (svgMarkup: unknown, icon: UiNode['icon'] | undefined): string | undefined => {
+  if (typeof svgMarkup !== 'string' || !svgMarkup.trim()) return undefined;
+  let markup = svgMarkup.trim();
+  if (!markup.startsWith('<svg')) return markup;
+  if (!/xmlns=/.test(markup)) markup = markup.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+  markup = markup.replace(/\sclass=(['"]).*?\1/g, '');
+  markup = markup.replace(/\s(data-[\w-]+|aria-[\w-]+|role|focusable|tabindex)=(['"]).*?\2/g, '');
+  const explicitStroke = typeof icon?.stroke === 'string' && icon.stroke.trim() ? icon.stroke.trim() : undefined;
+  const explicitFill = typeof icon?.fill === 'string' && icon.fill.trim() ? icon.fill.trim() : undefined;
+  if (explicitStroke) markup = markup.replace(/stroke=(['"])currentColor\1/g, `stroke="${explicitStroke}"`);
+  if (explicitFill) markup = markup.replace(/fill=(['"])currentColor\1/g, `fill="${explicitFill}"`);
+  if (explicitStroke && !/\sstroke=/.test(markup)) markup = markup.replace('<svg', `<svg stroke="${explicitStroke}"`);
+  if (explicitFill && !/\sfill=/.test(markup)) markup = markup.replace('<svg', `<svg fill="${explicitFill}"`);
+  return markup;
+};
+
 const inferFigmaFontStyle = (fontWeight: unknown, explicitStyle: unknown): string | undefined => {
   if (typeof explicitStyle === 'string' && explicitStyle.trim()) return explicitStyle.trim();
   const numericWeight = Number.parseInt(String(fontWeight ?? ''), 10);
@@ -543,7 +560,7 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
   if (node.icon?.sourceType) {
     const figmaStrategy = (needsReview || renderAsPlaceholder) ? 'placeholder' : (node.icon.figmaStrategy ?? 'vector_icon');
     actions.push({ id: `${ref}:icon`, type: 'set_icon', uiId: node.uiId, payload: { nodeRef: ref, sourceType: node.icon.sourceType } });
-    commands.push({ type: 'set_icon_reference', payload: { nodeRef: ref, sourceType: node.icon.sourceType, textLabel: node.icon.textLabel, svgMarkup: node.icon.svgMarkup, fill: node.icon.fill, stroke: node.icon.stroke, size: node.icon.size, placement: node.icon.placement, spriteRef: node.icon.spriteRef, hash: node.icon.hash, assetId: node.icon.assetId, figmaStrategy } });
+    commands.push({ type: 'set_icon_reference', payload: { nodeRef: ref, sourceType: node.icon.sourceType, textLabel: node.icon.textLabel, svgMarkup: sanitizeSvgMarkupForFigma(node.icon.svgMarkup, node.icon), fill: node.icon.fill, stroke: node.icon.stroke, size: node.icon.size, placement: node.icon.placement, spriteRef: node.icon.spriteRef, hash: node.icon.hash, assetId: node.icon.assetId, figmaStrategy } });
   }
 
   const iconOnlyChildren = node.children.length > 0 && node.children.every((child) => child.kind === 'icon');

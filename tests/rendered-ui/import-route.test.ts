@@ -40,7 +40,7 @@ const runtime: RenderedUiRuntime = {
   })
 };
 
-test('rendered-ui import route prepends cleanup command with synthetic uiIdPrefix before live queueing', async () => {
+test('rendered-ui import route prepends deep-first exact uiId cleanup commands before live queueing', async () => {
   const rootDir = mkdtempSync(join(tmpdir(), 'rendered-import-cleanup-'));
   const dbPath = join(rootDir, 'rendered-import.sqlite');
   try {
@@ -101,11 +101,11 @@ test('rendered-ui import route prepends cleanup command with synthetic uiIdPrefi
       });
       const json = await response.json() as any;
       assert.equal(response.status, 200);
-      assert.equal(json.data.plan.commands[0].type, 'delete_matching_nodes');
-      assert.equal(json.data.plan.commands[0].payload.query.uiId, 'landing.hero');
-      assert.equal(json.data.plan.commands[0].payload.query.name, 'section');
-      assert.equal(json.data.plan.commands[1].type, 'delete_matching_nodes');
-      assert.equal(json.data.plan.commands[1].payload.query.uiIdPrefix, '__auto__/');
+      const cleanup = json.data.plan.commands.slice(0, 3);
+      assert.equal(cleanup.every((command: any) => command.type === 'delete_matching_nodes'), true);
+      const cleanupUiIds = cleanup.map((command: any) => command.payload.query.uiId);
+      assert.deepEqual(new Set(cleanupUiIds.slice(0, 2)), new Set(['landing.hero.title', 'landing.hero.cta']));
+      assert.equal(cleanupUiIds[2], 'landing.hero');
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
     }

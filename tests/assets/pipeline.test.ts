@@ -8,7 +8,7 @@ import test from 'node:test';
 import { createApp } from '../../src/api/app';
 import { AuditService } from '../../src/core/audit';
 import { CodeUiParserService } from '../../src/core/code-ui-parser';
-import { CodeToFigmaPipelineService } from '../../src/core/code-to-figma-pipeline';
+import { CodeToFigmaPipelineService, buildCodeToFigmaPlan } from '../../src/core/code-to-figma-pipeline';
 import type { FigmaReadClient } from '../../src/core/figma-client';
 import { PluginBridgeService } from '../../src/core/plugin-bridge';
 import { RenderedUiExtractorService, type RenderedUiRuntime } from '../../src/core/rendered-ui-extractor';
@@ -151,6 +151,35 @@ test('code-to-figma planner forwards svgMarkup for inline svg icons', async () =
     const iconCommand = result.plan.commands.find((item: any) => item.type === 'set_icon_reference');
     assert.equal(Boolean(iconCommand), true);
     assert.equal(String(iconCommand.payload.svgMarkup).includes('<svg'), true);
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('code-to-figma planner sanitizes svg markup for figma icon import', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'asset-svg-sanitize-'));
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(rootDir, 'src', 'components', 'IconThing.tsx'), 'export const IconThing = () => null;', 'utf8');
+    const document: any = {
+      version: 'ui-model.v1',
+      root: {
+        kind: 'frame', uiId: 'icon.page', name: 'Page', visible: true, children: [{
+          kind: 'icon', uiId: 'icon.root', name: 'svg-lucide', visible: true,
+          boundingBox: { x: 0, y: 0, width: 16, height: 16 },
+          computedStyle: { width: 16, height: 16 },
+          icon: { sourceType: 'inline-svg', textLabel: 'sparkles', svgMarkup: '<svg viewBox="0 0 24 24" class="lucide lucide-sparkles" stroke="currentColor" fill="none"><path d="M1 1"/></svg>', fill: 'rgb(36, 99, 235)', stroke: 'rgb(36, 99, 235)', size: { width: 16, height: 16 }, placement: 'standalone' },
+          asset: { layer: 'svg-icon' }, meta: {}, children: []
+        }]
+      }
+    };
+    const plan = buildCodeToFigmaPlan(document, 'IconThing', 'src/components/IconThing.tsx');
+    const cmd = plan.commands.find((item: any) => item.type === 'set_icon_reference');
+    assert.equal(Boolean(cmd), true);
+    assert.equal(String(cmd.payload.svgMarkup).includes('xmlns="http://www.w3.org/2000/svg"'), true);
+    assert.equal(String(cmd.payload.svgMarkup).includes('class='), false);
+    assert.equal(String(cmd.payload.svgMarkup).includes('currentColor'), false);
+    assert.equal(String(cmd.payload.svgMarkup).includes('rgb(36, 99, 235)'), true);
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
   }

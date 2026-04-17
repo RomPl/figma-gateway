@@ -308,3 +308,13 @@ This is intentionally redundant for newer runtimes, but helps older running plug
 Render-first planning should expose cleaner Figma-facing names such as `Header`, `Main`, `Footer`, `Section`, `Container`, `Card`, `Text`, `Icon`, and `Button`.
 
 This naming layer must not change the stable `uiId`. Reverse sync and selector resolution continue to use `uiId` as the primary durable identity.
+
+## SVG icon markup should be sanitized for Figma import
+
+Before sending inline SVG markup to the plugin runtime, planner should sanitize browser-oriented SVG attributes for better Figma compatibility.
+
+Current sanitation includes:
+
+- ensure `xmlns`
+- strip noisy `class` / `data-*` / `aria-*` attributes
+- replace `currentColor` with explicit fill/stroke when available
