@@ -283,3 +283,26 @@ Fix:
 - plugin bridge now uses dispatch leasing so one session can have only one active in-flight command delivery at a time
 - queued commands are persisted in SQLite and recovered after gateway restart
 - stale dispatched commands are re-queued automatically after lease expiry
+
+## Inline-flex badge or link keeps the icon but loses text
+
+Cause:
+
+- the render-first extractor preserved the SVG child but dropped the container text for icon+text inline containers
+- planner then created only the icon branch
+
+Fix:
+
+- extractor now keeps direct text for inline icon containers with icon-only children
+- planner synthesizes a text label child for frame/group containers that have own text plus icon-only children
+
+## Grid feature cards lose hierarchy and look flattened
+
+Cause:
+
+- the render-first planner treated some grid wrappers as plain frames instead of a wrapping layout container
+
+Fix:
+
+- planner now reconstructs eligible grid wrappers as wrapping auto-layout containers
+- this keeps feature-card groups under a stable parent hierarchy instead of relying on flat absolute positioning

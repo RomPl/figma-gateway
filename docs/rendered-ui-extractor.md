@@ -173,3 +173,9 @@ Otherwise planner may collapse large layout containers into a tiny asset/icon-on
 Synthetic rendered ids are not only for `HTMLElement` nodes.
 
 Nested SVG elements that become visual nodes in the extracted tree must also receive a stable non-root tree path. Otherwise multiple unrelated SVG nodes can collapse into the same synthetic id like `__auto__/` and break live parent-child attachment in plugin batches.
+
+## Inline icon containers must keep their own text
+
+Render-first extraction must preserve direct text for badge/link/button-like inline containers even when they also contain an inline SVG child.
+
+Otherwise planner cannot synthesize the label layer and icon-only containers appear truncated in Figma.

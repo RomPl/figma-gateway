@@ -278,3 +278,15 @@ A plain block wrapper with multiple text children can still be a layout-first co
 When rendered flow indicates a centered text stack, planner should reconstruct it as a vertical auto-layout frame instead of a plain positioned frame with manually placed text children.
 
 This keeps the result closer to browser flow layout and reduces fragile parent-child attachment in live plugin batches.
+
+## Synthetic labels for inline icon containers
+
+When a render-first frame/group carries its own text and only icon children, planner should synthesize a text label child instead of leaving the container icon-only.
+
+This is required for inline-flex links, badges and CTA-like controls where browser text is part of the same visual container.
+
+## Grid reconstruction
+
+Render-first wrappers with `display:grid` should be reconstructed as wrapping horizontal auto-layout containers when possible.
+
+This keeps child hierarchy editable and avoids flattening the grid into unrelated absolutely-positioned frames.

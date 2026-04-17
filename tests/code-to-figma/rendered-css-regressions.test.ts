@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import { CodeUiParserService } from '../../src/core/code-ui-parser';
-import { CodeToFigmaPipelineService } from '../../src/core/code-to-figma-pipeline';
+import { CodeToFigmaPipelineService, buildCodeToFigmaPlan } from '../../src/core/code-to-figma-pipeline';
 import { PluginBridgeService } from '../../src/core/plugin-bridge';
 import { RenderedUiExtractorService, type RenderedUiRuntime } from '../../src/core/rendered-ui-extractor';
 import { RenderedToCodeMapperService } from '../../src/core/rendered-to-code-mapper';
@@ -474,4 +474,75 @@ test('planner skips transparent text-only wrappers and attaches heading copy dir
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
   }
+});
+
+test('planner creates synthetic text labels for inline-flex containers with icon child and own text', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: {
+      kind: 'frame', uiId: 'hero.root', name: 'div-root', visible: true,
+      children: [
+        {
+          kind: 'frame', uiId: '__auto__/div[1]/a[1]', name: 'a-inline-flex.items-center.gap-2', visible: true,
+          text: 'Start free',
+          boundingBox: { x: 0, y: 0, width: 180, height: 44 },
+          computedStyle: { display: 'inline-flex', width: 180, height: 44, alignItems: 'center', gap: 8, backgroundColor: 'rgb(36,99,235)', borderRadius: 8, paddingTop: 12, paddingRight: 24, paddingBottom: 12, paddingLeft: 24, fontFamily: 'Inter', fontSize: 14, fontWeight: '500', lineHeight: 20, color: 'rgb(255,255,255)' },
+          icon: {}, asset: {}, meta: {}, children: [
+            { kind: 'icon', uiId: '__auto__/div[1]/a[1]/svg[1]', name: 'svg-lucide', visible: true, boundingBox: { x: 0, y: 0, width: 16, height: 16 }, computedStyle: { width: 16, height: 16 }, icon: { sourceType: 'inline-svg', textLabel: 'sparkles', svgMarkup: '<svg></svg>', fill: 'rgb(255,255,255)', stroke: 'rgb(255,255,255)', size: { width: 16, height: 16 }, placement: 'standalone' }, asset: { layer: 'svg-icon' }, meta: {}, children: [] }
+          ]
+        },
+        {
+          kind: 'frame', uiId: '__auto__/div[1]/span[1]', name: 'span-inline-flex.items-center.gap-2', visible: true,
+          text: 'AI-powered deck generation',
+          boundingBox: { x: 220, y: 0, width: 260, height: 32 },
+          computedStyle: { display: 'inline-flex', width: 260, height: 32, alignItems: 'center', gap: 8, backgroundColor: 'rgba(36,99,235,0.1)', borderRadius: 9999, paddingTop: 6, paddingRight: 16, paddingBottom: 6, paddingLeft: 16, fontFamily: 'Inter', fontSize: 14, fontWeight: '500', lineHeight: 20, color: 'rgb(36,99,235)' },
+          icon: {}, asset: {}, meta: {}, children: [
+            { kind: 'icon', uiId: '__auto__/div[1]/span[1]/svg[1]', name: 'svg-lucide', visible: true, boundingBox: { x: 0, y: 0, width: 16, height: 16 }, computedStyle: { width: 16, height: 16 }, icon: { sourceType: 'inline-svg', textLabel: 'sparkles', svgMarkup: '<svg></svg>', fill: 'rgb(36,99,235)', stroke: 'rgb(36,99,235)', size: { width: 16, height: 16 }, placement: 'standalone' }, asset: { layer: 'svg-icon' }, meta: {}, children: [] }
+          ]
+        }
+      ]
+    }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'Hero', 'src/components/Hero.tsx');
+  const cmds = plan.commands;
+  const ctaLabel = cmds.find((c: any) => c.type === 'create_text' && c.payload?.uiId === '__auto__/div[1]/a[1].label');
+  const badgeLabel = cmds.find((c: any) => c.type === 'create_text' && c.payload?.uiId === '__auto__/div[1]/span[1].label');
+  assert.equal(Boolean(ctaLabel), true);
+  assert.equal(Boolean(badgeLabel), true);
+  assert.equal(ctaLabel?.payload?.text, 'Start free');
+  assert.equal(badgeLabel?.payload?.text, 'AI-powered deck generation');
+  assert.equal(ctaLabel?.payload?.fontFamily, 'Inter');
+  assert.equal(ctaLabel?.payload?.fontWeight, '500');
+  assert.equal(badgeLabel?.payload?.fontWeight, '500');
+});
+
+test('planner reconstructs grid wrappers as wrapping auto-layout containers', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: {
+      kind: 'section', uiId: 'features.root', name: 'section-root', visible: true,
+      children: [
+        {
+          kind: 'frame', uiId: '__auto__/section[1]/div[1]', name: 'div-mt-16.grid.gap-8', visible: true,
+          boundingBox: { x: 16, y: 64, width: 1248, height: 254 },
+          computedStyle: { display: 'grid', width: 1248, height: 254, gap: 32, rowGap: 32, columnGap: 32 },
+          icon: {}, asset: {}, meta: {}, children: [
+            { kind: 'frame', uiId: '__auto__/section[1]/div[1]/div[1]', name: 'card-1', visible: true, boundingBox: { x: 0, y: 0, width: 288, height: 254 }, computedStyle: { display: 'block', width: 288, height: 254, position: 'relative' }, icon: {}, asset: {}, meta: {}, children: [] },
+            { kind: 'frame', uiId: '__auto__/section[1]/div[1]/div[2]', name: 'card-2', visible: true, boundingBox: { x: 320, y: 0, width: 288, height: 254 }, computedStyle: { display: 'block', width: 288, height: 254, position: 'relative' }, icon: {}, asset: {}, meta: {}, children: [] },
+            { kind: 'frame', uiId: '__auto__/section[1]/div[1]/div[3]', name: 'card-3', visible: true, boundingBox: { x: 640, y: 0, width: 288, height: 254 }, computedStyle: { display: 'block', width: 288, height: 254, position: 'relative' }, icon: {}, asset: {}, meta: {}, children: [] },
+            { kind: 'frame', uiId: '__auto__/section[1]/div[1]/div[4]', name: 'card-4', visible: true, boundingBox: { x: 960, y: 0, width: 288, height: 254 }, computedStyle: { display: 'block', width: 288, height: 254, position: 'relative' }, icon: {}, asset: {}, meta: {}, children: [] }
+          ]
+        }
+      ]
+    }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'Features', 'src/components/Features.tsx');
+  const cmds = plan.commands;
+  const gridAuto = cmds.find((c: any) => c.type === 'set_auto_layout' && c.payload?.nodeRef === '__auto__/section[1]/div[1]');
+  assert.equal(Boolean(gridAuto), true);
+  assert.equal(gridAuto?.payload?.layoutMode, 'HORIZONTAL');
+  assert.equal(gridAuto?.payload?.layoutWrap, 'WRAP');
+  assert.equal(gridAuto?.payload?.itemSpacing, 32);
+  const childPos = cmds.filter((c: any) => c.type === 'set_position' && String(c.payload?.nodeRef || '').startsWith('__auto__/section[1]/div[1]/div['));
+  assert.equal(childPos.length, 0);
 });

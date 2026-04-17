@@ -218,3 +218,31 @@ test('rendered extractor assigns non-root synthetic auto ids to nested svg eleme
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
 });
+
+test('rendered extractor keeps text for inline-flex badge containers that have svg child plus own text', async () => {
+  const html = `<!doctype html><html><body>
+    <div data-ui-id="hero.root">
+      <span class="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary ring-1 ring-inset ring-primary/20">
+        <svg class="lucide lucide-sparkles h-4 w-4" viewBox="0 0 24 24"><path d="M12 3 10 9 3 12l7 3 2 6 2-6 7-3-7-3-2-6Z"></path></svg>
+        AI-Powered Presentations
+      </span>
+    </div>
+  </body></html>`;
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(html);
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Failed to get server address');
+  const url = `http://127.0.0.1:${address.port}`;
+  try {
+    const service = new RenderedUiExtractorService();
+    const document = await service.extract({ target: { mode: 'existing_url', url }, rootUiId: 'hero.root', browserExecutablePath: '/usr/bin/google-chrome', breakpointName: 'desktop' });
+    const badge = document.root.children[0];
+    assert.equal(badge.text, 'AI-Powered Presentations');
+    assert.equal(badge.children.some((child) => child.kind === 'icon'), true);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  }
+});

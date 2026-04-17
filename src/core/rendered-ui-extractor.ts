@@ -261,13 +261,15 @@ const buildUiNode = (snapshot: RenderedNodeSnapshot, sourceUrl: string): UiNode 
   const fill = styleSubset.backgroundColor && styleSubset.backgroundColor !== 'rgba(0, 0, 0, 0)' && styleSubset.backgroundColor !== 'transparent' ? styleSubset.backgroundColor : undefined;
   const stroke = styleSubset.borderColor && styleSubset.borderWidth && styleSubset.borderWidth > 0 ? { value: styleSubset.borderColor } : undefined;
   const hasPadding = styleSubset.paddingTop !== undefined || styleSubset.paddingRight !== undefined || styleSubset.paddingBottom !== undefined || styleSubset.paddingLeft !== undefined;
+  const normalizedSnapshotText = normalizeText(snapshot.text);
+  const iconOnlyChildren = Boolean(snapshot.children?.length) && snapshot.children.every((child: RenderedNodeSnapshot) => Boolean(child.icon?.sourceType) || child.tag === 'svg' || child.asset?.layer === 'svg-icon');
   return {
     kind,
     uiId: snapshot.uiId,
     name: buildRenderedNodeName(snapshot),
     role: inferRole(snapshot),
     visible: snapshot.visibility.visible,
-    text: kind === 'text' || kind === 'button' || ((kind === 'frame' || kind === 'group') && snapshot.semantics.clickTarget && normalizeText(snapshot.text) && normalizeText(snapshot.text)!.length <= 120) || ((kind === 'frame') && normalizeText(snapshot.text) && (!snapshot.children || snapshot.children.length === 0) && normalizeText(snapshot.text)!.length <= 120) ? normalizeText(snapshot.text) : undefined,
+    text: kind === 'text' || kind === 'button' || ((kind === 'frame' || kind === 'group') && snapshot.semantics.clickTarget && normalizedSnapshotText && normalizedSnapshotText.length <= 120) || ((kind === 'frame' || kind === 'group') && normalizedSnapshotText && iconOnlyChildren && normalizedSnapshotText.length <= 120) || ((kind === 'frame') && normalizedSnapshotText && (!snapshot.children || snapshot.children.length === 0) && normalizedSnapshotText.length <= 120) ? normalizedSnapshotText : undefined,
     source: { codeSelector: `[data-ui-id="${snapshot.uiId}"]`, codePath: sourceUrl },
     size: { width: snapshot.clientRect.width, height: snapshot.clientRect.height },
     position: { x: snapshot.clientRect.x, y: snapshot.clientRect.y },
