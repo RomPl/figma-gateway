@@ -39,7 +39,7 @@ test('mvp guardrails block unsupported low-level commands in batch', () => {
     () =>
       assertMvpWriteBatchAllowed([
         {
-          type: 'delete_node',
+          type: 'set_component_properties',
           payload: { nodeId: '1:9' }
         }
       ]),

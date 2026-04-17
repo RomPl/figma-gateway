@@ -9,6 +9,7 @@ import { createApp } from '../../src/api/app';
 import { AuditService } from '../../src/core/audit';
 import { CodeUiParserService } from '../../src/core/code-ui-parser';
 import type { FigmaReadClient } from '../../src/core/figma-client';
+import { RenderedUiExtractorService, type RenderedUiRuntime } from '../../src/core/rendered-ui-extractor';
 import { migrateDatabase } from '../../src/db/migrate';
 import { createSqliteDatabase } from '../../src/db/sqlite';
 
@@ -30,7 +31,26 @@ const createMockClient = (): FigmaReadClient => ({
   getVariables: async () => ({ status: 200, error: false, meta: { variables: {}, variableCollections: {} } })
 });
 
-test('intent API exposes high-level agent operations and executes wrapped pipelines', async () => {
+const runtime: RenderedUiRuntime = {
+  capture: async () => ({
+    uiId: 'landing.hero',
+    tag: 'section',
+    text: 'Build faster',
+    treePath: 'landing.hero',
+    clientRect: { x: 0, y: 0, width: 1440, height: 720 },
+    computedStyle: { display: 'flex', flexDirection: 'column', gap: 24, width: 1440, height: 720, backgroundColor: 'rgb(15, 23, 42)' },
+    visibility: { visible: true, display: 'flex', visibility: 'visible', opacity: 1 },
+    media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [],
+    children: [
+      { uiId: 'landing.hero.title', tag: 'h1', text: 'Build faster', treePath: 'landing.hero > landing.hero.title', clientRect: { x: 0, y: 0, width: 640, height: 72 }, computedStyle: { color: 'rgb(255,255,255)', fontSize: 56, display: 'block', width: 640, height: 72 }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [], children: [] },
+      { uiId: 'landing.hero.panel', tag: 'div', text: 'Metrics', treePath: 'landing.hero > landing.hero.panel', clientRect: { x: 780, y: 220, width: 320, height: 180 }, computedStyle: { backgroundColor: 'rgb(30,41,59)', borderRadius: 20, display: 'block', width: 320, height: 180 }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [], children: [] },
+      { uiId: 'landing.hero.cta', tag: 'button', text: 'Start', treePath: 'landing.hero > landing.hero.cta', clientRect: { x: 0, y: 100, width: 180, height: 48 }, computedStyle: { color: 'rgb(255,255,255)', backgroundColor: 'rgb(37,99,235)', borderRadius: 12, display: 'inline-flex', width: 180, height: 48, alignItems: 'center', justifyContent: 'center' }, visibility: { visible: true, display: 'inline-flex', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: { role: 'button', clickTarget: true }, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [], children: [] },
+      { uiId: 'landing.hero.icon', tag: 'svg', text: undefined, treePath: 'landing.hero > landing.hero.icon', clientRect: { x: 200, y: 110, width: 20, height: 20 }, computedStyle: { color: 'rgb(255,255,255)', width: 20, height: 20, display: 'block' }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: { kind: 'svg', inlineSvg: true, iconRole: 'leading', contentRole: 'content' }, asset: { layer: 'svg-icon', role: 'content' }, icon: { sourceType: 'inline-svg', textLabel: 'Arrow right', svgMarkup: '<svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>', fill: 'rgb(255,255,255)', size: { width: 20, height: 20 }, placement: 'leading' }, semantics: {}, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [], children: [] }
+    ]
+  })
+};
+
+test('intent API exposes visual-first high-level operations and executes wrapped pipelines through rendered phases', async () => {
   const rootDir = mkdtempSync(join(tmpdir(), 'intent-api-'));
   const dbPath = join(rootDir, 'intent.sqlite');
   try {
@@ -38,7 +58,7 @@ test('intent API exposes high-level agent operations and executes wrapped pipeli
     writeFileSync(join(rootDir, 'src', 'components', 'Hero.tsx'), `
       import React from 'react';
       export function Hero() {
-        return <section data-ui-id="landing.hero"><h1 data-ui-id="landing.hero.title">Build faster</h1></section>;
+        return <section data-ui-id="landing.hero"><h1 data-ui-id="landing.hero.title">Build faster</h1><div data-ui-id="landing.hero.panel">Metrics</div><button data-ui-id="landing.hero.cta">Start</button><div data-ui-id="landing.hero.icon" /></section>;
       }
     `, 'utf8');
     const db = createSqliteDatabase(dbPath);
@@ -52,7 +72,8 @@ test('intent API exposes high-level agent operations and executes wrapped pipeli
       auditService,
       enableWriteActions: true,
       writeAllowedOperations: ['execute-plugin-batch'],
-      codeUiParserService: new CodeUiParserService({ rootDir })
+      codeUiParserService: new CodeUiParserService({ rootDir }),
+      renderedUiExtractorService: new RenderedUiExtractorService(runtime)
     });
     const server = createServer(app);
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
@@ -74,6 +95,8 @@ test('intent API exposes high-level agent operations and executes wrapped pipeli
       });
       const regJson = (await registration.json()) as { data: { sessionId: string; sessionToken: string } };
 
+      const render = { target: { mode: 'existing_url', url: 'http://127.0.0.1:3000' }, rootUiId: 'landing.hero', breakpointName: 'desktop' };
+
       const exec = await fetch(`${baseUrl}/api/intents/execute`, {
         method: 'POST',
         headers: { authorization: 'Bearer test-api-token', 'content-type': 'application/json' },
@@ -85,15 +108,17 @@ test('intent API exposes high-level agent operations and executes wrapped pipeli
             rootDir,
             fileKey: 'abc123',
             sessionId: regJson.data.sessionId,
-            dryRun: false
+            dryRun: false,
+            render
           }
         })
       });
-      const execJson = (await exec.json()) as { data: { intent: string; phases: string[]; result: { queued: { status: string } } } };
+      const execJson = (await exec.json()) as { data: { intent: string; phases: string[]; artifacts: { visualSource: string; renderedNodeCount: number; tokenBoundNodeCount: number }; result: { queued: { status: string } } } };
       assert.equal(exec.status, 200);
       assert.equal(execJson.data.intent, 'reconstruct_design_from_code');
-      assert.equal(execJson.data.phases.includes('snapshot'), true);
-      assert.equal(execJson.data.phases.includes('batch_low_level_operations'), true);
+      assert.deepEqual(execJson.data.phases, ['snapshot_code', 'render_ui', 'normalize', 'token_resolve', 'diff', 'plan', 'batch']);
+      assert.equal(execJson.data.artifacts.visualSource, 'rendered_ui_snapshot');
+      assert.equal(execJson.data.artifacts.renderedNodeCount >= 1, true);
       assert.equal(execJson.data.result.queued.status, 'queued');
 
       const reconcile = await fetch(`${baseUrl}/api/intents/execute`, {
@@ -101,13 +126,14 @@ test('intent API exposes high-level agent operations and executes wrapped pipeli
         headers: { authorization: 'Bearer test-api-token', 'content-type': 'application/json' },
         body: JSON.stringify({
           intent: 'reconcile_design_and_code',
-          payload: { project: 'marketing-site', fileKey: 'abc123', rootDir }
+          payload: { project: 'marketing-site', fileKey: 'abc123', rootDir, render }
         })
       });
-      const reconcileJson = (await reconcile.json()) as { data: { intent: string; phases: string[]; result: { mode: string } } };
+      const reconcileJson = (await reconcile.json()) as { data: { intent: string; phases: string[]; artifacts: { visualSource: string }; result: { mode: string } } };
       assert.equal(reconcile.status, 200);
       assert.equal(reconcileJson.data.intent, 'reconcile_design_and_code');
-      assert.equal(reconcileJson.data.phases.includes('merge_plan'), true);
+      assert.deepEqual(reconcileJson.data.phases, ['snapshot_code', 'snapshot_figma', 'render_ui', 'normalize', 'token_resolve', 'diff', 'plan']);
+      assert.equal(reconcileJson.data.artifacts.visualSource, 'rendered_ui_snapshot');
       assert.equal(reconcileJson.data.result.mode, 'reconcile');
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

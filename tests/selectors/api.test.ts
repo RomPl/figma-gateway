@@ -150,13 +150,14 @@ test('selector resolver supports human block addressing by uiId, name, text and 
             selector: 'hero',
             rootDir,
             fileKey: 'abc123',
-            dryRun: true
+            dryRun: true,
+            render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3000' }, rootUiId: 'landing.hero', breakpointName: 'desktop' }
           }
         })
       });
-      const intentJson = (await intent.json()) as { data: { result: { plan: { model: { root: { uiId: string } } } } } };
-      assert.equal(intent.status, 200);
-      assert.equal(intentJson.data.result.plan.model.root.uiId, 'landing.hero');
+      const intentJson = (await intent.json()) as { error: { code: string; details?: { acceptance?: { passed: boolean } } } };
+      assert.equal(intent.status, 409);
+      assert.equal(intentJson.error.code, 'INTENT_FIRST_PASS_ACCEPTANCE_FAILED');
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
     }
