@@ -174,3 +174,15 @@ Fix:
 
 - auto-label fallback is now restricted to leaf interactive containers only
 - containers with children must rely on their actual child tree instead of an extra synthetic label
+
+## Nested rendered text disappears after create_text
+
+Cause:
+
+- live batch applied follow-up text mutations to the same freshly created text node
+- some nested rendered-first text branches became unstable between `create_text` and later text mutations
+
+Fix:
+
+- rendered-first text creation is now more atomic
+- typography, fills, size and initial position are pushed into `create_text` whenever possible

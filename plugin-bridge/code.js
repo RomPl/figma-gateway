@@ -303,8 +303,8 @@ async function executeLowLevelCommand(step, refMap) {
     await figma.loadFontAsync(requestedFont || textNode.fontName);
     textNode.name = String(payload.name || 'Text');
     textNode.characters = String(payload.text !== undefined ? payload.text : payload.content !== undefined ? payload.content : '');
-    if (payload.fontSize !== undefined) textNode.fontSize = Number(payload.fontSize);
     if (requestedFont) textNode.fontName = requestedFont;
+    if (payload.fontSize !== undefined) textNode.fontSize = Number(payload.fontSize);
     applyTextMetrics(textNode, payload);
     if (payload.textAlignHorizontal !== undefined) textNode.textAlignHorizontal = String(payload.textAlignHorizontal);
     if (payload.textAlignVertical !== undefined) textNode.textAlignVertical = String(payload.textAlignVertical);
@@ -313,6 +313,9 @@ async function executeLowLevelCommand(step, refMap) {
     parent.appendChild(textNode);
     setUiIdOnNode(textNode, payload.uiId);
     setXY(textNode, payload.x, payload.y);
+    if (payload.width !== undefined || payload.height !== undefined) {
+      try { setSize(textNode, payload.width, payload.height, commandType); } catch (error) {}
+    }
     if (payload.ref) refMap[String(payload.ref)] = textNode.id;
     return normalizeCommandResult(commandType, 'ok', { nodeId: textNode.id, data: { id: textNode.id, name: textNode.name, parentNodeId: parent.id, text: textNode.characters, uiId: getUiIdFromNode(textNode) || null, ref: payload.ref || null } });
   }

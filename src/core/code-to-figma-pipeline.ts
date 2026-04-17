@@ -345,45 +345,32 @@ const planTextNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: s
   const plannedWidth = shouldUseParentContentWidth ? availableParentWidth : (node.boundingBox?.width ?? node.size?.width);
   const plannedHeight = node.boundingBox?.height ?? node.size?.height;
   const plannedTextAutoResize = shouldUseParentContentWidth ? 'HEIGHT' : undefined;
-  actions.push({ id: `${ref}:create_text`, type: 'create_text', uiId: node.uiId, payload: { ref, parentRef, uiId: node.uiId, name: figmaName, text: node.text ?? '', x: plannedX, y: plannedY } });
-  commands.push({ type: 'create_text', payload: { ref, parentRef, uiId: node.uiId, name: figmaName, text: node.text ?? '', x: plannedX, y: plannedY } });
-
   const transparentText = (() => { const c = node.computedStyle?.color; return c === 'rgba(0, 0, 0, 0)' || c === 'transparent'; })();
   const colorRaw = (transparentText ? undefined : (paintRaw(node.declarativeStyle?.fill ?? node.style?.fill) ?? node.computedStyle?.color)) ?? firstColorFromGradient(node.computedStyle?.backgroundImage);
+  const createTextPayload: Record<string, unknown> = {
+    ref,
+    parentRef,
+    uiId: node.uiId,
+    name: figmaName,
+    text: node.text ?? '',
+    x: plannedX,
+    y: plannedY,
+    width: plannedWidth,
+    height: plannedHeight,
+    fontFamily: font.fontFamily ?? declaredText?.fontFamily,
+    fontStyle: declaredText?.fontStyle,
+    fontSize: font.fontSize ?? declaredText?.fontSize,
+    lineHeight: font.lineHeight ?? declaredText?.lineHeight,
+    letterSpacing: font.letterSpacing ?? declaredText?.letterSpacing,
+    fontWeight: font.fontWeight,
+    textAlignHorizontal: plannedTextAlign,
+    textAutoResize: plannedTextAutoResize
+  };
   if (colorRaw && hasRenderablePaint(colorRaw, node.computedStyle?.opacity ?? 1)) {
-    actions.push({ id: `${ref}:fill`, type: 'set_fill', uiId: node.uiId, payload: { nodeRef: ref, source: 'rendered' } });
-    commands.push({ type: 'set_fill', payload: { nodeRef: ref, fills: lowerAnyPaint(colorRaw, node.computedStyle?.opacity ?? 1), token: node.semanticTokens?.fill ?? node.tokens?.fill, figmaVariableId: getTokenBinding(node, 'fill')?.figmaVariableId, figmaStyleId: getTokenBinding(node, 'fill')?.figmaStyleId } });
+    createTextPayload.fills = lowerAnyPaint(colorRaw, node.computedStyle?.opacity ?? 1);
   }
-
-  if (declaredText || font.fontSize || font.fontFamily || font.textAlign || plannedTextAlign || plannedTextAutoResize) {
-    actions.push({ id: `${ref}:text_style`, type: 'set_text_style', uiId: node.uiId, payload: { nodeRef: ref, source: 'rendered' } });
-    commands.push({
-      type: 'set_text_style',
-      payload: {
-        nodeRef: ref,
-        fontFamily: font.fontFamily ?? declaredText?.fontFamily,
-        fontStyle: declaredText?.fontStyle,
-        fontSize: font.fontSize ?? declaredText?.fontSize,
-        lineHeight: font.lineHeight ?? declaredText?.lineHeight,
-        letterSpacing: font.letterSpacing ?? declaredText?.letterSpacing,
-        fontWeight: font.fontWeight,
-        textAlignHorizontal: plannedTextAlign,
-        textAutoResize: plannedTextAutoResize,
-        token: node.semanticTokens?.typography ?? node.tokens?.typography,
-        figmaStyleId: getTokenBinding(node, 'typography')?.figmaStyleId
-      }
-    });
-  }
-
-  if (plannedWidth || plannedHeight) {
-    actions.push({ id: `${ref}:size`, type: 'set_size', uiId: node.uiId, payload: { nodeRef: ref } });
-    commands.push({ type: 'set_size', payload: { nodeRef: ref, width: plannedWidth, height: plannedHeight } });
-  }
-  const isAbsoluteTextNode = ['absolute', 'fixed', 'sticky'].includes(node.computedStyle?.position ?? '');
-  if ((!parentUsesAutoLayout || isAbsoluteTextNode) && (plannedX !== undefined || plannedY !== undefined)) {
-    actions.push({ id: `${ref}:position`, type: 'set_position', uiId: node.uiId, payload: { nodeRef: ref } });
-    commands.push({ type: 'set_position', payload: { nodeRef: ref, x: plannedX, y: plannedY } });
-  }
+  actions.push({ id: `${ref}:create_text`, type: 'create_text', uiId: node.uiId, payload: { ref, parentRef, uiId: node.uiId, name: figmaName, text: node.text ?? '', x: plannedX, y: plannedY } });
+  commands.push({ type: 'create_text', payload: createTextPayload });
 };
 
 const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: string | undefined, actions: PlannerAction[], commands: FigmaCommandStep[], isRoot: boolean): void => {

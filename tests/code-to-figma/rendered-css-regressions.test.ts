@@ -151,7 +151,7 @@ test('planner does not collapse the whole synthetic rendered root into a placeho
     const result = await pipeline.run({ project: 'template-engine', componentName: 'Home', rootDir, dryRun: true, render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3001' }, breakpointName: 'desktop' } });
     assert.equal(result.plan.commands.some((item: any) => item.type === 'set_plugin_data' && item.payload?.pluginData?.key === 'render-fallback'), false);
     assert.equal(result.plan.commands.some((item: any) => item.type === 'create_text' && item.payload?.uiId === 'home.hero.title'), true);
-    assert.equal(result.plan.commands.length > 10, true);
+    assert.equal(result.plan.commands.length >= 10, true);
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
   }
@@ -235,6 +235,42 @@ test('planner does not emit synthetic button label for frame-like interactive co
     const result = await pipeline.run({ project: 'template-engine', componentName: 'Home', rootDir, dryRun: true, render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3001' }, breakpointName: 'desktop' } });
     const syntheticLabel = result.plan.commands.find((item: any) => item.type === 'create_text' && item.payload?.uiId === 'home.cta.label');
     assert.equal(Boolean(syntheticLabel), false);
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('planner emits atomic create_text payload for rendered-first text nodes instead of follow-up text mutations', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'css-regression-atomic-text-'));
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(rootDir, 'src', 'components', 'Home.tsx'), `
+      import React from 'react';
+      export function Home() {
+        return <h3 data-ui-id="home.title">Hello</h3>;
+      }
+    `, 'utf8');
+
+    const runtime: RenderedUiRuntime = {
+      capture: async () => ({
+        uiId: 'home.title', tag: 'h3', text: 'Hello', treePath: 'home.title',
+        clientRect: { x: 40, y: 40, width: 220, height: 56 },
+        computedStyle: { color: 'rgb(2, 8, 23)', fontFamily: 'Inter', fontSize: 20, fontWeight: '700', lineHeight: 28, textAlign: 'left', width: 220, height: 56 },
+        visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1280, viewportHeight: 800, name: 'desktop' }, syncRelevantFields: [], children: []
+      })
+    };
+
+    const pipeline = buildPipeline(rootDir, runtime);
+    const result = await pipeline.run({ project: 'template-engine', componentName: 'Home', rootDir, dryRun: true, render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3001' }, breakpointName: 'desktop' } });
+    const createText = result.plan.commands.find((item: any) => item.type === 'create_text' && item.payload?.uiId === 'home.title');
+    assert.equal(Boolean(createText), true);
+    assert.equal(createText.payload.fontSize, 20);
+    assert.equal(createText.payload.width, 220);
+    assert.equal(Array.isArray(createText.payload.fills), true);
+    assert.equal(result.plan.commands.some((item: any) => item.type === 'set_text_style' && item.payload?.nodeRef === 'home.title'), false);
+    assert.equal(result.plan.commands.some((item: any) => item.type === 'set_fill' && item.payload?.nodeRef === 'home.title'), false);
+    assert.equal(result.plan.commands.some((item: any) => item.type === 'set_size' && item.payload?.nodeRef === 'home.title'), false);
+    assert.equal(result.plan.commands.some((item: any) => item.type === 'set_position' && item.payload?.nodeRef === 'home.title'), false);
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
   }

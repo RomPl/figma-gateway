@@ -243,3 +243,24 @@ Compatibility rule:
 - `uiId` remains unchanged for durable sync
 - segmentation metadata is added under node `meta`
 - wrapper collapse is conservative and only targets synthetic rendered wrappers that are visually empty and single-child
+
+## Atomic rendered text creation
+
+Rendered-first text nodes should be created atomically whenever possible.
+
+Instead of emitting a fragile chain like:
+
+- `create_text`
+- `set_fill`
+- `set_text_style`
+- `set_size`
+- `set_position`
+
+planner now prefers one `create_text` payload that already carries:
+
+- fill
+- typography
+- text box width/height
+- initial x/y
+
+This reduces batch fragility for nested text nodes inside large rendered-first imports.
