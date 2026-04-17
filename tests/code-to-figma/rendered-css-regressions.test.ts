@@ -201,3 +201,41 @@ test('planner does not emit placeholder asset references for plain generic conta
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+test('planner does not emit synthetic button label for frame-like interactive container that already has children', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'css-regression-anchor-label-'));
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(rootDir, 'src', 'components', 'Home.tsx'), `
+      import React from 'react';
+      export function Home() {
+        return (
+          <div data-ui-id="home.root">
+            <a data-ui-id="home.cta">Create account<span data-ui-id="home.cta.icon">→</span></a>
+          </div>
+        );
+      }
+    `, 'utf8');
+
+    const runtime: RenderedUiRuntime = {
+      capture: async () => ({
+        uiId: 'home.root', tag: 'body', text: 'Create account', treePath: 'home.root',
+        clientRect: { x: 0, y: 0, width: 1200, height: 700 },
+        computedStyle: { display: 'block', width: 1200, height: 700 },
+        visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1200, viewportHeight: 700, name: 'desktop' }, syncRelevantFields: [],
+        children: [
+          { uiId: 'home.cta', tag: 'a', text: 'Create account', treePath: 'home.root > home.cta', clientRect: { x: 100, y: 100, width: 220, height: 52 }, computedStyle: { display: 'inline-flex', width: 220, height: 52, backgroundColor: 'rgb(37, 99, 235)', borderRadius: 8, paddingTop: 16, paddingRight: 32, paddingBottom: 16, paddingLeft: 32, gap: 8, alignItems: 'center' }, visibility: { visible: true, display: 'inline-flex', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: { role: 'button', clickTarget: true }, breakpoint: { viewportWidth: 1200, viewportHeight: 700, name: 'desktop' }, syncRelevantFields: [], children: [
+            { uiId: 'home.cta.icon', tag: 'span', text: '→', treePath: 'home.root > home.cta > home.cta.icon', clientRect: { x: 280, y: 118, width: 12, height: 16 }, computedStyle: { color: 'rgb(255,255,255)', fontSize: 16, width: 12, height: 16 }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1200, viewportHeight: 700, name: 'desktop' }, syncRelevantFields: [], children: [] }
+          ] }
+        ]
+      })
+    };
+
+    const pipeline = buildPipeline(rootDir, runtime);
+    const result = await pipeline.run({ project: 'template-engine', componentName: 'Home', rootDir, dryRun: true, render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3001' }, breakpointName: 'desktop' } });
+    const syntheticLabel = result.plan.commands.find((item: any) => item.type === 'create_text' && item.payload?.uiId === 'home.cta.label');
+    assert.equal(Boolean(syntheticLabel), false);
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

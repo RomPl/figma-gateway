@@ -151,3 +151,26 @@ Fix:
 
 - synthetic rendered uiIds now use one full tree-based DOM path without truncation
 - rerun the import on a fresh plugin session after gateway restart
+
+## Rendered import creates orphan top-level nodes
+
+Cause:
+
+- plugin runtime resolved a missing parent ref by falling back to the current page
+- child nodes were appended as page-level orphans instead of failing fast
+
+Fix:
+
+- resolved parent refs now fail with `PARENT_NODE_NOT_FOUND` instead of silently attaching to the page
+- rerun the import on a fresh session after gateway restart
+
+## Auto button labels duplicated inside complex interactive containers
+
+Cause:
+
+- planner emitted synthetic `*.label` text for a frame/group node that already had its own visual subtree
+
+Fix:
+
+- auto-label fallback is now restricted to leaf interactive containers only
+- containers with children must rely on their actual child tree instead of an extra synthetic label

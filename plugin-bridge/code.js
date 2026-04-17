@@ -265,9 +265,10 @@ async function getParentNodeResolved(payload, refMap) {
     } catch (error) {
       parent = null;
     }
+    if (!parent || !('appendChild' in parent)) throw appError('PARENT_NODE_NOT_FOUND', 'Parent node not found for ref: ' + candidateId);
+    return parent;
   }
-  if (!parent || !('appendChild' in parent)) parent = figma.currentPage;
-  return parent;
+  return figma.currentPage;
 }
 async function executeLowLevelCommand(step, refMap) {
   step = normalizeIncomingStep(step);
@@ -500,7 +501,14 @@ async function executeLowLevelCommand(step, refMap) {
 
   if (commandType === 'delete_matching_nodes') {
     const query = payload && payload.query ? payload.query : {};
-    const matches = findNodesByQuery(query).filter(function (node) { return node.type !== 'PAGE'; });
+    let matches = findNodesByQuery(query).filter(function (node) { return node.type !== 'PAGE'; });
+    if (query && query.uiIdPrefix) {
+      const prefix = String(query.uiIdPrefix);
+      const prefixMatches = [];
+      walkScene(function (node) { const uiId = getUiIdFromNode(node) || ''; if (uiId && uiId.indexOf(prefix) === 0 && node.type !== 'PAGE') prefixMatches.push(node); });
+      const seen = new Set(matches.map(function (n) { return n.id; }));
+      for (const node of prefixMatches) if (!seen.has(node.id)) matches.push(node);
+    }
     const deleted = [];
     for (const node of matches) {
       deleted.push({ id: node.id, name: node.name, type: node.type, uiId: getUiIdFromNode(node) || null });

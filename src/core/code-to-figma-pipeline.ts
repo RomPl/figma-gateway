@@ -498,7 +498,7 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
     commands.push({ type: 'set_icon_reference', payload: { nodeRef: ref, sourceType: node.icon.sourceType, textLabel: node.icon.textLabel, fill: node.icon.fill, stroke: node.icon.stroke, size: node.icon.size, placement: node.icon.placement, spriteRef: node.icon.spriteRef, hash: node.icon.hash, assetId: node.icon.assetId, figmaStrategy } });
   }
 
-  if ((node.kind === 'button' || ((node.kind === 'frame' || node.kind === 'group') && node.text && !node.children.some((child) => child.kind === 'text'))) && (node.text || node.name)) {
+  if ((node.kind === 'button' || ((node.kind === 'frame' || node.kind === 'group') && node.text && node.children.length === 0)) && (node.text || node.name)) {
     const labelUiId = `${node.uiId}.label`;
     const font = node.computedStyle ?? {};
     const labelText = node.text ?? node.name ?? 'Label';
