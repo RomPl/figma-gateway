@@ -180,6 +180,8 @@ test('reconcile-breakpoints route returns results by breakpoint', async () => {
       assert.equal(response.status, 200);
       assert.equal(json.data.resultsByBreakpoint.mobile.mode, 'reconcile');
       assert.equal(json.data.resultsByBreakpoint.desktop.mode, 'reconcile');
+      assert.equal(json.data.summaryByBreakpoint.mobile.renderedBreakpointFamily, 'mobile');
+      assert.equal(json.data.summaryByBreakpoint.desktop.renderedBreakpointFamily, 'desktop');
       assert.equal(json.data.notes.some((note: string) => note.includes('single-breakpoint reconcile pipeline')), true);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

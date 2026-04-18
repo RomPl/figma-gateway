@@ -211,6 +211,11 @@ export type RenderedBreakpointSnapshotResult = {
   snapshots: Record<RenderedBreakpointPreset, UiModelDocument>;
 };
 
+export type RenderedBreakpointDiagnosticsResult = {
+  activeBreakpoint: RenderedBreakpointPreset;
+  diagnostics: Record<RenderedBreakpointPreset, RenderedUiDiagnostics>;
+};
+
 const normalizeText = (value?: string): string | undefined => {
   if (typeof value !== 'string') return undefined;
   const normalized = value.replace(/\s+/g, ' ').trim();
@@ -754,6 +759,15 @@ export class RenderedUiExtractorService {
       snapshots[breakpoint] = await this.extract({ ...data, breakpoint, breakpointName: breakpoint });
     }
     return { activeBreakpoint: data.breakpoints[0], snapshots };
+  }
+
+  public async diagnoseBreakpoints(input: z.input<typeof extractRenderedUiBreakpointsSchema>): Promise<RenderedBreakpointDiagnosticsResult> {
+    const data = extractRenderedUiBreakpointsSchema.parse(input);
+    const diagnostics = {} as Record<RenderedBreakpointPreset, RenderedUiDiagnostics>;
+    for (const breakpoint of data.breakpoints) {
+      diagnostics[breakpoint] = await this.diagnose({ ...data, breakpoint, breakpointName: breakpoint });
+    }
+    return { activeBreakpoint: data.breakpoints[0], diagnostics };
   }
 }
 

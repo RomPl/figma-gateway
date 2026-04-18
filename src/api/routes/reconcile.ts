@@ -6,6 +6,9 @@ import { asyncHandler, sendSuccess, validateRequest } from './helpers';
 
 export const reconcileRouter = Router();
 
+
+const summarizeReconcileBreakpoints = (resultsByBreakpoint: Record<string, any>) => Object.fromEntries(Object.entries(resultsByBreakpoint).map(([breakpoint, result]) => [breakpoint, { mode: result.mode, conflictCount: Array.isArray(result.conflicts) ? result.conflicts.length : 0, mergePlanCount: Array.isArray(result.mergePlan) ? result.mergePlan.length : 0, renderedSurface: result.rendered?.root?.meta?.planningContext?.surfaceMode, renderedBreakpointFamily: result.rendered?.root?.meta?.planningContext?.breakpointFamily }]));
+
 const reconcileBreakpointsSchema = reconcilePipelineSchema.extend({
   breakpoints: z.array(z.enum(['mobile', 'tablet', 'desktop'])).min(1).max(3)
 });
@@ -27,6 +30,7 @@ reconcileRouter.post(
     sendSuccess(res, {
       breakpoints: data.breakpoints,
       resultsByBreakpoint,
+      summaryByBreakpoint: summarizeReconcileBreakpoints(resultsByBreakpoint),
       notes: [
         'Breakpoint-aware reconcile reuses the stable single-breakpoint reconcile pipeline per breakpoint.',
         'This keeps diff priorities and conflict classification consistent across breakpoint families.',

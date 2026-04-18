@@ -51,6 +51,8 @@ const importBreakpointsToFigmaRenderedUiSchema = extractRenderedUiBreakpointsSch
 
 const collectVariantCleanupUiIds = (node: UiNode): string[] => collectUiIdsDeepFirst(node);
 
+const summarizeBreakpointDiagnostics = (diagnostics: Record<string, any>) => Object.fromEntries(Object.entries(diagnostics).map(([breakpoint, item]) => [breakpoint, { rootSelectionMode: item.rootSelectionMode, rootTag: item.rootSummary?.tag, childCandidateCount: Array.isArray(item.childSummaries) ? item.childSummaries.length : 0, authWall: item.pageAudit?.hasAuthWall ?? false, privateInputs: item.pageAudit?.hasPrivateInputs ?? false }]));
+
 
 const buildFallbackDiagnosticsFromDocument = (document: any, data: any, breakpoint: string): Record<string, unknown> => {
   const root = document.root;
@@ -162,6 +164,7 @@ renderedUiRouter.post(
     sendSuccess(res, {
       activeBreakpoint: data.breakpoints[0],
       diagnosticsByBreakpoint,
+      summaryByBreakpoint: summarizeBreakpointDiagnostics(diagnosticsByBreakpoint),
       notes: [
         'Breakpoint-aware diagnostics reuse the stable single-breakpoint diagnose flow per breakpoint.',
         'This route is intended for surface/root/computed-style comparison across desktop/tablet/mobile.',

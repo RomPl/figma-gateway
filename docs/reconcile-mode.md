@@ -135,3 +135,6 @@ Current behavior:
 - returns `resultsByBreakpoint`
 - keeps conflict classification and merge priorities identical to single-breakpoint reconcile
 - remains diagnostic/planning-first until variant-group reverse-sync bindings are finalized
+
+
+The breakpoint-aware reconcile route now also returns `summaryByBreakpoint`, which gives a compact comparison of conflict counts, merge-plan counts and rendered planning context per breakpoint family.
