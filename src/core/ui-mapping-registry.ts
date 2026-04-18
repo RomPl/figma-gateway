@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { AppError } from './errors';
+import { getBlockIdentityAliasesFromUnknown } from './block-identity';
 import type { SqliteDatabase } from '../db/sqlite';
 
 const uiIdPattern = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/i;
@@ -119,6 +120,24 @@ type UiMappingRow = {
   sync_last_figma_hash: string | null;
   created_at: string;
   updated_at: string;
+};
+
+
+const normalizeSearch = (value: string): string => value.toLowerCase().trim();
+const computeAliasScore = (query: string | undefined, values: string[]): number => {
+  if (!query) return 0;
+  const q = normalizeSearch(query);
+  let score = 0;
+  for (const value of values.map((item) => normalizeSearch(item)).filter(Boolean)) {
+    if (value === q) score = Math.max(score, 100);
+    else if (value.includes(q) || q.includes(value)) score = Math.max(score, 70);
+  }
+  return score;
+};
+const mappingSearchValues = (record: UiMappingRecord): string[] => {
+  const codeAliases = getBlockIdentityAliasesFromUnknown(record.code.snapshot && typeof record.code.snapshot === 'object' ? (record.code.snapshot as Record<string, unknown>).meta : undefined);
+  const figmaAliases = getBlockIdentityAliasesFromUnknown(record.figma.snapshot && typeof record.figma.snapshot === 'object' ? (record.figma.snapshot as Record<string, unknown>).meta : undefined);
+  return [record.uiId, record.project, record.semanticRole, record.code.file, record.code.component, record.code.selector, record.code.jsxPath, record.figma.fileKey, record.figma.nodeId, ...codeAliases, ...figmaAliases].filter(Boolean) as string[];
 };
 
 const mapRow = (row: UiMappingRow): UiMappingRecord => ({
@@ -282,10 +301,10 @@ export class UiMappingRegistry {
 
     if (data.query) {
       clauses.push(`(
-        ui_id LIKE ? OR project LIKE ? OR COALESCE(semantic_role, '') LIKE ? OR code_file LIKE ? OR code_component LIKE ? OR COALESCE(code_selector, '') LIKE ? OR COALESCE(code_jsx_path, '') LIKE ? OR figma_file_key LIKE ? OR figma_node_id LIKE ?
+        ui_id LIKE ? OR project LIKE ? OR COALESCE(semantic_role, '') LIKE ? OR code_file LIKE ? OR code_component LIKE ? OR COALESCE(code_selector, '') LIKE ? OR COALESCE(code_jsx_path, '') LIKE ? OR figma_file_key LIKE ? OR figma_node_id LIKE ? OR code_snapshot_json LIKE ? OR figma_snapshot_json LIKE ?
       )`);
       const pattern = `%${data.query}%`;
-      params.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern);
+      params.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern);
     }
     if (data.project) { clauses.push('project = ?'); params.push(data.project); }
     if (data.semanticRole) { clauses.push('semantic_role = ?'); params.push(data.semanticRole); }
@@ -294,7 +313,7 @@ export class UiMappingRegistry {
     if (data.codeFile) { clauses.push('code_file = ?'); params.push(data.codeFile); }
     if (data.component) { clauses.push('code_component = ?'); params.push(data.component); }
 
-    params.push(data.limit);
+    params.push(Math.max(data.limit * 5, data.limit));
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const rows = this.db.prepare(`
       SELECT ui_id, project, semantic_role,
@@ -308,7 +327,12 @@ export class UiMappingRegistry {
       LIMIT ?
     `).all(...(params as any[])) as UiMappingRow[];
 
-    return rows.map(mapRow);
+    return rows
+      .map(mapRow)
+      .map((record) => ({ record, score: computeAliasScore(data.query, mappingSearchValues(record)) }))
+      .sort((a, b) => b.score - a.score || a.record.uiId.localeCompare(b.record.uiId))
+      .slice(0, data.limit)
+      .map((item) => item.record);
   }
 
   public resolve(input: z.infer<typeof resolveUiMappingSchema>): UiMappingRecord {

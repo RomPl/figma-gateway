@@ -62,3 +62,15 @@ export const attachBlockIdentity = (document: UiModelDocument): UiModelDocument 
   });
   return document;
 };
+
+
+export const getBlockIdentityAliasesFromUnknown = (input: unknown): string[] => {
+  if (!input || typeof input !== 'object') return [];
+  const meta = input as Record<string, unknown>;
+  const raw = meta.blockIdentity && typeof meta.blockIdentity === 'object' ? meta.blockIdentity : meta;
+  const aliases = Array.isArray((raw as Record<string, unknown>).aliases) ? ((raw as Record<string, unknown>).aliases as unknown[]).map(String) : [];
+  const primaryUiId = typeof (raw as Record<string, unknown>).primaryUiId === 'string' ? (raw as Record<string, unknown>).primaryUiId : undefined;
+  const semanticName = typeof (raw as Record<string, unknown>).semanticName === 'string' ? (raw as Record<string, unknown>).semanticName : undefined;
+  const blockId = typeof (raw as Record<string, unknown>).blockId === 'string' ? (raw as Record<string, unknown>).blockId : undefined;
+  return Array.from(new Set([blockId, primaryUiId, semanticName, ...aliases].filter(Boolean) as string[]));
+};

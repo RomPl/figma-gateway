@@ -101,15 +101,29 @@ test('ui-mapping registry stores durable code-figma correspondence and sync stat
       assert.equal(resolvedData.code.sourceRange.lineEnd, 28);
       assert.equal(resolvedData.sync.lastSyncedAt, '2026-04-15T12:00:00Z');
 
+      const aliasUpsert = await requestJson(baseUrl, '/api/ui-mappings', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          uiId: 'marketing.hero.alt',
+          project: 'marketing-site',
+          semanticRole: 'headline',
+          code: { file: 'src/components/HeroAlt.tsx', component: 'HeroAlt', snapshot: { kind: 'section', uiId: 'marketing.hero.alt', visible: true, meta: { blockIdentity: { blockId: 'marketing.hero.alt', aliases: ['hero.primary'], semanticName: 'hero.primary', identitySource: 'stable_ui_id', stable: true } } } },
+          figma: { fileKey: 'def456', nodeId: '98:76', snapshot: { kind: 'section', name: 'Hero Alt' } },
+          sync: { lastDirection: 'code_to_figma' }
+        })
+      });
+      assert.equal(aliasUpsert.status, 200);
+
       const search = await requestJson(baseUrl, '/api/search/ui-mappings', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ query: 'landing.hero' })
+        body: JSON.stringify({ query: 'hero.primary' })
       });
       assert.equal(search.status, 200);
       const searchData = (search.json as { data: Array<{ uiId: string; figma: { fileKey: string } }> }).data;
-      assert.equal(searchData[0].uiId, 'landing.hero');
-      assert.equal(searchData[0].figma.fileKey, 'abc123');
+      assert.equal(searchData[0].uiId, 'marketing.hero.alt');
+      assert.equal(searchData[0].figma.fileKey, 'def456');
 
       const list = await requestJson(baseUrl, '/api/ui-mappings?project=marketing-site&limit=10');
       assert.equal(list.status, 200);

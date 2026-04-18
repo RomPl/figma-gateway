@@ -8,7 +8,7 @@ It should be updated when a major implementation chunk is completed.
 
 ## Current phase
 
-Phase D: strengthen registry/search/reconcile usage around the new identity aliases without breaking current `uiId`-based reverse sync.
+Phase E: strengthen breakpoint variant-set contracts so future `desktop` / `tablet` / `mobile` Figma planning can stay reversible and identity-safe.
 
 ## Completed phase
 
@@ -149,3 +149,21 @@ Phase C completed:
 - preserved `uiId` as the primary compatibility key
 - attached identity aliases and semantic fallback names to extracted/rendered/planned nodes
 - avoided schema/database migration while the block identity contract is still stabilizing
+
+
+## Working target for current implementation loop
+
+Phase D implementation focus:
+
+- make registry and search alias-aware using additive metadata
+- improve selector resolution using block identity aliases
+- keep `uiId` as the exact reverse-sync key while making intent resolution less brittle
+
+## Completed phase
+
+Phase D completed:
+
+- registry and search are now alias-aware using additive metadata from snapshots and metadata blobs
+- selector resolution now uses block identity aliases in addition to `uiId`, role, text and tree-path matching
+- current reverse-sync still uses exact `uiId` as the authoritative key
+- alias-aware search improves intent/block targeting without forcing a DB migration

@@ -4,6 +4,7 @@ import { AppError } from './errors';
 import type { CodeUiParserService } from './code-ui-parser';
 import type { FigmaUiExtractorService } from './figma-ui-extractor';
 import type { UiMappingService } from './ui-mapping-registry';
+import { getBlockIdentityAliasesFromUnknown } from './block-identity';
 import type { UiModelDocument, UiNode } from './ui-model';
 
 export const resolveSelectorSchema = z.object({
@@ -16,7 +17,7 @@ export const resolveSelectorSchema = z.object({
   limit: z.coerce.number().int().min(1).max(20).default(5)
 });
 
-export type SelectorMatchKind = 'uiId' | 'node_name' | 'semantic_role' | 'text' | 'tree_path' | 'fuzzy';
+export type SelectorMatchKind = 'uiId' | 'node_name' | 'semantic_role' | 'text' | 'tree_path' | 'block_alias' | 'fuzzy';
 
 export type SelectorResolvedMatch = {
   uiId: string;
@@ -124,6 +125,8 @@ const scoreNode = (
   const normalizedRole = normalize(node.role ?? '');
   const normalizedText = normalize(node.text ?? '');
   const normalizedPath = normalize(treePath);
+  const blockAliases = getBlockIdentityAliasesFromUnknown(node.meta);
+  const normalizedAliases = blockAliases.map((item) => normalize(item)).filter(Boolean);
 
   if (normalizedUiId === normalizedQuery) {
     score += 120;
@@ -169,7 +172,17 @@ const scoreNode = (
     reasons.push(`Tree path match: ${treePath}`);
   }
 
-  const fields = [node.uiId, node.name ?? '', node.role ?? '', node.text ?? '', treePath];
+  if (normalizedAliases.some((alias) => alias === normalizedQuery)) {
+    score += 110;
+    kinds.add('block_alias');
+    reasons.push(`Exact block identity alias match: ${blockAliases.find((alias) => normalize(alias) === normalizedQuery)}`);
+  } else if (normalizedAliases.some((alias) => alias.includes(normalizedQuery) || normalizedQuery.includes(alias))) {
+    score += 85;
+    kinds.add('block_alias');
+    reasons.push('Partial block identity alias match');
+  }
+
+  const fields = [node.uiId, node.name ?? '', node.role ?? '', node.text ?? '', treePath, ...blockAliases];
   const bestFuzzy = Math.max(...fields.map((field) => diceCoefficient(field, query)));
   if (bestFuzzy >= 0.5) {
     score += Math.round(bestFuzzy * 60);

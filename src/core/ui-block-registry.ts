@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { AppError } from './errors';
+import { getBlockIdentityAliasesFromUnknown } from './block-identity';
 import type { SqliteDatabase } from '../db/sqlite';
 
 const uiIdPattern = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/i;
@@ -81,6 +82,23 @@ type UiBlockRow = {
   metadata_json: string;
   created_at: string;
   updated_at: string;
+};
+
+
+const normalizeSearch = (value: string): string => value.toLowerCase().trim();
+const computeAliasScore = (query: string | undefined, values: string[]): number => {
+  if (!query) return 0;
+  const q = normalizeSearch(query);
+  let score = 0;
+  for (const value of values.map((item) => normalizeSearch(item)).filter(Boolean)) {
+    if (value === q) score = Math.max(score, 100);
+    else if (value.includes(q) || q.includes(value)) score = Math.max(score, 70);
+  }
+  return score;
+};
+const blockSearchValues = (record: UiBlockRecord): string[] => {
+  const aliases = getBlockIdentityAliasesFromUnknown(record.metadata);
+  return [record.uiId, record.project, record.name, record.description, record.codePath, record.codeSelector, record.fileKey, record.nodeId, ...record.tags, ...aliases].filter(Boolean) as string[];
 };
 
 const mapRow = (row: UiBlockRow): UiBlockRecord => ({
@@ -215,10 +233,10 @@ export class UiBlockRegistry {
     if (data.query) {
       clauses.push(`(
         ui_id LIKE ? OR project LIKE ? OR COALESCE(name, '') LIKE ? OR COALESCE(description, '') LIKE ? OR
-        COALESCE(code_path, '') LIKE ? OR COALESCE(code_selector, '') LIKE ? OR COALESCE(file_key, '') LIKE ? OR COALESCE(node_id, '') LIKE ?
+        COALESCE(code_path, '') LIKE ? OR COALESCE(code_selector, '') LIKE ? OR COALESCE(file_key, '') LIKE ? OR COALESCE(node_id, '') LIKE ? OR metadata_json LIKE ?
       )`);
       const pattern = `%${data.query}%`;
-      params.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern);
+      params.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern);
     }
     if (data.project) {
       clauses.push('project = ?');
@@ -241,7 +259,7 @@ export class UiBlockRegistry {
       params.push(tag);
     }
 
-    params.push(data.limit);
+    params.push(Math.max(data.limit * 5, data.limit));
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const rows = this.db.prepare(`
       SELECT ui_id, project, file_key, node_id, code_repository, code_path, code_export_name, code_selector,
@@ -253,7 +271,12 @@ export class UiBlockRegistry {
       LIMIT ?
     `).all(...(params as any[])) as UiBlockRow[];
 
-    return rows.map(mapRow);
+    return rows
+      .map(mapRow)
+      .map((record) => ({ record, score: computeAliasScore(data.query, blockSearchValues(record)) }))
+      .sort((a, b) => b.score - a.score || a.record.uiId.localeCompare(b.record.uiId))
+      .slice(0, data.limit)
+      .map((item) => item.record);
   }
 
   public resolve(input: z.infer<typeof resolveUiBlockSchema>): UiBlockRecord {

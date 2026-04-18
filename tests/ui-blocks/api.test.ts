@@ -90,13 +90,26 @@ test('ui-block registry API stores and resolves stable code-to-figma block ids',
       assert.equal(resolvedData.nodeId, '1:10');
       assert.equal(resolvedData.figmaBindingKey, 'figma-gateway.ui-id');
 
+      await requestJson(baseUrl, '/api/ui-blocks', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          uiId: 'marketing.hero.alt',
+          project: 'marketing-site',
+          codeMarkerType: 'data-ui-id',
+          figmaBindingType: 'plugin-data',
+          figmaBindingKey: 'figma-gateway.ui-id',
+          metadata: { blockIdentity: { blockId: 'marketing.hero.alt', aliases: ['hero.primary'], semanticName: 'hero.primary', identitySource: 'stable_ui_id', stable: true } }
+        })
+      });
+
       const search = await requestJson(baseUrl, '/api/search/ui-blocks', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ query: 'landing.hero' })
+        body: JSON.stringify({ query: 'hero.primary' })
       });
       assert.equal(search.status, 200);
-      assert.equal((search.json as { data: Array<{ uiId: string }> }).data[0].uiId, 'landing.hero');
+      assert.equal((search.json as { data: Array<{ uiId: string }> }).data[0].uiId, 'marketing.hero.alt');
 
       const registration = await requestJson(baseUrl, '/api/plugin-bridge/sessions/register', {
         method: 'POST',
