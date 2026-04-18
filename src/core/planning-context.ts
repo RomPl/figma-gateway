@@ -72,3 +72,10 @@ export const attachPlanningContext = (document: UiModelDocument): UiModelDocumen
   document.root.meta = { ...(document.root.meta ?? {}), planningContext };
   return document;
 };
+
+
+export const formatPlanningVariantName = (context: PlanningContext, baseName: string): string => {
+  const parts = [baseName, context.breakpointFamily];
+  if (context.surfaceMode !== 'component') parts.push(context.surfaceMode);
+  return parts.join(' · ');
+};

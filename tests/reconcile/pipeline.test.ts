@@ -127,12 +127,13 @@ test('reconcile route reports four-state merge plan, conflicts and priorities', 
 
 
 test('ui diff engine mode actions prefer figma target in code_to_figma and code target in figma_to_code', () => {
-  const codeDocument = { version: 'ui-model.v1' as const, root: { kind: 'section' as const, uiId: 'landing.hero', visible: true, children: [{ kind: 'text' as const, uiId: 'landing.hero.title', visible: true, text: 'Code title', children: [] }] } };
-  const renderedDocument = { version: 'ui-model.v1' as const, root: { kind: 'section' as const, uiId: 'landing.hero', visible: true, children: [{ kind: 'text' as const, uiId: 'landing.hero.title', visible: true, text: 'Rendered title', children: [] }] } };
+  const codeDocument = { version: 'ui-model.v1' as const, root: { kind: 'section' as const, uiId: 'landing.hero', visible: true, layout: { type: 'vertical' as const, gap: 32 }, children: [{ kind: 'text' as const, uiId: 'landing.hero.title', visible: true, text: 'Code title', children: [] }] } };
+  const renderedDocument = { version: 'ui-model.v1' as const, root: { kind: 'section' as const, uiId: 'landing.hero', visible: true, responsive: { breakpointName: 'desktop', viewportWidth: 1440 }, children: [{ kind: 'text' as const, uiId: 'landing.hero.title', visible: true, text: 'Rendered title', children: [] }] } };
   const figmaDocument = { version: 'ui-model.v1' as const, root: { kind: 'section' as const, uiId: 'landing.hero', visible: true, children: [{ kind: 'text' as const, uiId: 'landing.hero.title', visible: true, text: 'Figma title', children: [] }] } };
   const mappings = [{ uiId: 'landing.hero', project: 'marketing-site', code: { file: 'src/components/Hero.tsx', snapshot: { kind: 'section', uiId: 'landing.hero', visible: true, children: [{ kind: 'text', uiId: 'landing.hero.title', visible: true, text: 'Base title', children: [] }] } }, figma: { fileKey: 'abc123', nodeId: '12:45', snapshot: { kind: 'section', uiId: 'landing.hero', visible: true, children: [{ kind: 'text', uiId: 'landing.hero.title', visible: true, text: 'Base title', children: [] }] } }, sync: { lastDirection: 'bidirectional' as const }, createdAt: '2026-04-15T12:00:00Z', updatedAt: '2026-04-15T12:00:00Z' }];
   const codeToFigma = buildUiReconcilePlan('code_to_figma', codeDocument, renderedDocument, figmaDocument, mappings, ['landing.hero']);
   const figmaToCode = buildUiReconcilePlan('figma_to_code', codeDocument, renderedDocument, figmaDocument, mappings, ['landing.hero']);
   assert.equal(codeToFigma.mergePlan.every((item) => item.target === 'figma'), true);
   assert.equal(figmaToCode.mergePlan.every((item) => item.target === 'code'), true);
+  assert.equal(codeToFigma.mergePlan.some((item) => String(item.reason).includes('desktop')), true);
 });

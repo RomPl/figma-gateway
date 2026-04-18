@@ -6,7 +6,7 @@ import type { CodeUiParserService } from './code-ui-parser';
 import type { FigmaCommandStep } from './figma-write-types';
 import type { PluginBridgeService } from './plugin-bridge';
 import type { UiModelDocument, UiNode, UiPaint } from './ui-model';
-import { createPlanningContextFromNode } from './planning-context';
+import { createPlanningContextFromNode, formatPlanningVariantName } from './planning-context';
 import { annotateVisualConfidence } from './visual-confidence';
 import { segmentVisualBlocks } from './visual-segmentation';
 import { visualLogger, summarizeNode } from './visual-debug';
@@ -679,10 +679,22 @@ const planNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: strin
   emitDeferredContainerSize(node, actions, commands, isRoot);
 };
 
+const attachPlanningMetadataToPlan = (model: UiModelDocument, commands: FigmaCommandStep[], componentName: string): void => {
+  const planningContext = createPlanningContextFromNode(model.root);
+  const variantName = formatPlanningVariantName(planningContext, componentName);
+  commands.unshift({ type: 'rename_node', payload: { nodeRef: model.root.uiId, name: variantName } });
+  commands.push({ type: 'set_plugin_data', payload: { nodeRef: model.root.uiId, pluginData: { namespace: 'figma-gateway', key: 'surface-mode', value: planningContext.surfaceMode } } });
+  commands.push({ type: 'set_plugin_data', payload: { nodeRef: model.root.uiId, pluginData: { namespace: 'figma-gateway', key: 'breakpoint-family', value: planningContext.breakpointFamily } } });
+  if (planningContext.breakpointName) commands.push({ type: 'set_plugin_data', payload: { nodeRef: model.root.uiId, pluginData: { namespace: 'figma-gateway', key: 'breakpoint-name', value: planningContext.breakpointName } } });
+  if (planningContext.shellSelectionMode) commands.push({ type: 'set_plugin_data', payload: { nodeRef: model.root.uiId, pluginData: { namespace: 'figma-gateway', key: 'shell-selection-mode', value: planningContext.shellSelectionMode } } });
+  if (planningContext.contentSelectionMode) commands.push({ type: 'set_plugin_data', payload: { nodeRef: model.root.uiId, pluginData: { namespace: 'figma-gateway', key: 'content-selection-mode', value: planningContext.contentSelectionMode } } });
+};
+
 export const buildCodeToFigmaPlan = (model: UiModelDocument, componentName: string, filePath: string): CodeToFigmaExecutionPlan => {
   const actions: PlannerAction[] = [];
   const commands: FigmaCommandStep[] = [];
   planNode(model.root, undefined, undefined, actions, commands, true);
+  attachPlanningMetadataToPlan(model, commands, componentName);
   return { componentName, filePath, model, actions, commands };
 };
 
@@ -732,6 +744,8 @@ export class CodeToFigmaPipelineService {
       renderedUsed ? 'Planner used rendered snapshot as primary visual source.' : 'Planner used code model only; AST values served as visual fallback.',
       (model.root.meta as any)?.renderProfile ? `Resolved surface mode: ${String((model.root.meta as any).renderProfile.surfaceMode)}.` : 'No render profile metadata resolved.',
       (model.root.meta as any)?.planningContext ? `Planning context: ${String((model.root.meta as any).planningContext.surfaceMode)} @ ${String((model.root.meta as any).planningContext.breakpointFamily)}.` : 'No planning context metadata resolved.',
+      (model.root.meta as any)?.planningContext?.shellSelectionMode ? `Shell/content selection: ${String((model.root.meta as any).planningContext.shellSelectionMode)} -> ${String((model.root.meta as any).planningContext.contentSelectionMode)}.` : 'No shell/content selection metadata resolved.',
+      'Root Figma node now carries planning plugin-data for surface mode and breakpoint family.',
       'AST remained the source for mapping, semantic structure and fallback values.',
       "Execution plan translated into editable Figma-native commands.",
       ...(needsReview.length ? ["Low-confidence nodes were marked as needs review and complex Figma asset/icon creation was skipped."] : []),

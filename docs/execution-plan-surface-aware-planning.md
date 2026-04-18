@@ -8,7 +8,7 @@ It should be updated when a major implementation chunk is completed.
 
 ## Current phase
 
-Phase B: use the planning context operationally in planner and reconcile outputs, while keeping the breakpoint model extensible toward `desktop` / `tablet` / `mobile`.
+Phase C: introduce a first-class block identity scaffold above raw node identity while preserving `uiId` compatibility and current mapping-registry behavior.
 
 ## Completed phase
 
@@ -112,3 +112,21 @@ Introduce stronger block identity above raw DOM node identity while preserving `
 ### Phase D
 
 Expand beauty Figma planning, SVG fidelity and effects fidelity on top of the stabilized planning context.
+
+## Working target for current implementation loop
+
+Phase B implementation focus:
+
+- make planner output variant-aware metadata for breakpoint families
+- attach surface and breakpoint plugin-data to Figma root nodes
+- make reconcile reasons explicitly surface-aware and breakpoint-aware
+- keep multi-breakpoint support deferred, but preserve the contract for `desktop` / `tablet` / `mobile`
+
+## Completed phase
+
+Phase B completed:
+
+- planner emits variant-aware metadata for breakpoint families
+- root Figma plan now carries planning plugin-data for surface mode and breakpoint metadata
+- reconcile reasons are now surface-aware and breakpoint-aware
+- `desktop` / `tablet` / `mobile` are preserved as first-class breakpoint families while execution remains single-breakpoint per run

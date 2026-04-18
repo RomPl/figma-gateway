@@ -87,6 +87,9 @@ test('code-to-figma planner builds editable Figma-native execution plan from ren
     assert.equal(result.plan.commands.some((command) => command.type === 'set_text_style'), true);
     assert.equal(result.plan.model.root.boundingBox?.width, 1280);
     assert.equal((result.plan.model.root.meta as any)?.planner?.visualSource, 'rendered-first');
+    assert.equal(result.plan.commands.some((command) => command.type === 'rename_node'), true);
+    assert.equal(result.plan.commands.some((command) => command.type === 'set_plugin_data' && command.payload?.pluginData?.key === 'breakpoint-family'), true);
+    assert.equal(result.notes.some((note) => note.includes('planning plugin-data')), true);
     assert.equal(result.queued, undefined);
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
