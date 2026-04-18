@@ -305,6 +305,13 @@ const sanitizeSvgMarkupForFigma = (svgMarkup: unknown, icon: UiNode['icon'] | un
   const strokeScale = Math.max(originalWidth > 0 && actualWidth > 0 ? actualWidth / originalWidth : 1, originalHeight > 0 && actualHeight > 0 ? actualHeight / originalHeight : 1);
   if (actualWidth > 0) markup = /\swidth=(['"]).*?\1/i.test(markup) ? markup.replace(/\swidth=(['"]).*?\1/i, ` width="${actualWidth}"`) : markup.replace('<svg', `<svg width="${actualWidth}"`);
   if (actualHeight > 0) markup = /\sheight=(['"]).*?\1/i.test(markup) ? markup.replace(/\sheight=(['"]).*?\1/i, ` height="${actualHeight}"`) : markup.replace('<svg', `<svg height="${actualHeight}"`);
+  if (!/\sviewBox=(['"]).*?\1/i.test(markup)) {
+    const fallbackViewBoxWidth = actualWidth > 0 ? actualWidth : originalWidth;
+    const fallbackViewBoxHeight = actualHeight > 0 ? actualHeight : originalHeight;
+    if (fallbackViewBoxWidth > 0 && fallbackViewBoxHeight > 0) {
+      markup = markup.replace('<svg', `<svg viewBox="0 0 ${fallbackViewBoxWidth} ${fallbackViewBoxHeight}"`);
+    }
+  }
   const strokeWidthMatch = markup.match(/stroke-width=(['"])(\d+(?:\.\d+)?)\1/i);
   if (strokeWidthMatch && strokeScale !== 1) {
     const scaled = (Number(strokeWidthMatch[2]) * strokeScale).toFixed(3).replace(/\.0+$/,'').replace(/(\.\d*?)0+$/,'$1');

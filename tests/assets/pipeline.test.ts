@@ -208,3 +208,23 @@ test('sanitized svg markup matches actual rendered icon size and scaled stroke w
   assert.equal(String(cmd.payload.svgMarkup).includes('height="28"'), true);
   assert.equal(String(cmd.payload.svgMarkup).includes('stroke-width="2.333"') || String(cmd.payload.svgMarkup).includes('stroke-width="2.334"'), true);
 });
+
+
+test('code-to-figma planner injects fallback viewBox for inline svg icons that only provide width and height', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: { kind: 'frame', uiId: 'page.root', visible: true, children: [{
+      kind: 'icon', uiId: 'page.icon', visible: true,
+      boundingBox: { x: 0, y: 0, width: 18, height: 18 },
+      computedStyle: { width: 18, height: 18 },
+      icon: { sourceType: 'inline-svg', textLabel: 'sparkles', svgMarkup: '<svg width="18" height="18"><path d="M1 1"/></svg>', fill: 'rgb(255,255,255)', stroke: 'rgb(255,255,255)', size: { width: 18, height: 18 }, placement: 'standalone' },
+      asset: { layer: 'svg-icon' },
+      children: []
+    }] }
+  };
+  const { buildCodeToFigmaPlan } = await import('../../src/core/code-to-figma-pipeline');
+  const plan = buildCodeToFigmaPlan(model, 'Page', 'src/app/page.tsx');
+  const cmd = plan.commands.find((item: any) => item.type === 'set_icon_reference' && item.payload?.nodeRef === 'page.icon');
+  assert.equal(Boolean(cmd), true);
+  assert.equal(String(cmd.payload.svgMarkup).includes('viewBox="0 0 18 18"'), true);
+});
