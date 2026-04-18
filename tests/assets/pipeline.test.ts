@@ -228,3 +228,33 @@ test('code-to-figma planner injects fallback viewBox for inline svg icons that o
   assert.equal(Boolean(cmd), true);
   assert.equal(String(cmd.payload.svgMarkup).includes('viewBox="0 0 18 18"'), true);
 });
+
+
+test('code-to-figma planner rewrites nested currentColor fill and stroke attributes inside inline svg markup', async () => {
+  const { buildCodeToFigmaPlan } = await import('../../src/core/code-to-figma-pipeline');
+  const model: any = {
+    version: 'ui-model.v1',
+    root: { kind: 'frame', uiId: 'page.root', visible: true, children: [{
+      kind: 'icon', uiId: 'page.icon.nested', visible: true,
+      boundingBox: { x: 0, y: 0, width: 20, height: 20 },
+      computedStyle: { width: 20, height: 20 },
+      icon: {
+        sourceType: 'inline-svg',
+        textLabel: 'sparkles',
+        svgMarkup: '<svg viewBox="0 0 20 20"><g stroke="currentColor"><path fill="currentColor" d="M1 1"/></g></svg>',
+        fill: 'rgb(255, 255, 255)',
+        stroke: 'rgb(36, 99, 235)',
+        size: { width: 20, height: 20 },
+        placement: 'standalone'
+      },
+      asset: { layer: 'svg-icon' },
+      children: []
+    }] }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'Page', 'src/app/page.tsx');
+  const cmd = plan.commands.find((item: any) => item.type === 'set_icon_reference' && item.payload?.nodeRef === 'page.icon.nested');
+  assert.equal(Boolean(cmd), true);
+  assert.equal(String(cmd.payload.svgMarkup).includes('currentColor'), false);
+  assert.equal(String(cmd.payload.svgMarkup).includes('stroke="rgb(36, 99, 235)"'), true);
+  assert.equal(String(cmd.payload.svgMarkup).includes('fill="rgb(255, 255, 255)"'), true);
+});

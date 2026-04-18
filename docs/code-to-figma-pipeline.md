@@ -323,6 +323,7 @@ Current sanitation includes:
 - ensure `xmlns`
 - strip noisy `class` / `data-*` / `aria-*` attributes
 - replace `currentColor` with explicit fill/stroke when available
+Nested inline SVG nodes should also have `currentColor` rewritten to explicit `fill`/`stroke` values when those values are known, not only the outer `<svg>` element.
 
 Additional compatibility step for older runtimes:
 

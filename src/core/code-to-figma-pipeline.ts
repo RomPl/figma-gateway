@@ -317,8 +317,8 @@ const sanitizeSvgMarkupForFigma = (svgMarkup: unknown, icon: UiNode['icon'] | un
     const scaled = (Number(strokeWidthMatch[2]) * strokeScale).toFixed(3).replace(/\.0+$/,'').replace(/(\.\d*?)0+$/,'$1');
     markup = markup.replace(/stroke-width=(['"])(\d+(?:\.\d+)?)\1/i, `stroke-width="${scaled}"`);
   }
-  if (explicitStroke) markup = markup.replace(/stroke=(['"])currentColor\1/g, `stroke="${explicitStroke}"`);
-  if (explicitFill) markup = markup.replace(/fill=(['"])currentColor\1/g, `fill="${explicitFill}"`);
+  if (explicitStroke) markup = markup.replace(/stroke=(['"])currentColor\1/gi, `stroke="${explicitStroke}"`);
+  if (explicitFill) markup = markup.replace(/fill=(['"])currentColor\1/gi, `fill="${explicitFill}"`);
   if (explicitStroke && !/\sstroke=/.test(markup)) markup = markup.replace('<svg', `<svg stroke="${explicitStroke}"`);
   if (explicitFill && !/\sfill=/.test(markup)) markup = markup.replace('<svg', `<svg fill="${explicitFill}"`);
   return markup;
