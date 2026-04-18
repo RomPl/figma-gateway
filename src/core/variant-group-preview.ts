@@ -41,3 +41,18 @@ export const buildVariantGroupPreview = (documentsByBreakpoint: Record<string, U
     mappingMode: 'deferred'
   };
 };
+
+
+export const extractVariantGroupSearchValues = (input: unknown): string[] => {
+  if (!input || typeof input !== 'object') return [];
+  const meta = input as Record<string, unknown>;
+  const variantSet = meta.breakpointVariantSet && typeof meta.breakpointVariantSet === 'object' ? meta.breakpointVariantSet as Record<string, unknown> : undefined;
+  const variantRef = meta.breakpointVariantRef && typeof meta.breakpointVariantRef === 'object' ? meta.breakpointVariantRef as Record<string, unknown> : undefined;
+  const values = [
+    typeof variantSet?.variantGroupId === 'string' ? variantSet.variantGroupId : undefined,
+    typeof variantRef?.originalUiId === 'string' ? variantRef.originalUiId : undefined,
+    typeof variantRef?.variantUiId === 'string' ? variantRef.variantUiId : undefined,
+    typeof variantRef?.breakpointFamily === 'string' ? `breakpoint:${variantRef.breakpointFamily}` : undefined
+  ].filter(Boolean) as string[];
+  return Array.from(new Set(values));
+};

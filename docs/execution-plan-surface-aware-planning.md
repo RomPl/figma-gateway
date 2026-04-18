@@ -8,7 +8,7 @@ It should be updated when a major implementation chunk is completed.
 
 ## Current phase
 
-Phase J: add a variant-group scaffold for multi-breakpoint results so future durable bindings can be introduced without breaking the current `uiId` reverse-sync contract.
+Phase K: make search and future mapping evolution aware of variant-group scaffolds while keeping persistent bindings deferred.
 
 ## Completed phase
 
@@ -221,3 +221,11 @@ Phase J completed:
 - exposed one logical variant-group id with per-breakpoint variant uiIds and aliases
 - kept the scaffold additive and deferred, without changing the authoritative `uiId` reverse-sync contract
 - prepared the system for future durable multi-breakpoint bindings without forcing a database migration
+
+## Completed phase
+
+Phase K completed:
+
+- made search aware of deferred variant-group scaffold values
+- allowed registry search to match `variantGroupId`, original uiId and variant-uiId previews from snapshot metadata
+- kept durable bindings deferred while still making future multi-breakpoint identities discoverable

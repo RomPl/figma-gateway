@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { AppError } from './errors';
 import { getBlockIdentityAliasesFromUnknown } from './block-identity';
+import { extractVariantGroupSearchValues } from './variant-group-preview';
 import type { SqliteDatabase } from '../db/sqlite';
 
 const uiIdPattern = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/i;
@@ -135,9 +136,12 @@ const computeAliasScore = (query: string | undefined, values: string[]): number 
   return score;
 };
 const mappingSearchValues = (record: UiMappingRecord): string[] => {
-  const codeAliases = getBlockIdentityAliasesFromUnknown(record.code.snapshot && typeof record.code.snapshot === 'object' ? (record.code.snapshot as Record<string, unknown>).meta : undefined);
-  const figmaAliases = getBlockIdentityAliasesFromUnknown(record.figma.snapshot && typeof record.figma.snapshot === 'object' ? (record.figma.snapshot as Record<string, unknown>).meta : undefined);
-  return [record.uiId, record.project, record.semanticRole, record.code.file, record.code.component, record.code.selector, record.code.jsxPath, record.figma.fileKey, record.figma.nodeId, ...codeAliases, ...figmaAliases].filter(Boolean) as string[];
+  const codeMeta = record.code.snapshot && typeof record.code.snapshot === 'object' ? (record.code.snapshot as Record<string, unknown>).meta : undefined;
+  const figmaMeta = record.figma.snapshot && typeof record.figma.snapshot === 'object' ? (record.figma.snapshot as Record<string, unknown>).meta : undefined;
+  const codeAliases = getBlockIdentityAliasesFromUnknown(codeMeta);
+  const figmaAliases = getBlockIdentityAliasesFromUnknown(figmaMeta);
+  const variantAliases = [...extractVariantGroupSearchValues(codeMeta), ...extractVariantGroupSearchValues(figmaMeta)];
+  return [record.uiId, record.project, record.semanticRole, record.code.file, record.code.component, record.code.selector, record.code.jsxPath, record.figma.fileKey, record.figma.nodeId, ...codeAliases, ...figmaAliases, ...variantAliases].filter(Boolean) as string[];
 };
 
 const mapRow = (row: UiMappingRow): UiMappingRecord => ({

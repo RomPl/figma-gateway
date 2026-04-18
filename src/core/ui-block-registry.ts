@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { AppError } from './errors';
 import { getBlockIdentityAliasesFromUnknown } from './block-identity';
+import { extractVariantGroupSearchValues } from './variant-group-preview';
 import type { SqliteDatabase } from '../db/sqlite';
 
 const uiIdPattern = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/i;
@@ -98,7 +99,8 @@ const computeAliasScore = (query: string | undefined, values: string[]): number 
 };
 const blockSearchValues = (record: UiBlockRecord): string[] => {
   const aliases = getBlockIdentityAliasesFromUnknown(record.metadata);
-  return [record.uiId, record.project, record.name, record.description, record.codePath, record.codeSelector, record.fileKey, record.nodeId, ...record.tags, ...aliases].filter(Boolean) as string[];
+  const variantAliases = extractVariantGroupSearchValues(record.metadata);
+  return [record.uiId, record.project, record.name, record.description, record.codePath, record.codeSelector, record.fileKey, record.nodeId, ...record.tags, ...aliases, ...variantAliases].filter(Boolean) as string[];
 };
 
 const mapRow = (row: UiBlockRow): UiBlockRecord => ({
