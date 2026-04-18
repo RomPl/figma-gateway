@@ -306,6 +306,7 @@ This is intentionally redundant for newer runtimes, but helps older running plug
 ## Semantic Figma-facing naming with stable sync identity
 
 Render-first planning should expose cleaner Figma-facing names such as `Header`, `Main`, `Footer`, `Section`, `Container`, `Card`, `Text`, `Icon`, and `Button`.
+This normalization is conservative: it only replaces clearly technical DOM/class-derived names, while preserving human-authored names like `Hero` or `CTA` and still appending the stable `uiId`.
 
 This naming layer must not change the stable `uiId`. Reverse sync and selector resolution continue to use `uiId` as the primary durable identity.
 

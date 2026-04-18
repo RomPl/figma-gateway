@@ -94,13 +94,54 @@ const mapIconPlaceholderText = (label: string | undefined): string => {
   return '◆';
 };
 
+const TECHNICAL_NAME_PATTERN = /^(div|span|section|main|header|footer|article|aside|nav|button|input|form|svg|img|picture|video|body|ul|ol|li)([-._]|$)/i;
+const UTILITY_CLASS_PATTERN = /(mx-auto|max-w-|min-h-|min-w-|justify-|items-|content-|gap-|grid|flex|inline-flex|rounded|shadow|text-|bg-|border|px-|py-|pt-|pr-|pb-|pl-|mt-|mr-|mb-|ml-|w-|h-|container|wrapper|stack|row|col)/i;
+
+const inferSemanticBaseName = (node: UiNode, dom: Record<string, unknown> | undefined, fallbackTag?: string): string | undefined => {
+  const tag = String(typeof dom?.tag === 'string' ? dom.tag : fallbackTag ?? node.kind).toLowerCase();
+  const role = String(node.role || node.meta?.role || '').toLowerCase();
+  const className = String(dom?.className || '').toLowerCase();
+  const uiId = String(node.uiId || '').toLowerCase();
+  const name = String(node.name || '').toLowerCase();
+  const roleHints = `${uiId} ${name} ${className} ${role}`;
+  if (tag === 'header') return 'Header';
+  if (tag === 'main') return 'Main';
+  if (tag === 'footer') return 'Footer';
+  if (node.kind === 'button' || role == 'button' || tag === 'button') return 'Button';
+  if (node.kind === 'text') return 'Text';
+  if (node.kind === 'icon' || tag === 'svg') return 'Icon';
+  if (node.kind === 'image' || ['img', 'picture', 'video'].includes(tag)) return 'Image';
+  if (node.kind === 'input' || ['input', 'textarea', 'select'].includes(tag)) return 'Input';
+  if (node.kind === 'list' || ['ul', 'ol'].includes(tag)) return 'List';
+  if (tag === 'form') return 'Form';
+  if (/(^|[._-])card([._-]|$)|\bcard\b/.test(roleHints)) return 'Card';
+  if (node.kind === 'section' || ['section', 'article'].includes(tag)) return 'Section';
+  if (/(^|[._-])(container|wrapper|shell|stack|grid|row|col)([._-]|$)|\bcontainer\b|\bwrapper\b|\bshell\b/.test(roleHints)) return 'Container';
+  if (node.kind === 'frame' && (node.children?.length ?? 0) > 0) return 'Container';
+  if (node.kind === 'frame') return 'Frame';
+  return undefined;
+};
+
+const prefersSemanticDisplayName = (node: UiNode, dom: Record<string, unknown> | undefined): boolean => {
+  const rawName = String(node.name || '').trim();
+  if (!rawName) return true;
+  if (TECHNICAL_NAME_PATTERN.test(rawName)) return true;
+  if (rawName.includes('.') || rawName.includes('#')) return true;
+  if (UTILITY_CLASS_PATTERN.test(rawName)) return true;
+  const domTag = String(dom?.tag || '').toLowerCase();
+  if (domTag && rawName.toLowerCase() === `${domTag}-root`) return true;
+  return false;
+};
+
 const buildFigmaNodeName = (node: UiNode, fallbackTag?: string): string => {
   const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined;
   const tag = sanitizeFigmaNamePart(typeof dom?.tag === 'string' ? dom.tag : fallbackTag ?? node.kind);
   const domId = sanitizeFigmaNamePart(typeof dom?.id === 'string' ? dom.id : undefined);
   const className = sanitizeFigmaNamePart(typeof dom?.className === 'string' ? String(dom.className).split(/\s+/).filter(Boolean).slice(0, 3).join('.') : undefined);
   const combined = [tag, domId, className].filter(Boolean).join('-');
-  const baseName = (node.name && node.name.trim()) || combined || fallbackTag || node.kind || 'node';
+  const semanticBaseName = inferSemanticBaseName(node, dom, fallbackTag);
+  const originalBaseName = (node.name && node.name.trim()) || combined || fallbackTag || node.kind || 'node';
+  const baseName = prefersSemanticDisplayName(node, dom) ? (semanticBaseName || originalBaseName) : originalBaseName;
   const uiIdSuffix = node.uiId && node.uiId.trim() ? ` - ${node.uiId.trim()}` : '';
   return `${baseName}${uiIdSuffix}`;
 };
@@ -600,8 +641,9 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
   if (node.kind === 'input' && placeholder && inputType !== 'checkbox' && inputType !== 'radio') {
     const placeholderRef = `${ref}.placeholder`;
     const pad = node.padding ?? node.layout?.padding;
+    const placeholderFontStyle = inferFigmaFontStyle(node.computedStyle?.fontWeight, node.style?.text?.fontStyle);
     commands.push({ type: 'create_text', payload: { ref: placeholderRef, parentRef: ref, uiId: `${node.uiId}.placeholder`, name: 'text-input-placeholder', text: placeholder, x: pad?.left ?? 12, y: pad?.top ?? 8 } });
-    commands.push({ type: 'set_text_style', payload: { nodeRef: placeholderRef, fontFamily: node.computedStyle?.fontFamily, fontSize: node.computedStyle?.fontSize, lineHeight: node.computedStyle?.lineHeight, fontWeight: node.computedStyle?.fontWeight, textAlignHorizontal: lowerTextAlign(node.computedStyle?.textAlign) } });
+    commands.push({ type: 'set_text_style', payload: { nodeRef: placeholderRef, fontFamily: normalizeFontFamilyForFigma(node.computedStyle?.fontFamily), fontStyle: placeholderFontStyle, fontSize: node.computedStyle?.fontSize, lineHeight: node.computedStyle?.lineHeight, letterSpacing: node.computedStyle?.letterSpacing, fontWeight: node.computedStyle?.fontWeight, textAlignHorizontal: lowerTextAlign(node.computedStyle?.textAlign) } });
     commands.push({ type: 'set_fill', payload: { nodeRef: placeholderRef, fills: lowerAnyPaint('rgba(108, 117, 125, 0.75)', 1) } });
   }
 

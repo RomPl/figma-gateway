@@ -614,14 +614,14 @@ test('planner emits semantic figma-facing names while keeping stable uiIds for r
   };
   const plan = buildCodeToFigmaPlan(model, 'Home', 'src/app/page.tsx');
   const createNames = new Map(plan.commands.filter((c: any) => ['create_frame','create_text'].includes(c.type)).map((c: any) => [c.payload?.uiId, c.payload?.name]));
-  assert.equal(createNames.get('__auto__/header[1]'), 'header-classic - __auto__/header[1]');
-  assert.equal(createNames.get('__auto__/main[1]'), 'main-root - __auto__/main[1]');
+  assert.equal(createNames.get('__auto__/header[1]'), 'Header - __auto__/header[1]');
+  assert.equal(createNames.get('__auto__/main[1]'), 'Main - __auto__/main[1]');
   assert.equal(createNames.get('__auto__/main[1]/section[1]'), 'hero - __auto__/main[1]/section[1]');
-  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]'), 'div-container - __auto__/main[1]/section[1]/div[1]');
-  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]/h2[1]'), 'h2-text-3xl.font-bold - __auto__/main[1]/section[1]/div[1]/h2[1]');
-  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]/svg[1]'), 'svg-lucide - __auto__/main[1]/section[1]/div[1]/svg[1]');
+  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]'), 'Container - __auto__/main[1]/section[1]/div[1]');
+  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]/h2[1]'), 'Text - __auto__/main[1]/section[1]/div[1]/h2[1]');
+  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]/svg[1]'), 'Icon - __auto__/main[1]/section[1]/div[1]/svg[1]');
   assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]/button[1]'), 'cta - __auto__/main[1]/section[1]/div[1]/button[1]');
-  assert.equal(createNames.get('__auto__/footer[1]'), 'footer-classic - __auto__/footer[1]');
+  assert.equal(createNames.get('__auto__/footer[1]'), 'Footer - __auto__/footer[1]');
 });
 
 test('planner normalizes generic ui-sans-serif stacks to figma-friendly font families', async () => {
@@ -688,8 +688,31 @@ test('planner appends stable uiId to figma-facing node names while preserving or
   const plan = buildCodeToFigmaPlan(model, 'Home', 'src/app/page.tsx');
   const frameCreate = plan.commands.find((item: any) => item.type === 'create_frame' && item.payload?.uiId === 'page.hero.card');
   const textCreate = plan.commands.find((item: any) => item.type === 'create_text' && item.payload?.uiId === 'page.hero.title');
-  assert.equal(frameCreate.payload.name, 'div-relative.mx-auto.max-w-screen-xl - page.hero.card');
-  assert.equal(textCreate.payload.name, 'h2-text-3xl.font-bold.text-foreground - page.hero.title');
+  assert.equal(frameCreate.payload.name, 'Card - page.hero.card');
+  assert.equal(textCreate.payload.name, 'Text - page.hero.title');
+});
+
+test('planner keeps human-authored figma-facing names and only normalizes technical DOM-like names', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: {
+      kind: 'frame', uiId: 'page.root', name: 'Hero', visible: true, children: [{
+        kind: 'button', uiId: 'page.hero.cta', name: 'CTA', text: 'Get started', visible: true,
+        boundingBox: { x: 0, y: 0, width: 180, height: 48 }, computedStyle: { width: 180, height: 48 }, children: []
+      }, {
+        kind: 'frame', uiId: '__auto__/main[1]/div[1]', name: 'div-container.mx-auto.max-w-screen-xl', visible: true,
+        meta: { rendered: { dom: { tag: 'div', className: 'container mx-auto max-w-screen-xl' } } },
+        boundingBox: { x: 0, y: 0, width: 320, height: 200 }, computedStyle: { width: 320, height: 200 }, children: []
+      }]
+    }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'Home', 'src/app/page.tsx');
+  const rootCreate = plan.commands.find((item: any) => item.type === 'create_frame' && item.payload?.uiId === 'page.root');
+  const ctaCreate = plan.commands.find((item: any) => item.type === 'create_frame' && item.payload?.uiId === 'page.hero.cta');
+  const technicalCreate = plan.commands.find((item: any) => item.type === 'create_frame' && item.payload?.uiId === '__auto__/main[1]/div[1]');
+  assert.equal(rootCreate.payload.name, 'Hero - page.root');
+  assert.equal(ctaCreate.payload.name, 'CTA - page.hero.cta');
+  assert.equal(technicalCreate.payload.name, 'Container - __auto__/main[1]/div[1]');
 });
 
 test('planner adds Overlay+Shadow helper child for circular icon holders with shadows', async () => {
@@ -709,4 +732,26 @@ test('planner adds Overlay+Shadow helper child for circular icon holders with sh
   assert.equal(overlayCreate.payload.width, 64);
   assert.equal(overlayCreate.payload.height, 64);
   assert.equal(overlayAlign.payload.alignment.layoutPositioning, 'ABSOLUTE');
+});
+
+
+test('input placeholder labels inherit resolved font style and letter spacing', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: { kind: 'frame', uiId: 'page.root', name: 'Page', visible: true, children: [{
+      kind: 'input', uiId: 'page.search', name: 'search-input', visible: true,
+      boundingBox: { x: 0, y: 0, width: 320, height: 48 },
+      computedStyle: { width: 320, height: 48, fontFamily: 'Inter', fontWeight: '500', fontSize: 16, lineHeight: 24, letterSpacing: 0.2, textAlign: 'left', borderRadius: 12, backgroundColor: 'rgb(255,255,255)' },
+      padding: { top: 12, right: 16, bottom: 12, left: 16 },
+      meta: { rendered: { form: { inputType: 'text', placeholder: 'Search templates' } } },
+      children: []
+    }] }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'Search', 'src/app/page.tsx');
+  const style = plan.commands.find((item: any) => item.type === 'set_text_style' && item.payload?.nodeRef === 'page.search.placeholder');
+  assert.equal(Boolean(style), true);
+  assert.equal(style.payload.fontFamily, 'Inter');
+  assert.equal(style.payload.fontStyle, 'Medium');
+  assert.equal(style.payload.fontWeight, '500');
+  assert.equal(style.payload.letterSpacing, 0.2);
 });
