@@ -165,3 +165,45 @@ test('code-to-figma route queues plugin batch and persists mapping registry entr
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+test('code-to-figma build-breakpoints route produces breakpoint-specific variant refs', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'code-to-figma-breakpoints-api-'));
+  const dbPath = join(rootDir, 'pipeline-breakpoints.sqlite');
+  const breakpointRuntime: RenderedUiRuntime = {
+    capture: async (input) => ({
+      uiId: 'landing.hero', tag: 'section', text: `Hero ${String(input.breakpointName || input.breakpoint || 'desktop')}`, treePath: 'landing.hero',
+      clientRect: { x: 20, y: 40, width: input.viewport?.width ?? 1280, height: 680 },
+      computedStyle: { backgroundColor: 'rgb(17, 34, 51)', borderRadius: 24, display: 'flex', flexDirection: 'column', gap: 24, width: input.viewport?.width ?? 1280, height: 680 },
+      visibility: { visible: true, display: 'flex', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: input.viewport?.width ?? 1280, viewportHeight: input.viewport?.height ?? 680, name: String(input.breakpointName || input.breakpoint || 'desktop') }, syncRelevantFields: [],
+      children: [{ uiId: 'landing.hero.title', tag: 'h1', text: 'Build faster', treePath: 'landing.hero > landing.hero.title', clientRect: { x: 100, y: 100, width: 640, height: 72 }, computedStyle: { color: 'rgb(255,255,255)', fontFamily: 'Inter', fontSize: 56, display: 'block', width: 640, height: 72 }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: input.viewport?.width ?? 1280, viewportHeight: input.viewport?.height ?? 680, name: String(input.breakpointName || input.breakpoint || 'desktop') }, syncRelevantFields: [], children: [] }]
+    })
+  };
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(rootDir, 'src', 'components', 'Hero.tsx'), `export function Hero(){return <section data-ui-id="landing.hero"><h1 data-ui-id="landing.hero.title">Build faster</h1></section>;}`, 'utf8');
+    const db = createSqliteDatabase(dbPath);
+    migrateDatabase(db);
+    const auditService = new AuditService(db);
+    const app = createApp({ figmaClient: createMockClient(), apiBearerToken: 'test-api-token', corsAllowedOrigins: ['https://chat.openai.com'], db, auditService, enableWriteActions: true, writeAllowedOperations: ['execute-plugin-batch'], codeUiParserService: new CodeUiParserService({ rootDir }), renderedUiExtractorService: new RenderedUiExtractorService(breakpointRuntime) });
+    const server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Failed to get server address');
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    try {
+      const response = await fetch(`${baseUrl}/api/code-to-figma/build-breakpoints`, {
+        method: 'POST', headers: { authorization: 'Bearer test-api-token', 'content-type': 'application/json' },
+        body: JSON.stringify({ project: 'marketing-site', componentName: 'Hero', rootDir, dryRun: true, breakpoints: ['mobile', 'desktop'], render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3000' }, rootUiId: 'landing.hero' } })
+      });
+      const json = (await response.json()) as any;
+      assert.equal(response.status, 200);
+      assert.equal(json.data.resultsByBreakpoint.mobile.plan.model.root.uiId.endsWith('--mobile'), true);
+      assert.equal(json.data.resultsByBreakpoint.desktop.plan.model.root.uiId.endsWith('--desktop'), true);
+      assert.equal(json.data.notes.some((note: string) => note.includes('single-breakpoint pipeline')), true);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    }
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

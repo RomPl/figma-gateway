@@ -108,3 +108,17 @@ Current behavior:
 - intentionally does **not** persist final multi-breakpoint mapping bindings yet
 
 This is a compatibility-first groundwork step for future real multi-breakpoint Figma import.
+
+
+## Code-backed multi-breakpoint build
+
+A new route now orchestrates code-backed multi-breakpoint planning:
+
+`POST /api/code-to-figma/build-breakpoints`
+
+Current behavior:
+
+- reuses the stable single-breakpoint `code-to-figma` pipeline once per breakpoint
+- materializes variant node refs per breakpoint before queueing
+- can queue one combined plugin batch
+- intentionally keeps mapping persistence conservative until multi-breakpoint reverse-sync bindings are finalized

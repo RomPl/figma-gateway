@@ -8,7 +8,7 @@ It should be updated when a major implementation chunk is completed.
 
 ## Current phase
 
-Phase F: add real multi-breakpoint rendered-first planning orchestration while keeping mapping persistence conservative until reverse-sync bindings are finalized.
+Phase G: add code-backed multi-breakpoint orchestration while continuing to keep reverse-sync bindings conservative for variant groups.
 
 ## Completed phase
 
@@ -185,3 +185,12 @@ Phase F completed:
 - generated separate variant node refs per breakpoint family to avoid cleanup collisions
 - kept mapping persistence conservative for this mode until reverse-sync bindings are finalized
 - preserved compatibility with the existing single-breakpoint import/build flows
+
+## Completed phase
+
+Phase G completed:
+
+- added code-backed multi-breakpoint build orchestration
+- reused the stable single-breakpoint pipeline per breakpoint instead of rewriting the planner core
+- materialized variant node refs per breakpoint before aggregate queueing
+- kept multi-breakpoint mapping persistence conservative until reverse-sync bindings are finalized
