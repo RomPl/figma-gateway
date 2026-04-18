@@ -1,58 +1,73 @@
-# MCP Setup
+# MCP setup
 
-## Что это за MCP и чем он не является
+**Document type:** reference
 
-Этот документ описывает MCP surface именно для `figma-gateway.vazovski.art`.
+## Scope
 
-Его зона ответственности:
+This document describes the MCP surface of `figma-gateway.vazovski.art`.
+
+Its responsibility is:
 
 - Figma read/write orchestration
 - rendered UI extraction
 - visual planning
 - mapping and reconcile support around Figma and rendered UI
 
-Он не является основным MCP для правки кода.
+It is **not** the main MCP for code mutation.
 
-Для code-side inspection и code mutation в целевой системе используется отдельный MCP endpoint: `mcp.vazovski.art`.
+For code-side inspection and code mutation, the target system uses the separate MCP endpoint:
 
-Практическое правило для агентов:
+- `mcp.vazovski.art`
 
-- использовать `figma-gateway` MCP для Figma/runtime-sync задач
-- использовать `mcp.vazovski.art` для изменения кода
+Operational rule for agents:
 
-## Что сделано
+- use `figma-gateway` MCP for Figma/runtime-sync tasks
+- use `mcp.vazovski.art` for code changes
 
-Добавлен локальный MCP adapter для gateway:
+## Current status
 
-- [src/mcp/server.ts](/home/figma-gateway.vazovski.art/src/mcp/server.ts)
-- tools в [src/mcp/tools](/home/figma-gateway.vazovski.art/src/mcp/tools)
+A local stdio MCP adapter exists for the gateway.
 
-Tools:
+Main implementation points:
 
-- `figma_get_file`
-- `figma_get_node`
-- `figma_get_nodes_batch`
-- `figma_get_styles`
-- `figma_get_components`
-- `figma_render_node`
-- `figma_search_by_name`
-- `figma_search_by_text`
-- `figma_resolve_alias`
-- `figma_search_aliases`
-- `figma_get_design_block`
-- `figma_get_design_context`
-- `figma_get_layout_summary`
+- `src/mcp/server.ts`
+- `src/mcp/tools`
+- `scripts/mcp-stdio-runner.mjs`
 
-## Важное
+## Important runtime rule
 
-Этот MCP server использует те же внутренние операции и те же `zod`-схемы, что и REST API.
+For external stdio MCP clients, the supported entrypoint is the runner:
 
-Логика не дублируется:
+```bash
+node /home/figma-gateway.vazovski.art/scripts/mcp-stdio-runner.mjs
+```
 
-- общий слой: [src/core/figma-gateway-service.ts](/home/figma-gateway.vazovski.art/src/core/figma-gateway-service.ts)
-- REST и MCP вызывают один и тот же service-layer
+Do **not** use the older direct `tsx ... src/mcp/server.ts` startup path for external clients.
 
-## Запуск
+That older path is no longer the canonical external entrypoint.
+
+## Tooling surface
+
+Gateway MCP tools include read, search and guarded write-adjacent operations around Figma/runtime-sync concerns.
+
+The exact client-verified compatibility snapshot is documented separately in:
+
+- `reports/client-compatibility.md`
+
+That report is historical verification.
+
+This document is the stable reference.
+
+## Shared logic
+
+The MCP server uses the same internal operations and validation schemas as the REST API.
+
+Logic is not duplicated:
+
+- shared layer: `src/core/figma-gateway-service.ts`
+- REST and MCP call the same service layer where applicable
+
+## Start
 
 ```bash
 cd /home/figma-gateway.vazovski.art
@@ -60,56 +75,32 @@ npm install
 npm run mcp:start
 ```
 
-## Требуемые env
+## Required environment
 
 - `FIGMA_TOKEN`
 - `FIGMA_API_BASE_URL`
 - `FIGMA_TIMEOUT_MS`
 - `FIGMA_MAX_RETRIES`
 
-`API_BEARER_TOKEN` для MCP server не нужен, потому что stdio MCP не использует HTTP auth middleware.
+`API_BEARER_TOKEN` is not required for stdio MCP because it does not use HTTP auth middleware.
 
-## Подключение клиентов
+## External client setup
 
-Ниже локальный stdio-вариант. Он подходит для Codex, Cline, Claude Code и других клиентов, которые умеют запускать MCP server как процесс.
+Use the runner command above for Codex, Cline, Claude Code, Cursor and similar stdio MCP clients.
 
-Команда:
+The detailed per-client compatibility snapshot and sample configs are intentionally kept in:
 
-```bash
-node /home/figma-gateway.vazovski.art/node_modules/tsx/dist/cli.mjs /home/figma-gateway.vazovski.art/src/mcp/server.ts
-```
+- `reports/client-compatibility.md`
 
-Рабочая директория:
+so this reference doc stays compact.
 
-```bash
-/home/figma-gateway.vazovski.art
-```
+## Remote MCP note
 
-## Пример MCP config
+This repository currently documents and supports a local stdio MCP adapter over the gateway.
 
-```json
-{
-  "mcpServers": {
-    "figma-gateway": {
-      "command": "node",
-      "args": [
-        "/home/figma-gateway.vazovski.art/node_modules/tsx/dist/cli.mjs",
-        "/home/figma-gateway.vazovski.art/src/mcp/server.ts"
-      ],
-      "cwd": "/home/figma-gateway.vazovski.art",
-      "env": {
-        "FIGMA_TOKEN": "YOUR_FIGMA_TOKEN",
-        "FIGMA_API_BASE_URL": "https://api.figma.com",
-        "FIGMA_TIMEOUT_MS": "10000",
-        "FIGMA_MAX_RETRIES": "2"
-      }
-    }
-  }
-}
-```
+A network-exposed remote MCP transport would be a separate implementation concern with its own:
 
-## Про remote MCP
-
-Figma официально продвигает remote MCP как preferred-путь для своего сервера и документирует подключение для клиентов вроде Codex, Cursor, VS Code и Claude Code. В этом таске реализован локальный stdio MCP adapter поверх вашего gateway, а не remote HTTP transport.
-
-Если нужен именно remote MCP endpoint для внешнего подключения клиентов по сети, это отдельная задача: надо поднять streamable HTTP transport, auth, session handling и публичный URL.
+- transport
+- auth
+- session handling
+- public endpoint lifecycle

@@ -1,8 +1,10 @@
 # MVP scope v1
 
+**Document type:** roadmap
+
 ## Goal
 
-First working version must stay intentionally narrow.
+The first working version must stay intentionally narrow.
 
 This version is the smallest reliable slice that allows an agent to:
 
@@ -40,8 +42,17 @@ This version is the smallest reliable slice that allows an agent to:
 - complex business logic
 - animations
 - complex canvas/WebGL UI
-- responsive diff across all breakpoints at once
 - full round-trip for arbitrary technologies
+
+## Important interpretation
+
+The project now contains real groundwork for:
+
+- breakpoint families (`desktop` / `tablet` / `mobile`)
+- variant-set metadata
+- multi-breakpoint planning and diagnostics scaffolding
+
+That does **not** mean the system should claim full responsive parity or full multi-breakpoint reverse sync as a mature product capability yet.
 
 ## Practical interpretation
 
@@ -51,6 +62,7 @@ This version is the smallest reliable slice that allows an agent to:
 - map stable UI blocks through `data-ui-id` and Figma plugin data
 - build basic Figma structures from code intent
 - change text, colors, spacing, radius, layout primitives
+- use breakpoint-aware planning scaffolding where the route/pipeline supports it
 - sync targeted presentational edits back to code
 
 ### Agent should not claim
@@ -59,6 +71,7 @@ This version is the smallest reliable slice that allows an agent to:
 - safe editing of arbitrary framework stacks
 - complete responsive parity for every viewport in one pass
 - universal support for animation-heavy or canvas-heavy UIs
+- finalized durable reverse-sync bindings for all multi-breakpoint variants
 
 ## Why this restriction exists
 
@@ -67,6 +80,7 @@ The project already has:
 - low-level Figma write runtime
 - stable `uiId` bridge between code and Figma
 - registry/API for block identity
+- multi-breakpoint groundwork
 
 What it still needs for a trustworthy first release is narrow operational scope.
 

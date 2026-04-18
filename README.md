@@ -29,7 +29,7 @@ The intended end-state and documentation entrypoints are documented in:
 - `docs/architecture.md`
 - `docs/agent-canonical-flow.md`
 
-This goal should drive implementation decisions.
+When context is limited, start with `docs/README.md` and follow the minimal reading path there.
 
 ## Requirements
 
