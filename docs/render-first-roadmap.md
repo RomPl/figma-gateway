@@ -192,7 +192,7 @@ Tasks:
 [x] 3. finish typography runtime mapping and verification
 [x] 4. add semantic normalization with reverse-sync safety
 [x] 5. harden wrapper preservation for icon holders / flex-wrap / grid items
-6. improve SVG and effects fidelity
+[x] 6. improve SVG and effects fidelity
 [x] 7. expand reverse-sync regression coverage for normalized trees
 8. run final live comparison against reference beauty transfers
 
@@ -204,6 +204,6 @@ Tasks:
 [x] headings/body/CTA labels use the correct font family/style in snapshot export
 [x] icon-holder wrappers are preserved as frames
 [x] grid and flex-wrap sections preserve item hierarchy
-- SVG geometry and common effects are represented with materially improved fidelity
+[x] SVG geometry and common effects are represented with materially improved fidelity
 [x] reverse sync tests stay green after beauty-planner changes
 - reference comparison shows comparable section/container/text hierarchy quality without losing future code-sync addressability
