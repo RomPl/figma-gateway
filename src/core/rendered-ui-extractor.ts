@@ -4,6 +4,7 @@ import type { DesignTokenService } from './design-token-registry';
 import { annotateDocumentWithTokens } from './design-token-helpers';
 import { browserRenderOpenSchema, BrowserRendererService } from './browser-renderer';
 import { createRenderProfileResolver, renderProfileHintsSchema, type RenderProfile } from './render-profile-resolver';
+import { attachPlanningContext } from './planning-context';
 import { uiModelDocumentSchema, type UiKind, type UiModelDocument, type UiNode } from './ui-model';
 import { inferAssetHash, inferAssetId, inferFigmaAssetStrategy, type AssetRegistryRecord } from './asset-registry';
 import { classifyNodeGuardrails } from './visual-guardrails';
@@ -669,7 +670,7 @@ export class RenderedUiExtractorService {
     const document = annotateDocumentWithTokens(uiModelDocumentSchema.parse({ version: "ui-model.v1", root: buildUiNode(snapshot, sourceUrl) }), this.designTokenService, data.project);
     document.root.meta = { ...(document.root.meta ?? {}), renderProfile };
     this.registerAssets(document, data.project);
-    const annotated = annotateVisualConfidence(document);
+    const annotated = attachPlanningContext(annotateVisualConfidence(document));
     visualLogger.info({ root: summarizeNode(annotated.root), sourceUrl, renderProfile }, 'rendered document extract done');
     return annotated;
   }

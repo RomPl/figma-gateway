@@ -6,6 +6,7 @@ import type { CodeUiParserService } from './code-ui-parser';
 import type { FigmaCommandStep } from './figma-write-types';
 import type { PluginBridgeService } from './plugin-bridge';
 import type { UiModelDocument, UiNode, UiPaint } from './ui-model';
+import { createPlanningContextFromNode } from './planning-context';
 import { annotateVisualConfidence } from './visual-confidence';
 import { segmentVisualBlocks } from './visual-segmentation';
 import { visualLogger, summarizeNode } from './visual-debug';
@@ -234,7 +235,8 @@ const mergeNode = (codeNode: UiNode, renderedNode: UiNode | null): UiNode => {
         sourceMapping: 'ast',
         semanticStructure: 'ast',
         fallbackValues: 'ast',
-        renderProfile: visual?.meta && typeof visual.meta.renderProfile === 'object' ? visual.meta.renderProfile : undefined
+        renderProfile: visual?.meta && typeof visual.meta.renderProfile === 'object' ? visual.meta.renderProfile : undefined,
+        planningContext: visual?.meta && typeof visual.meta.planningContext === 'object' ? visual.meta.planningContext : undefined
       }
     },
     children: mergedChildren
@@ -711,6 +713,8 @@ export class CodeToFigmaPipelineService {
 
     annotateVisualConfidence(model);
     visualLogger.info({ renderedUsed, root: summarizeNode(model.root) }, 'code-to-figma model ready');
+    const planningContext = createPlanningContextFromNode(model.root);
+    model.root.meta = { ...(model.root.meta ?? {}), planningContext };
     const plan = buildCodeToFigmaPlan(model, component.componentName, component.filePath);
     const acceptance = auditFirstPassVisualAcceptance(plan.model);
     const needsReview: Array<{ uiId: string; visual: number; reasons: string[] }> = [];
@@ -727,6 +731,7 @@ export class CodeToFigmaPipelineService {
     const notes: string[] = [
       renderedUsed ? 'Planner used rendered snapshot as primary visual source.' : 'Planner used code model only; AST values served as visual fallback.',
       (model.root.meta as any)?.renderProfile ? `Resolved surface mode: ${String((model.root.meta as any).renderProfile.surfaceMode)}.` : 'No render profile metadata resolved.',
+      (model.root.meta as any)?.planningContext ? `Planning context: ${String((model.root.meta as any).planningContext.surfaceMode)} @ ${String((model.root.meta as any).planningContext.breakpointFamily)}.` : 'No planning context metadata resolved.',
       'AST remained the source for mapping, semantic structure and fallback values.',
       "Execution plan translated into editable Figma-native commands.",
       ...(needsReview.length ? ["Low-confidence nodes were marked as needs review and complex Figma asset/icon creation was skipped."] : []),

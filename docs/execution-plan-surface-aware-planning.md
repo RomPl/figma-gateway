@@ -1,0 +1,114 @@
+# Execution plan: surface-aware planning context
+
+## Purpose
+
+This document tracks the current implementation phase after the product goal was fixed in the docs.
+
+It should be updated when a major implementation chunk is completed.
+
+## Current phase
+
+Phase B: use the planning context operationally in planner and reconcile outputs, while keeping the breakpoint model extensible toward `desktop` / `tablet` / `mobile`.
+
+## Completed phase
+
+Phase A completed:
+
+- introduced a first-class `planning-context` layer
+- attached planning context during rendered extraction
+- propagated planning context into code-to-figma, figma-to-code and reconcile flows
+- normalized breakpoint family metadata (`desktop` / `tablet` / `mobile`) even while MVP still runs one active breakpoint per execution
+
+## Why this phase comes first
+
+Before beauty-planning or richer reverse sync can be trusted, the system must stop losing runtime intent between extraction and planning.
+
+Today the extractor already knows important facts such as:
+
+- surface mode
+- shell/content distinction
+- breakpoint name
+- viewport dimensions
+- authenticated-shell characteristics
+
+But downstream pipeline behavior is still too implicit.
+
+A dedicated planning context is the smallest useful architectural step that improves correctness without forcing a broad rewrite.
+
+## Scope of this phase
+
+### 1. Introduce a first-class planning context
+
+The planning context should carry at least:
+
+- surface mode
+- root strategy
+- authenticated flag
+- shell/content selection metadata
+- breakpoint metadata
+- normalized breakpoint group (`desktop` / `tablet` / `mobile`)
+
+### 2. Attach planning context at extraction time
+
+Rendered extraction should persist this context in the UI model so later stages do not need to reconstruct it heuristically.
+
+### 3. Propagate planning context into downstream pipelines
+
+At minimum:
+
+- code-to-figma
+- rendered-first import
+- figma-to-code
+- reconcile
+
+should all be able to read the same planning context from the rendered model.
+
+### 4. Start using it operationally
+
+Even before full beauty-planner work, downstream systems should at least:
+
+- understand when the extracted root is a shell-like app surface
+- understand which breakpoint family is active
+- keep shell/content decisions visible in notes, planner metadata and reconcile outputs
+
+## Not part of this phase
+
+This phase does not yet require:
+
+- full block identity implementation
+- full multi-breakpoint planning
+- full shell-region exclusion in every diff path
+- final beauty-planner normalization
+- final SVG/effects fidelity work
+
+## Breakpoint strategy to preserve for future work
+
+The implementation should already assume that one logical block may later have multiple visual states across breakpoint families.
+
+Future primary families:
+
+- `desktop`
+- `tablet`
+- `mobile`
+
+Current MVP behavior remains single active breakpoint per extraction/planning run.
+
+Multi-breakpoint planning is explicitly a later phase, but the context model should not block it.
+
+## Next phases after this one
+
+### Phase B
+
+Use planning context operationally in planner and reconcile:
+
+- shell-aware planning
+- shell/context exclusion where needed
+- breakpoint-aware notes and confidence routing
+
+### Phase C
+
+Introduce stronger block identity above raw DOM node identity while preserving `uiId` compatibility.
+
+### Phase D
+
+Expand beauty Figma planning, SVG fidelity and effects fidelity on top of the stabilized planning context.
