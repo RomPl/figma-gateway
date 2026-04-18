@@ -53,6 +53,8 @@ Fix:
 
 ## Duplicate roots or old blocks after repeated imports
 
+Render-first live import now has regression coverage for two consecutive imports against the same session and file. The queued cleanup prefix and `uiIdStats` must remain stable across runs, rather than drifting or accumulating duplicate planned ids.
+
 Cause:
 
 - older rendered-first roots were not fully cleaned before the next import

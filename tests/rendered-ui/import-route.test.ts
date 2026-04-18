@@ -292,3 +292,84 @@ test('rendered-ui live import blocks queued batch when planned model contains du
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+
+test('rendered-ui repeated live imports stay stable across consecutive runs', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'rendered-import-repeat-stable-'));
+  const dbPath = join(rootDir, 'rendered-import-repeat-stable.sqlite');
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(rootDir, 'src', 'components', 'Hero.tsx'), `
+      import React from 'react';
+      export function Hero() {
+        return (
+          <section data-ui-id="landing.hero">
+            <h1 data-ui-id="landing.hero.title">Build faster</h1>
+            <button data-ui-id="landing.hero.cta">Start</button>
+          </section>
+        );
+      }
+    `, 'utf8');
+    const db = createSqliteDatabase(dbPath);
+    migrateDatabase(db);
+    const auditService = new AuditService(db);
+    const app = createApp({
+      figmaClient: createMockClient(),
+      apiBearerToken: 'test-api-token',
+      corsAllowedOrigins: ['https://chat.openai.com'],
+      db,
+      auditService,
+      enableWriteActions: true,
+      writeAllowedOperations: ['execute-plugin-batch'],
+      codeUiParserService: new CodeUiParserService({ rootDir }),
+      renderedUiExtractorService: new RenderedUiExtractorService(runtime)
+    });
+    const server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Failed to get server address');
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    try {
+      const registration = await fetch(`${baseUrl}/api/plugin-bridge/sessions/register`, {
+        method: 'POST',
+        headers: { authorization: 'Bearer test-api-token', 'content-type': 'application/json' },
+        body: JSON.stringify({ fileKey: 'abc123', localFileKey: 'local:figma', fileName: 'Landing', clientName: 'test-plugin' })
+      });
+      const registrationJson = await registration.json() as any;
+      const sessionId = registrationJson.data.sessionId;
+
+      const runImport = async () => {
+        const response = await fetch(`${baseUrl}/api/rendered-ui/import-to-figma`, {
+          method: 'POST',
+          headers: { authorization: 'Bearer test-api-token', 'content-type': 'application/json' },
+          body: JSON.stringify({
+            project: 'marketing-site',
+            target: { mode: 'existing_url', url: 'http://127.0.0.1:3000' },
+            rootDir,
+            componentName: 'Hero',
+            filePath: 'src/components/Hero.tsx',
+            fileKey: 'abc123',
+            sessionId,
+            dryRun: false
+          })
+        });
+        return { status: response.status, json: await response.json() as any };
+      };
+
+      const first = await runImport();
+      const second = await runImport();
+      assert.equal(first.status, 200);
+      assert.equal(second.status, 200);
+      assert.deepEqual(first.json.data.queued ?? null, second.json.data.queued ?? null);
+      assert.deepEqual(first.json.data.uiIdStats, second.json.data.uiIdStats);
+      assert.deepEqual(first.json.data.plan.commands.slice(0, 3), second.json.data.plan.commands.slice(0, 3));
+      assert.deepEqual(first.json.data.plan.model.root.uiId, second.json.data.plan.model.root.uiId);
+      assert.equal(first.json.data.uiIdStats.duplicates.length, 0);
+      assert.equal(second.json.data.uiIdStats.duplicates.length, 0);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    }
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
