@@ -114,3 +114,56 @@ test('rendered-ui import route prepends deep-first exact uiId cleanup commands b
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+
+test('rendered-ui import-breakpoints-to-figma builds separate variant node refs per breakpoint', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'rendered-import-breakpoints-'));
+  const dbPath = join(rootDir, 'rendered-import-breakpoints.sqlite');
+  const breakpointRuntime: RenderedUiRuntime = {
+    capture: async (input) => ({
+      uiId: 'landing.hero',
+      tag: 'section',
+      text: `Hero ${String(input.breakpointName || input.breakpoint || 'desktop')}`,
+      treePath: 'landing.hero',
+      clientRect: { x: 20, y: 40, width: input.viewport?.width ?? 1280, height: 680 },
+      computedStyle: { backgroundColor: 'rgb(17, 34, 51)', borderRadius: 24, display: 'flex', flexDirection: 'column', gap: 24, width: input.viewport?.width ?? 1280, height: 680 },
+      visibility: { visible: true, display: 'flex', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: input.viewport?.width ?? 1280, viewportHeight: input.viewport?.height ?? 680, name: String(input.breakpointName || input.breakpoint || 'desktop') }, syncRelevantFields: [],
+      children: [
+        { uiId: 'landing.hero.title', tag: 'h1', text: 'Build faster', treePath: 'landing.hero > landing.hero.title', clientRect: { x: 120, y: 120, width: 640, height: 72 }, computedStyle: { color: 'rgb(255,255,255)', fontFamily: 'Inter', fontSize: 56, fontWeight: '700', lineHeight: 64, width: 640, height: 72, display: 'block' }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: input.viewport?.width ?? 1280, viewportHeight: input.viewport?.height ?? 680, name: String(input.breakpointName || input.breakpoint || 'desktop') }, syncRelevantFields: [], children: [] }
+      ]
+    })
+  };
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(rootDir, 'src', 'components', 'Hero.tsx'), `export function Hero(){return null;}`, 'utf8');
+    const db = createSqliteDatabase(dbPath);
+    migrateDatabase(db);
+    const auditService = new AuditService(db);
+    const app = createApp({
+      figmaClient: createMockClient(), apiBearerToken: 'test-api-token', corsAllowedOrigins: ['https://chat.openai.com'], db, auditService,
+      enableWriteActions: true, writeAllowedOperations: ['execute-plugin-batch'],
+      codeUiParserService: new CodeUiParserService({ rootDir }), renderedUiExtractorService: new RenderedUiExtractorService(breakpointRuntime)
+    });
+    const server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Failed to get server address');
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    try {
+      const response = await fetch(`${baseUrl}/api/rendered-ui/import-breakpoints-to-figma`, {
+        method: 'POST', headers: { authorization: 'Bearer test-api-token', 'content-type': 'application/json' },
+        body: JSON.stringify({ target: { mode: 'existing_url', url: 'http://127.0.0.1:3000' }, rootDir, componentName: 'Hero', filePath: 'src/components/Hero.tsx', breakpoints: ['mobile', 'desktop'], dryRun: true })
+      });
+      const json = await response.json() as any;
+      assert.equal(response.status, 200);
+      assert.equal(json.data.activeBreakpoint, 'mobile');
+      assert.equal(json.data.plansByBreakpoint.mobile.model.root.uiId.endsWith('--mobile'), true);
+      assert.equal(json.data.plansByBreakpoint.desktop.model.root.uiId.endsWith('--desktop'), true);
+      assert.equal(json.data.notes.some((note: string) => note.includes('variant node refs')), true);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    }
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

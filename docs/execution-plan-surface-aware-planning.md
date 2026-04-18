@@ -8,7 +8,7 @@ It should be updated when a major implementation chunk is completed.
 
 ## Current phase
 
-Phase E: strengthen breakpoint variant-set contracts so future `desktop` / `tablet` / `mobile` Figma planning can stay reversible and identity-safe.
+Phase F: add real multi-breakpoint rendered-first planning orchestration while keeping mapping persistence conservative until reverse-sync bindings are finalized.
 
 ## Completed phase
 
@@ -176,3 +176,12 @@ Phase E completed:
 - planner now writes variant-set metadata together with surface and breakpoint plugin-data
 - rendered-first import returns variant-set metadata for future multi-breakpoint orchestration
 - current execution is still single-breakpoint per run, but the grouping contract is now explicit and identity-safe
+
+## Completed phase
+
+Phase F completed:
+
+- added a real multi-breakpoint rendered-first planning route
+- generated separate variant node refs per breakpoint family to avoid cleanup collisions
+- kept mapping persistence conservative for this mode until reverse-sync bindings are finalized
+- preserved compatibility with the existing single-breakpoint import/build flows

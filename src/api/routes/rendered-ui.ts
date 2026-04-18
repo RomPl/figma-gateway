@@ -4,6 +4,7 @@ import { extractRenderedUiSchema, extractRenderedUiBreakpointsSchema, diagnoseRe
 import { buildCodeToFigmaPlan, auditFirstPassVisualAcceptance } from '../../core/code-to-figma-pipeline';
 import { segmentVisualBlocks } from '../../core/visual-segmentation';
 import { attachBreakpointVariantSet } from '../../core/breakpoint-variant-set';
+import { materializeBreakpointVariantNodeRefs } from '../../core/breakpoint-variant-materializer';
 import { z } from 'zod';
 
 import { mapRenderedToCodeSchema } from '../../core/rendered-to-code-mapper';
@@ -29,6 +30,20 @@ const collectUiIdsDeepFirst = (node: UiNode): string[] => {
   walk(node, 0);
   return items.sort((a, b) => b.depth - a.depth).map((item) => item.uiId);
 };
+
+
+const importBreakpointsToFigmaRenderedUiSchema = extractRenderedUiBreakpointsSchema.extend({
+  rootDir: z.string().trim().min(1).optional(),
+  fileKey: z.string().trim().min(1).optional(),
+  sessionId: z.string().trim().min(1).optional(),
+  clientName: z.string().trim().min(1).max(200).optional(),
+  componentName: z.string().trim().min(1).default('rendered-ui-import'),
+  filePath: z.string().trim().min(1).default('[rendered-ui]'),
+  dryRun: z.coerce.boolean().default(true)
+});
+
+
+const collectVariantCleanupUiIds = (node: UiNode): string[] => collectUiIdsDeepFirst(node);
 
 const importToFigmaRenderedUiSchema = extractRenderedUiSchema.extend({
   rootDir: z.string().trim().min(1).optional(),
@@ -139,6 +154,60 @@ renderedUiRouter.post(
       visualSource: 'rendered-first',
       sourceMapping: mapped ? 'code-backed' : 'rendered-only',
       breakpointVariantSet: (plan.model.root.meta as any)?.breakpointVariantSet
+    });
+  })
+);
+
+
+renderedUiRouter.post(
+  '/rendered-ui/import-breakpoints-to-figma',
+  validateRequest({ body: importBreakpointsToFigmaRenderedUiSchema }),
+  asyncHandler(async (req, res) => {
+    if (!req.body.dryRun && !req.app.locals.writeRuntime.allowedOperations.includes('execute-plugin-batch')) {
+      throw new AppError('Write operation is not allowed: execute-plugin-batch', 403, 'WRITE_OPERATION_NOT_ALLOWED');
+    }
+    const data = importBreakpointsToFigmaRenderedUiSchema.parse(req.body);
+    const liveSession = !data.dryRun
+      ? req.app.locals.pluginBridgeService.assertSingleActiveSessionForFile({ sessionId: data.sessionId, fileKey: data.fileKey, clientName: data.clientName })
+      : undefined;
+    const extracted = await req.app.locals.renderedUiExtractorService.extractBreakpoints(data);
+    const plansByBreakpoint: Record<string, unknown> = {};
+    const modelsByBreakpoint: Record<string, unknown> = {};
+    const queuedCommandSteps: any[] = [];
+    for (const breakpoint of data.breakpoints) {
+      const snapshot = extracted.snapshots[breakpoint];
+      const segmented = attachBreakpointVariantSet(segmentVisualBlocks(snapshot), data.breakpoints as any);
+      const family = ((segmented.root.meta as any)?.planningContext?.breakpointFamily ?? breakpoint) as 'desktop' | 'tablet' | 'mobile';
+      const variantModel = materializeBreakpointVariantNodeRefs(segmented, family);
+      const plan = buildCodeToFigmaPlan(variantModel, `${data.componentName}`, data.filePath);
+      const cleanupCommands = collectVariantCleanupUiIds(plan.model.root).map((uiId) => ({ type: 'delete_matching_nodes' as const, payload: { query: { uiId } } }));
+      plan.commands = [...cleanupCommands, ...plan.commands];
+      plansByBreakpoint[breakpoint] = plan;
+      modelsByBreakpoint[breakpoint] = plan.model;
+      queuedCommandSteps.push(...plan.commands);
+    }
+    let queued: { sessionId: string; commandId: string; status: string } | undefined;
+    if (!data.dryRun) {
+      const session = liveSession!;
+      const command = req.app.locals.pluginBridgeService.queueExecutePluginBatch({
+        sessionId: session.sessionId,
+        fileKey: data.fileKey ?? session.fileKey,
+        commands: queuedCommandSteps,
+        actorId: 'rendered-ui-import-breakpoints-to-figma'
+      });
+      queued = { sessionId: session.sessionId, commandId: command.commandId, status: command.status };
+    }
+    sendSuccess(res, {
+      activeBreakpoint: extracted.activeBreakpoint,
+      snapshots: extracted.snapshots,
+      modelsByBreakpoint,
+      plansByBreakpoint,
+      queued,
+      notes: [
+        'Multi-breakpoint rendered-first planning produced separate variant node refs per breakpoint family.',
+        'Variant node refs are namespaced to avoid cross-breakpoint cleanup collisions.',
+        'Mapping persistence is intentionally deferred for this route until multi-breakpoint reverse-sync bindings are finalized.'
+      ]
     });
   })
 );

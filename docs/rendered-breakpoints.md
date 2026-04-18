@@ -91,3 +91,20 @@ It records:
 - whether the current run is single-breakpoint or already multi-snapshot-ready
 
 Current MVP still plans one active breakpoint per run, but the contract is now explicit so future `desktop` / `tablet` / `mobile` Figma variants can remain identity-safe.
+
+
+## Multi-breakpoint rendered-first planning
+
+A new route now prepares multi-breakpoint rendered-first Figma plans:
+
+`POST /api/rendered-ui/import-breakpoints-to-figma`
+
+Current behavior:
+
+- extracts several rendered snapshots (`desktop` / `tablet` / `mobile`)
+- builds a separate plan per breakpoint
+- materializes variant-specific node refs to avoid cross-breakpoint cleanup collisions
+- can queue one combined plugin batch
+- intentionally does **not** persist final multi-breakpoint mapping bindings yet
+
+This is a compatibility-first groundwork step for future real multi-breakpoint Figma import.
