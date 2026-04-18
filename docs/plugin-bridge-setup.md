@@ -49,6 +49,7 @@ The plugin UI shows:
 - last successful poll time
 - last processed command
 - pending command count
+- active session count for the current file
 - last error
 
 The UI also provides:
@@ -168,5 +169,7 @@ This bridge currently supports the queued `create-page` flow. It does not yet cr
 ## Important operational rule
 
 Keep only one active plugin bridge session per Figma file during live import and reconcile work.
+
+The plugin UI now also shows how many active bridge sessions exist for the current file. Clicking the active-session button keeps only the current session connected and marks sibling sessions for the same file as inactive.
 
 If multiple active sessions exist for the same file, the server now rejects live import batches with `MULTIPLE_ACTIVE_SESSIONS` instead of guessing which plugin should execute the command bus.

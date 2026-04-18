@@ -52,6 +52,7 @@
         <button id="refreshBtn" class="secondary">Refresh status</button>
         <button id="reconnectBtn" class="secondary">Reconnect session</button>
         <button id="copyBtn">Copy sessionId</button>
+        <button id="keepCurrentBtn" class="secondary">Active sessions: 0</button>
       </div>
       <div class="row">
         <div class="label">Status</div>
@@ -78,6 +79,10 @@
         <div id="pendingCount" class="value muted">0</div>
       </div>
       <div class="row">
+        <div class="label">Active sessions in this file</div>
+        <div id="activeSessionCount" class="value muted">0</div>
+      </div>
+      <div class="row">
         <div class="label">Last error</div>
         <div id="lastError" class="value muted">—</div>
       </div>
@@ -101,6 +106,9 @@
         setText('lastCommand', state.lastCommand || '—');
         setText('lastError', state.lastError || '—');
         setText('pendingCount', String(typeof state.pendingCount === 'number' ? state.pendingCount : 0));
+        const activeCount = typeof state.activeSessionCount === 'number' ? state.activeSessionCount : 0;
+        setText('activeSessionCount', String(activeCount));
+        document.getElementById('keepCurrentBtn').textContent = 'Active sessions: ' + String(activeCount);
       }
       onmessage = function (event) {
         const msg = event.data && event.data.pluginMessage;
@@ -116,6 +124,9 @@
       document.getElementById('copyBtn').onclick = function () {
         const value = latestState && latestState.sessionId ? latestState.sessionId : '';
         parent.postMessage({ pluginMessage: { type: 'copy-session-id', value: value } }, '*');
+      };
+      document.getElementById('keepCurrentBtn').onclick = function () {
+        parent.postMessage({ pluginMessage: { type: 'keep-current-session' } }, '*');
       };
       parent.postMessage({ pluginMessage: { type: 'request-status' } }, '*');
     </script>

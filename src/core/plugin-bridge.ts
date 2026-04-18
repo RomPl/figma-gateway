@@ -96,6 +96,15 @@ type CompleteCommandInput = {
   };
 };
 
+type PluginSessionScopeSummary = {
+  sessionId: string;
+  fileKey?: string;
+  localFileKey?: string;
+  fileName?: string;
+  activeSessionCount: number;
+  activeSessionIds: string[];
+};
+
 type ResolveSessionInput = {
   sessionId?: string;
   fileKey?: string;
@@ -293,6 +302,53 @@ export class PluginBridgeService {
       const seen = Date.parse(session.lastSeenAt || session.createdAt);
       return session.connected && Number.isFinite(seen) && seen >= threshold;
     });
+  }
+
+  private getSessionsForSameFile(session: PluginBridgeSession): PluginBridgeSession[] {
+    const fileKey = session.fileKey;
+    const localFileKey = session.localFileKey;
+    const fileName = session.fileName;
+    return this.listActiveSessions().filter((candidate) => {
+      if (fileKey && candidate.fileKey === fileKey) return true;
+      if (localFileKey && candidate.localFileKey === localFileKey) return true;
+      if (!fileKey && !localFileKey && fileName && candidate.fileName === fileName) return true;
+      return false;
+    });
+  }
+
+  getSessionScopeSummary(sessionId: string, sessionToken?: string): PluginSessionScopeSummary {
+    const session = this.authenticateSession(sessionId, sessionToken);
+    const matching = this.getSessionsForSameFile(session);
+    return {
+      sessionId: session.sessionId,
+      fileKey: session.fileKey,
+      localFileKey: session.localFileKey,
+      fileName: session.fileName,
+      activeSessionCount: matching.length,
+      activeSessionIds: matching.map((item) => item.sessionId)
+    };
+  }
+
+  keepOnlySessionForFile(sessionId: string, sessionToken?: string): PluginSessionScopeSummary & { deactivatedSessionIds: string[] } {
+    const session = this.authenticateSession(sessionId, sessionToken);
+    const matching = this.getSessionsForSameFile(session);
+    const deactivatedSessionIds: string[] = [];
+    for (const candidate of matching) {
+      if (candidate.sessionId === session.sessionId) continue;
+      candidate.connected = false;
+      this.persistSession(candidate);
+      deactivatedSessionIds.push(candidate.sessionId);
+    }
+    const refreshed = this.getSessionsForSameFile(session);
+    return {
+      sessionId: session.sessionId,
+      fileKey: session.fileKey,
+      localFileKey: session.localFileKey,
+      fileName: session.fileName,
+      activeSessionCount: refreshed.length,
+      activeSessionIds: refreshed.map((item) => item.sessionId),
+      deactivatedSessionIds
+    };
   }
 
   resolveSession(input: ResolveSessionInput): PluginBridgeSession {

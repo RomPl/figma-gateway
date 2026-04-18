@@ -87,6 +87,38 @@ pluginBridgeRouter.get(
 );
 
 pluginBridgeRouter.get(
+  '/plugin-bridge/sessions/:sessionId/scope',
+  asyncHandler(async (req, res) => {
+    const token = req.header('x-plugin-session-token') ?? getSingleValue(req.query.sessionToken);
+    const data = req.app.locals.pluginBridgeService.getSessionScopeSummary(String(req.params.sessionId), token);
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    sendSuccess(res, data);
+  })
+);
+
+pluginBridgeRouter.post(
+  '/plugin-bridge/sessions/:sessionId/keep-current',
+  asyncHandler(async (req, res) => {
+    const token = req.header('x-plugin-session-token') ?? getSingleValue(req.query.sessionToken);
+    const data = req.app.locals.pluginBridgeService.keepOnlySessionForFile(String(req.params.sessionId), token);
+    req.app.locals.auditService.record({
+      source: 'rest',
+      requestId: req.id,
+      actor: getPluginActor(req as never),
+      target: 'plugin-bridge.keep-current-session',
+      params: { sessionId: req.params.sessionId, deactivatedSessionIds: data.deactivatedSessionIds, activeSessionCount: data.activeSessionCount },
+      status: 'success'
+    });
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    sendSuccess(res, data);
+  })
+);
+
+pluginBridgeRouter.get(
   '/plugin-bridge/sessions/:sessionId/commands/pending',
   asyncHandler(async (req, res) => {
     const token = req.header('x-plugin-session-token') ?? getSingleValue(req.query.sessionToken);

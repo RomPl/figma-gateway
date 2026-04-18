@@ -166,3 +166,32 @@ test('plugin runtime centers imported svg roots inside icon containers', async (
   assert.match(source, /child\.y = Math\.round\(\(containerHeight - childHeight\) \/ 2\)/);
   assert.match(source, /centerImportedNodeInContainer\(node, iconNode, payload\.size\)/);
 });
+
+
+test('plugin bridge scope summary and keep-current leave only the current session active for the same file', () => {
+  const service = new PluginBridgeService();
+  const current = service.registerSession({ fileKey: 'file-1', localFileKey: 'local:figma', fileName: 'Landing', clientName: 'client-a' });
+  const other = service.registerSession({ fileKey: 'file-1', localFileKey: 'local:figma', fileName: 'Landing', clientName: 'client-b' });
+  const unrelated = service.registerSession({ fileKey: 'file-2', localFileKey: 'local:other', fileName: 'Other', clientName: 'client-c' });
+
+  const before = service.getSessionScopeSummary(current.sessionId, current.sessionToken);
+  assert.equal(before.activeSessionCount, 2);
+  assert.deepEqual(before.activeSessionIds.sort(), [current.sessionId, other.sessionId].sort());
+
+  const after = service.keepOnlySessionForFile(current.sessionId, current.sessionToken);
+  assert.equal(after.activeSessionCount, 1);
+  assert.deepEqual(after.activeSessionIds, [current.sessionId]);
+  assert.deepEqual(after.deactivatedSessionIds, [other.sessionId]);
+  assert.equal(service.listActiveSessions().some((session) => session.sessionId === unrelated.sessionId), true);
+});
+
+test('plugin runtime UI exposes active session count and keep-current action', async () => {
+  const ui = require('node:fs').readFileSync('plugin-bridge/ui.html', 'utf8');
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(ui, /keepCurrentBtn/);
+  assert.match(ui, /Active sessions in this file/);
+  assert.match(source, /activeSessionCount/);
+  assert.match(source, /getSessionScope\(/);
+  assert.match(source, /keepOnlyCurrentSession\(/);
+  assert.match(source, /keep-current-session/);
+});
