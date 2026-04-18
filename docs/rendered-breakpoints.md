@@ -120,6 +120,7 @@ Current behavior:
 
 - reuses the stable single-breakpoint `code-to-figma` pipeline once per breakpoint
 - materializes variant node refs per breakpoint before queueing
+- preserves `breakpointVariantRef.originalUiId` plus `blockIdentity.primaryUiId/aliases`, so future reverse-sync can still reason about the original stable block identity after `--mobile/--desktop` materialization
 - can queue one combined plugin batch
 - intentionally keeps mapping persistence conservative until multi-breakpoint reverse-sync bindings are finalized
 
