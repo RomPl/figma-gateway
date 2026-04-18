@@ -1,132 +1,216 @@
 # Architecture
 
-## Цель
+## Goal
 
-Backend и plugin-bridge для управляемого Figma Gateway, где синхронизация опирается не только на код и не только на Figma, а на отдельный слой реального browser render.
+Backend and plugin-bridge for an agent-operable Figma Gateway where synchronization does not rely only on code and not only on Figma, but on an explicit browser-rendered visual layer plus durable mapping memory.
 
-Фокус текущей архитектуры:
+The target product is documented in [agent-product-goal.md](./agent-product-goal.md).
+
+This architecture exists to make that product possible.
+
+## Current architectural focus
 
 - React + TypeScript UI
-- source mapping через code AST
-- visual sync через rendered DOM/CSS snapshot
-- design intent через design tokens
-- design target через Figma snapshot
-- безопасная обратная синхронизация визуальных изменений в код
+- source mapping through code AST
+- visual sync through rendered DOM/CSS snapshot
+- design intent through design tokens
+- design target through Figma snapshot
+- safe reverse synchronization of design changes back into code
+- agent-oriented orchestration rather than one-off import scripts
 
-Намеренно вне scope первой версии:
+## Intentionally out of scope for the first version
 
-- сложная бизнес-логика
-- анимации как baseline visual truth
-- canvas/WebGL-heavy UI
-- универсальный round-trip для любых технологий
-- неконтролируемый захват приватных runtime state
+- complex business logic understanding
+- animations as baseline visual truth
+- canvas/WebGL-heavy UI as a reliable round-trip surface
+- universal round-trip for arbitrary technologies
+- uncontrolled capture of private runtime state
 
-## Источники истины
+## Product-level architecture principle
 
-Целевая архитектура опирается на 4 разных источника, у каждого своя зона ответственности.
+`figma-gateway` is not only a Figma importer.
+
+It is a bidirectional orchestration layer between:
+
+- live rendered UI
+- code ownership and patchability
+- Figma editing structure
+- design tokens
+- autonomous agent commands
+
+That means the architecture must support three recurring directions:
+
+1. URL/code -> Figma
+2. natural-language intent -> code or Figma change
+3. Figma -> code
+
+## Sources of truth
+
+The target architecture relies on 5 distinct sources, each with a different responsibility.
 
 ### 1. Code AST
 
-Используется для:
+Used for:
 
 - source mapping
-- нахождения блока в коде
-- безопасного patching
-- сохранения ownership границ JSX
+- finding the block in code
+- safe patching
+- preserving JSX ownership boundaries
+- structural fallback when rendered data is weak
 
 ### 2. Rendered DOM/CSS snapshot
 
-Используется для:
+Used for:
 
 - visual truth
-- фактического layout
+- actual layout
 - computed styles
-- размеров, позиций и visibility
-- реального состава иконок, изображений и background assets
+- real sizes, positions and visibility
+- actual icons, images and background assets
+- runtime shell/content surface detection
 
 ### 3. Design tokens
 
-Используются для:
+Used for:
 
 - design intent
-- нормализации raw visual values
-- связывания code-side и figma-side решений с системными токенами
+- normalization of raw visual values
+- linking code-side and figma-side values to shared semantic decisions
 
 ### 4. Figma snapshot
 
-Используется для:
+Used for:
 
-- design target
-- editable design structure
-- design-side representation и reconcile с макетом
+- design editing target
+- editable design-side structure
+- design-side delta source for reverse sync
 
-## Приоритет источников
+### 5. Mapping registry
 
-Система должна мыслить в следующем порядке:
+Used for:
 
-- source mapping: Code AST
-- visual truth: Rendered DOM
-- design intent: Tokens
-- design target: Figma
+- durable cross-runtime identity memory
+- block reopening without re-matching from scratch
+- sync history
+- conflict and reconcile baselines
 
-Главное правило: визуальная правда берётся из браузерного рендера, а не только из AST.
+## Priority model
 
-## Слои
+The system should reason in this order:
 
-- `src/index.ts` — bootstrap процесса и запуск HTTP сервера.
-- `src/core` — app lifecycle, middleware, ошибки, snapshot/pipeline логика, reconcile и patching.
-- `src/api` — HTTP routes и orchestration entrypoints.
-- `src/config` — загрузка и валидация env-конфига.
-- `src/utils` — инфраструктурные утилиты, включая logger.
-- `src/mcp` — MCP integration surface.
-- `src/types` — shared typings и декларации.
+- structural truth -> Code AST
+- visual truth -> Rendered DOM
+- design intent -> Tokens
+- design editing target -> Figma
+- sync memory -> Mapping registry
 
-## Архитектурное правило visual sync
+Main rule:
 
-Любой visual sync должен опираться минимум на четыре согласованных представления:
+Visual truth comes from browser render, not from AST declarations alone.
 
-1. Code AST — где находится блок и как его безопасно менять.
-2. Rendered UI Snapshot — как блок реально выглядит после browser render.
-3. Figma Snapshot — что находится в макете.
-4. Design Tokens — какие системные решения стоят за этими значениями.
+## Layering model
 
-AST больше не должен считаться достаточным описанием визуального состояния интерфейса.
-
-## Принципы
-
-- Конфиг только из env.
-- HTTP слой отделен от lifecycle и конфигурации.
-- Логирование централизовано через Pino.
-- Ошибки приводятся к единому JSON-формату.
-- Shutdown обрабатывает `SIGINT` и `SIGTERM`.
-- Visual truth определяется по real render snapshot, а не только по static code parsing.
-- Code patching остаётся безопасным и ограниченным ownership границами.
-
-## Текущие endpoint
-
-- `GET /health` — состояние сервиса и uptime.
-- `GET /version` — имя, версия и среда.
-
-## Next architecture step
-
-- Ввести runtime extractor для Rendered UI Snapshot.
-- Связать render snapshot с `uiId`, code mapping и Figma mapping.
-- Сделать render snapshot основным visual baseline для Code -> Figma, Figma -> Code, reconcile и token mapping.
-
-## MVP contract
-
-Сервис должен явно рекламировать scope первой версии через `/capabilities`, чтобы агент и клиенты не предполагали универсальную поддержку там, где её ещё нет.
-
-## Identity-first, visual-second, planner-first layering
-
-The gateway now moves toward an explicit four-step visual sync architecture:
+The gateway moves toward an explicit agent-grade visual sync architecture:
 
 1. stable identity and ownership from code or stable uiIds
 2. rendered visual fragment tree from browser DOM/CSS
 3. segmentation pass that converts raw rendered fragments into visual block boundaries
 4. Figma composition planning that converts segmented visual blocks into editable Figma-native structure
+5. durable mapping and sync memory for future edits and reconcile
+6. code-safe or Figma-safe execution through the correct runtime
 
-Important compatibility rule:
+## Important compatibility rule
 
 - `uiId` remains the main durable cross-runtime identifier for reverse sync
-- newer identity roles such as source identity, visual identity and figma ref are added in metadata first and should not break existing Figma -> code mapping
+- newer identity roles such as block identity, visual identity, source identity and figma ref are added in metadata first
+- reverse sync must not break because Figma-facing names become more semantic or because the planner produces cleaner trees
+
+## Architectural rule for visual sync
+
+Any trustworthy visual sync must rely on at least these aligned representations:
+
+1. Code AST -> where the block lives and how it may be safely changed
+2. Rendered UI snapshot -> how the block actually looks after browser render
+3. Figma snapshot -> what exists in the design file
+4. Design tokens -> which semantic system choices sit behind the values
+5. Mapping registry -> how the same block is durably addressed across tasks and directions
+
+AST is not a sufficient visual baseline.
+
+## Architectural rule for agents
+
+Any agent working through this architecture should be able to move from user intent to execution through these steps:
+
+1. resolve block identity
+2. resolve active source of truth
+3. obtain the relevant code/render/Figma/tokens state
+4. build a deterministic plan
+5. execute on the appropriate surface
+6. persist mapping and sync memory for the next task
+
+If the architecture makes this impossible, it is incomplete relative to the product goal.
+
+## Main code layers
+
+- `src/index.ts` -> process bootstrap and HTTP server startup
+- `src/core` -> lifecycle, middleware, snapshot/pipeline logic, reconcile and patching
+- `src/api` -> HTTP routes and orchestration entrypoints
+- `src/config` -> environment loading and validation
+- `src/utils` -> infrastructure utilities, including logger
+- `src/mcp` -> MCP integration surface
+- `src/types` -> shared typings and declarations
+
+## Current strategic workstreams
+
+### 1. Surface-aware extraction
+
+The system now moves away from framework-specific runtime assumptions toward mode-based surface resolution:
+
+- `component`
+- `document`
+- `app_shell`
+- `auth_gated_spa`
+
+This is a required foundation for authenticated SPA handling.
+
+### 2. Identity-first mapping
+
+The project already has `uiId` and mapping registry.
+
+The next architectural step is to evolve toward first-class block identity while preserving `uiId` compatibility.
+
+### 3. Beauty Figma planning
+
+The planner must eventually produce editable, visually strong Figma-native output rather than merely a mechanically correct import tree.
+
+### 4. Reverse sync safety
+
+Figma -> code must remain constrained by source mapping, ownership and reconcile rules.
+
+## Principles
+
+- Config only from env
+- HTTP layer separated from lifecycle and configuration
+- Logging centralized through Pino
+- Errors normalized to one JSON format
+- Shutdown handles `SIGINT` and `SIGTERM`
+- Visual truth determined by real render snapshot, not static parsing alone
+- Code patching remains safe and ownership-constrained
+- Durable mapping should be preferred over fresh heuristic matching when possible
+
+## Current endpoints
+
+- `GET /health` -> service state and uptime
+- `GET /version` -> name, version and environment
+
+## MVP contract
+
+The service should explicitly advertise the scope of the first version through `/capabilities`, so that agents and clients do not assume universal support where it does not yet exist.
+
+## North-star next steps
+
+- use render surface metadata operationally in planning and reconcile
+- separate persistent shell context from content work surface in downstream pipelines
+- strengthen block identity above raw DOM node identity
+- improve beauty Figma planning without sacrificing reverse-sync addressability
+- make text intent, code edits and Figma edits converge on one deterministic execution model

@@ -1,12 +1,31 @@
 # Figma Gateway
 
-Минимальный production-ready каркас backend-сервиса на Node.js и TypeScript без бизнес-логики Figma.
+Agent-oriented backend and plugin-bridge for bidirectional synchronization between live UI, Figma and code.
 
-## Требования
+It is not only a Figma importer.
+
+Its target role is to let an autonomous agent:
+
+- reconstruct a beauty Figma mockup from a live project or URL
+- preserve stable reverse-sync compatibility with code
+- apply future block-level edits from natural-language commands
+- propagate Figma changes safely back into code through a separate code-editing MCP
+
+## Product goal
+
+The intended end-state is documented in:
+
+- `docs/agent-product-goal.md`
+- `docs/architecture.md`
+- `docs/agent-canonical-flow.md`
+
+This goal should drive implementation decisions.
+
+## Requirements
 
 - Node.js 20+
 
-## Быстрый старт
+## Quick start
 
 ```bash
 nvm use
@@ -26,21 +45,22 @@ npm start
 
 ## Runtime isolation
 
-Для этого проекта не используется Python `venv`, так как это Node.js backend. Изоляция обеспечивается через локальные зависимости в `node_modules` и фиксированную версию Node в `.nvmrc`.
+This project does not use Python `venv`, because it is a Node.js backend.
+Isolation is provided through local dependencies in `node_modules` and the fixed Node version in `.nvmrc`.
 
-## Доступные endpoint
+## Available endpoints
 
 - `GET /health`
 - `GET /version`
 
-## MVP scope первой версии
+## MVP scope of the first version
 
-Первая рабочая версия намеренно ограничена.
+The first working version remains intentionally narrow.
 
-Поддерживается:
+Supported:
 
 - React + TypeScript
-- базовые layout-компоненты
+- basic layout components
 - text
 - buttons
 - images
@@ -51,21 +71,21 @@ npm start
 - border radius
 - auto layout
 
-Не входит в первую версию:
+Not part of the first version:
 
-- сложная бизнес-логика
-- анимации
-- сложные canvas/WebGL UI
-- responsive diff всех брейкпоинтов сразу
-- полный round-trip для любых технологий
+- complex business logic understanding
+- animations
+- complex canvas/WebGL UI
+- responsive diff across all breakpoints at once
+- full round-trip for arbitrary technologies
 
-Подробно: `docs/mvp-scope-v1.md`.
+Detailed scope: `docs/mvp-scope-v1.md`.
 
-## Design tokens как общий слой истины
+## Design tokens as a shared truth layer
 
-Проект теперь поддерживает registry design tokens как shared source of truth между кодом и Figma.
+The project supports a design token registry as a shared source of truth between code and Figma.
 
-Поддерживаются категории:
+Supported categories:
 
 - colors
 - spacing
@@ -74,34 +94,48 @@ npm start
 - shadows
 - breakpoints
 
-Токены могут маппиться одновременно на:
+Tokens may map simultaneously to:
 
 - code refs (`className`, `css var`, file/export)
 - Figma refs (`variableId`, `styleId`, collection)
 
-Подробно: `docs/design-tokens.md`.
+Details: `docs/design-tokens.md`.
 
-## Конфигурация
+## Main architectural model
 
-Все runtime-конфиги читаются только из переменных окружения.
+The system must reason through five aligned representations:
 
-| Переменная | Описание | Значение по умолчанию |
+- Code AST -> structural truth and safe patch ownership
+- Rendered DOM/CSS -> visual truth
+- Design tokens -> semantic design intent
+- Figma snapshot -> editable design target
+- Mapping registry -> durable sync memory
+
+The main rule is:
+
+Visual truth comes from browser render, not from AST declarations alone.
+
+## Configuration
+
+All runtime config is read from environment variables only.
+
+| Variable | Description | Default |
 | --- | --- | --- |
-| `NODE_ENV` | Среда запуска | `development` |
-| `HOST` | Хост bind | `0.0.0.0` |
-| `PORT` | Порт HTTP сервера | `3000` |
-| `LOG_LEVEL` | Уровень логирования Pino | `info` |
-| `APP_NAME` | Имя сервиса | `figma-gateway` |
-| `APP_VERSION` | Версия сервиса | `0.1.0` |
+| `NODE_ENV` | Runtime environment | `development` |
+| `HOST` | Bind host | `0.0.0.0` |
+| `PORT` | HTTP port | `3000` |
+| `LOG_LEVEL` | Pino log level | `info` |
+| `APP_NAME` | Service name | `figma-gateway` |
+| `APP_VERSION` | Service version | `0.1.0` |
 
-## Скрипты
+## Scripts
 
-- `npm run dev` — запуск в dev-режиме
-- `npm run build` — сборка TypeScript в `dist/`
-- `npm start` — запуск production-сборки
-- `npm run check` — проверка типов
+- `npm run dev` -> development mode
+- `npm run build` -> TypeScript build to `dist/`
+- `npm start` -> production build startup
+- `npm run check` -> type checking
 
-## Структура
+## Structure
 
 ```text
 src/

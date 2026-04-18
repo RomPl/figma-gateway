@@ -1,22 +1,33 @@
-# Render-first roadmap toward Divriots-grade fidelity with reverse sync preserved
+# Render-first roadmap toward beauty Figma transfer with reverse sync preserved
 
 ## Goal
 
-Reach a Divriots-like quality bar for website → Figma transfer while preserving our reverse-sync contract (Figma → code) and stable `uiId` mapping.
+Reach a Divriots-like quality bar for website -> Figma transfer while preserving our reverse-sync contract (Figma -> code), stable `uiId` compatibility and future block-level editability.
 
-This means:
+This document is a visual-fidelity roadmap in service of the larger product goal defined in [agent-product-goal.md](./agent-product-goal.md).
 
-- better typography fidelity
-- stronger layout/container normalization
+The target is not only a prettier import.
+
+The target is an editable beauty mockup that remains usable for future agent-driven code and Figma edits.
+
+## What success means
+
+A successful render-first transfer should produce:
+
+- strong typography fidelity
+- clean section/container hierarchy
+- correct shell/content surface choice
 - stable icon and wrapper preservation
-- no duplicate synthetic trees across live imports
-- no loss of reverse-sync addressability
+- preserved reverse-sync addressability
+- no synthetic duplicate buildup across repeated imports
+- Figma-native editability instead of screenshot-like dead layers
 
 ## Non-goals
 
 - do not replace render-first with AST-first
 - do not sacrifice `uiId` stability for pretty naming only
 - do not hardcode fixes to a single page/template when a reusable rule is possible
+- do not optimize visual prettiness in ways that break later reverse sync
 
 ## Working principles
 
@@ -26,17 +37,31 @@ This means:
 4. Layout-affecting wrappers are preserved; only passive wrappers may collapse.
 5. Typography must resolve to real Figma font family/style pairs, not only numeric weight.
 6. Cleanup must remove the whole synthetic subtree before a new live import.
-7. Every fix must be covered by regression tests and, when relevant, live verification.
+7. Every fidelity fix should preserve future editability and reverse-sync safety.
+8. Every fix should be covered by regression tests and, when relevant, live verification.
 
 ## Workstreams
 
-### 1. Synthetic subtree lifecycle and duplicate prevention
+### 1. Surface-aware planning
+
+Problems:
+
+- shell-like apps can still be planned too broadly
+- persistent shell and content work surface are not yet used deeply enough in downstream planners
+
+Tasks:
+
+- consume `renderSurface` operationally in planner and reconcile
+- keep shell context without planning the whole shell as editable content
+- improve content-root selection for authenticated SPA routes
+
+### 2. Synthetic subtree lifecycle and duplicate prevention
 
 Problems:
 
 - old synthetic nodes can survive between imports
-- cleanup currently deletes too little
-- duplicate uiIds can accumulate in the live document
+- cleanup may still delete too little in some cases
+- duplicate synthetic uiIds can accumulate in live documents
 
 Tasks:
 
@@ -45,7 +70,7 @@ Tasks:
 - add post-import verification for duplicate synthetic uiIds in snapshot exports
 - ensure runtime ordering is safe for deep child-first deletion
 
-### 2. Typography fidelity
+### 3. Typography fidelity
 
 Problems:
 
@@ -57,15 +82,15 @@ Tasks:
 
 - finish runtime font resolution mapping (`Regular/Medium/Semibold/Bold/Black`)
 - add tests against live/runtime font selection behavior
-- ensure synthetic labels inherit family, style, weight, size, line-height, alignment, fill
+- ensure synthetic labels inherit family, style, weight, size, line-height, alignment and fill
 - verify exported snapshot reports the intended font family/style pairs
 
-### 3. Semantic normalization layer
+### 4. Semantic normalization layer
 
 Problems:
 
 - node names are still too class-string-centric
-- imported trees are structurally correct more often now, but not normalized like Divriots
+- imported trees may be structurally correct but not normalized like strong design tools produce
 
 Tasks:
 
@@ -74,7 +99,7 @@ Tasks:
 - add a normalization step that improves names without changing sync identity
 - cover with tests to prove reverse-sync lookup still uses `uiId`, not display name
 
-### 4. Layout wrapper preservation
+### 5. Layout wrapper preservation
 
 Problems:
 
@@ -87,14 +112,14 @@ Tasks:
 - formalize wrapper categories: `layout-critical`, `visual`, `passive`
 - preserve all `layout-critical` wrappers in planning
 - add regressions for icon holders (`48x48`, `64x64`, circles, rounded boxes)
-- add regressions for `flex-wrap`, centered text stacks, grid item stacks
+- add regressions for `flex-wrap`, centered text stacks and grid item stacks
 
-### 5. Grid and multi-card sections
+### 6. Grid and repeated-card sections
 
 Problems:
 
-- grid wrappers are improved, but item-level hierarchy still needs broader hardening
-- repeated cards should preserve editable hierarchy and spacing
+- repeated cards still need broader hardening
+- item-level hierarchy can become flatter than desired
 
 Tasks:
 
@@ -103,46 +128,68 @@ Tasks:
 - minimize absolute child positioning inside reconstructed grids
 - add real-page regressions for feature cards and “How it works” style sections
 
-### 6. Reverse sync preservation
+### 7. Effects and SVG fidelity
 
 Problems:
 
-- better semantic normalization must not break Figma → code mapping
-- wrapper preservation changes the tree depth
+- SVG geometry can still lose precision
+- export snapshots do not yet fully express desired effect fidelity
+- effect-heavy layers can degrade into placeholders too early
 
 Tasks:
 
-- ensure reverse-sync maps by stable `uiId`
+- finish SVG geometry fidelity improvements
+- improve snapshot fidelity for shadow/blur/overlay/effect extraction
+- propagate those effects into Figma-native planning where confidence is sufficient
+- keep explicit `needsReview` instead of faking unsupported effect stacks
+
+### 8. Reverse sync preservation
+
+Problems:
+
+- better semantic normalization must not break Figma -> code mapping
+- wrapper preservation changes tree depth
+- beauty-planner changes can accidentally reduce patch addressability
+
+Tasks:
+
+- ensure reverse sync maps by stable `uiId` and mapping memory
 - add tests for `figma-to-code` and `reconcile` with normalized names and preserved wrappers
 - verify code patch selection still targets original source nodes
 
-### 7. Live validation loop
+### 9. Live validation loop
 
 Tasks:
 
 - use active plugin sessions to validate each major step
-- compare our snapshot structure against the Divriots reference tree in the same file
+- compare our snapshot structure against strong reference transfers in the same file when useful
 - explicitly track:
   - duplicate uiIds
-n  - font family/style accuracy
+  - font family/style accuracy
   - wrapper preservation
   - alignment/layout hierarchy
+  - shell/content surface correctness
+  - reverse-sync survivability after beautification
 
 ## Execution order
 
-1. finish subtree cleanup / dedup runtime
-2. finish typography runtime mapping and verification
-3. add semantic normalization layer with reverse-sync safety
-4. harden wrapper preservation for icon holders / flex-wrap / grid items
-5. expand reverse-sync regression coverage for normalized trees
-6. run final live comparison against Divriots reference page
+1. finish surface-aware planning and shell/content operationalization
+2. finish subtree cleanup / dedup runtime
+3. finish typography runtime mapping and verification
+4. add semantic normalization with reverse-sync safety
+5. harden wrapper preservation for icon holders / flex-wrap / grid items
+6. improve SVG and effects fidelity
+7. expand reverse-sync regression coverage for normalized trees
+8. run final live comparison against reference beauty transfers
 
 ## Acceptance criteria
 
 - live import does not create duplicate synthetic uiIds
 - repeated imports stay stable
+- shell-like surfaces target the correct content work surface
 - headings/body/CTA labels use the correct font family/style in snapshot export
 - icon-holder wrappers are preserved as frames
 - grid and flex-wrap sections preserve item hierarchy
-- reverse sync tests stay green
-- reference comparison against Divriots shows comparable section/container/text hierarchy quality
+- SVG geometry and common effects are represented with materially improved fidelity
+- reverse sync tests stay green after beauty-planner changes
+- reference comparison shows comparable section/container/text hierarchy quality without losing future code-sync addressability
