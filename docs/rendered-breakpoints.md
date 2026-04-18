@@ -122,3 +122,12 @@ Current behavior:
 - materializes variant node refs per breakpoint before queueing
 - can queue one combined plugin batch
 - intentionally keeps mapping persistence conservative until multi-breakpoint reverse-sync bindings are finalized
+
+
+## Breakpoint-aware diagnostics
+
+A new route now compares rendered diagnostics across breakpoint families:
+
+`POST /api/rendered-ui/diagnose-breakpoints`
+
+It returns one diagnostic result per breakpoint using the same single-breakpoint diagnose logic under the hood.

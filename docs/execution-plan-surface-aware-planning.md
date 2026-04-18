@@ -8,7 +8,7 @@ It should be updated when a major implementation chunk is completed.
 
 ## Current phase
 
-Phase H: expose breakpoint-aware orchestration at the intent layer so agents can request multi-breakpoint planning without dropping to low-level routes.
+Phase I: add breakpoint-aware diagnostics and reconcile orchestration so variant families can be compared and reasoned about without dropping to manual per-breakpoint calls.
 
 ## Completed phase
 
@@ -203,3 +203,12 @@ Phase H completed:
 - enabled multi-breakpoint `reconstruct_design_from_code` / `sync_page_to_figma` execution without dropping to low-level routes
 - reused the stable single-breakpoint pipeline internally per breakpoint
 - kept mapping persistence conservative for multi-breakpoint intent execution
+
+## Completed phase
+
+Phase I completed:
+
+- added breakpoint-aware reconcile orchestration route
+- added breakpoint-aware diagnostics route with extract-based fallback summaries
+- kept reconcile/conflict logic consistent by reusing the stable single-breakpoint pipelines per breakpoint
+- made variant-family comparison available without manual per-breakpoint calls

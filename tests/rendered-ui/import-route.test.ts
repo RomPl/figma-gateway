@@ -167,3 +167,41 @@ test('rendered-ui import-breakpoints-to-figma builds separate variant node refs 
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+
+test('diagnose-breakpoints returns diagnostics by breakpoint', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'rendered-diagnose-breakpoints-'));
+  const dbPath = join(rootDir, 'rendered-diagnose-breakpoints.sqlite');
+  const breakpointRuntime: RenderedUiRuntime = {
+    capture: async (input) => ({
+      uiId: 'landing.hero', tag: 'section', text: `Hero ${String(input.breakpointName || input.breakpoint || 'desktop')}`, treePath: 'landing.hero',
+      clientRect: { x: 20, y: 40, width: input.viewport?.width ?? 1280, height: 680 },
+      computedStyle: { backgroundColor: 'rgb(17, 34, 51)', borderRadius: 24, display: 'flex', flexDirection: 'column', gap: 24, width: input.viewport?.width ?? 1280, height: 680 },
+      visibility: { visible: true, display: 'flex', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: input.viewport?.width ?? 1280, viewportHeight: input.viewport?.height ?? 680, name: String(input.breakpointName || input.breakpoint || 'desktop') }, syncRelevantFields: [], children: []
+    })
+  };
+  try {
+    mkdirSync(join(rootDir, 'src'), { recursive: true });
+    const db = createSqliteDatabase(dbPath);
+    migrateDatabase(db);
+    const auditService = new AuditService(db);
+    const app = createApp({ figmaClient: createMockClient(), apiBearerToken: 'test-api-token', corsAllowedOrigins: ['https://chat.openai.com'], db, auditService, renderedUiExtractorService: new RenderedUiExtractorService(breakpointRuntime) });
+    const server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Failed to get server address');
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    try {
+      const response = await fetch(`${baseUrl}/api/rendered-ui/diagnose-breakpoints`, { method: 'POST', headers: { authorization: 'Bearer test-api-token', 'content-type': 'application/json' }, body: JSON.stringify({ target: { mode: 'existing_url', url: 'http://127.0.0.1:3000' }, rootUiId: 'landing.hero', breakpoints: ['mobile', 'desktop'] }) });
+      const json = await response.json() as any;
+      assert.equal(response.status, 200);
+      assert.equal(json.data.diagnosticsByBreakpoint.mobile.rootRequestedUiId, 'landing.hero');
+      assert.equal(json.data.diagnosticsByBreakpoint.desktop.rootRequestedUiId, 'landing.hero');
+      assert.equal(json.data.notes.some((note: string) => note.includes('desktop/tablet/mobile')), true);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    }
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

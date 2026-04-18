@@ -10,26 +10,37 @@ The system now supports three sync modes:
 
 This matters when code and Figma changed in parallel.
 
-## What reconcile does
+## What reconcile does now
 
-Reconcile performs a three-way comparison:
+Reconcile performs a four-state comparison:
 
-- current code UI
-- current Figma UI
+- current Code AST state
+- current Rendered UI state
+- current Figma state
 - last synced state from `ui_mappings` snapshots
 
 Then it:
 
-- determines changed fields on each side
-- detects conflicting fields
-- builds a merge plan
+- determines changed fields on each source
+- detects source-specific conflicts
+- builds a merge plan with source priorities
 - marks conflicts separately instead of auto-merging them
 
-## Example conflicts
+## Merge priorities
 
-- text changed in both code and Figma
-- layout changed in both places
-- block deleted in code but modified in Figma
+Reconcile now follows explicit truth priorities:
+
+- structural truth — AST
+- visual truth — rendered DOM
+- design truth — tokens
+- design editing truth — Figma
+
+## Example conflict classes
+
+- `AST changed, render unchanged`
+- `render changed, Figma unchanged`
+- `Figma changed, code changed differently`
+- `rendered and Figma diverged visually`
 
 ## Current engine
 
@@ -46,22 +57,27 @@ The diff engine tracks field-level changes for:
 - `order`
 - `structure`
 - `visibility`
+- `asset`
+- `icon`
+- `tokens`
 
 ## Merge plan behavior
 
 ### `code_to_figma`
 
-Code is authoritative.
+Code AST structural truth is authoritative.
 
 ### `figma_to_code`
 
-Figma is authoritative.
+Figma design editing truth is authoritative.
 
 ### `reconcile`
 
-- fields changed only in Figma → target `code`
-- fields changed only in code → target `figma`
-- fields changed differently in both → target `conflict`
+- AST-only structural changes -> target `figma`
+- rendered-only visual changes -> target `figma`
+- token truth changes -> target `figma`
+- Figma-only editing changes without rendered confirmation -> target `code`
+- conflicting multi-source changes -> target `conflict`
 
 ## API
 
@@ -75,6 +91,13 @@ Example body:
   "fileKey": "abc123",
   "rootDir": "/repo",
   "mode": "reconcile",
+  "render": {
+    "target": {
+      "mode": "existing_url",
+      "url": "http://127.0.0.1:3000"
+    },
+    "rootUiId": "landing.hero"
+  },
   "uiIds": ["landing.hero"]
 }
 ```
@@ -83,13 +106,32 @@ Example body:
 
 Returns:
 
-- field-level changes
-- merge plan
-- conflict list
-- notes about three-way comparison
+- field-level changes across four sources
+- merge plan with priority basis
+- conflict list with conflict classes
+- rendered state used as visual truth input
 
 ## Why this matters
 
-At this point the system is no longer one-directional.
+Reconcile is no longer just a comparison of two trees.
 
-It can reason about divergence between code and Figma instead of assuming one side always wins.
+It can reason separately about:
+
+- what code structurally declares
+- what browser render actually shows
+- what Figma currently targets
+- what the last synced baseline was
+
+
+## Breakpoint-aware reconcile
+
+A new route now orchestrates reconcile across several breakpoint families:
+
+`POST /api/sync/reconcile-breakpoints`
+
+Current behavior:
+
+- reuses the stable single-breakpoint reconcile pipeline per breakpoint
+- returns `resultsByBreakpoint`
+- keeps conflict classification and merge priorities identical to single-breakpoint reconcile
+- remains diagnostic/planning-first until variant-group reverse-sync bindings are finalized

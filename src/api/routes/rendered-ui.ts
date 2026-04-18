@@ -32,6 +32,11 @@ const collectUiIdsDeepFirst = (node: UiNode): string[] => {
 };
 
 
+const diagnoseRenderedUiBreakpointsSchema = extractRenderedUiBreakpointsSchema.extend({
+  rootUiId: z.string().trim().min(1).optional(),
+  project: z.string().trim().min(1).max(128).optional()
+});
+
 const importBreakpointsToFigmaRenderedUiSchema = extractRenderedUiBreakpointsSchema.extend({
   rootDir: z.string().trim().min(1).optional(),
   fileKey: z.string().trim().min(1).optional(),
@@ -44,6 +49,50 @@ const importBreakpointsToFigmaRenderedUiSchema = extractRenderedUiBreakpointsSch
 
 
 const collectVariantCleanupUiIds = (node: UiNode): string[] => collectUiIdsDeepFirst(node);
+
+
+const buildFallbackDiagnosticsFromDocument = (document: any, data: any, breakpoint: string): Record<string, unknown> => {
+  const root = document.root;
+  const bbox = root?.boundingBox;
+  const computedStyle = root?.computedStyle ?? {};
+  return {
+    targetMode: data.target.mode,
+    resolvedUrl: data.target.mode === 'existing_url' ? data.target.url : `breakpoint:${breakpoint}`,
+    finalUrl: data.target.mode === 'existing_url' ? data.target.url : `breakpoint:${breakpoint}`,
+    title: root?.name ?? root?.uiId ?? `breakpoint:${breakpoint}`,
+    pageAudit: {},
+    domUiIdCount: collectUiIdsDeepFirst(root).length,
+    rootRequestedUiId: data.rootUiId,
+    rootResolvedByUiId: Boolean(data.rootUiId && root?.uiId === data.rootUiId),
+    rootSelectionMode: (root?.meta as any)?.renderSurface?.shellSelectionMode ?? 'extract-fallback',
+    fallbackUsed: true,
+    rootSummary: {
+      uiId: root?.uiId,
+      tag: root?.name ?? root?.kind,
+      text: root?.text,
+      childCount: root?.children?.length ?? 0,
+      boundingBox: bbox,
+      computedStyle,
+      shellSelectionMode: (root?.meta as any)?.renderSurface?.shellSelectionMode,
+      contentSelectionMode: (root?.meta as any)?.renderSurface?.contentSelectionMode,
+      shellPreserved: (root?.meta as any)?.renderSurface?.shellPreserved,
+      shellRootTag: (root?.meta as any)?.renderSurface?.shellRootTag
+    },
+    childUiIds: (root?.children ?? []).map((child: any) => child.uiId),
+    childSummaries: (root?.children ?? []).map((child: any) => ({
+      uiId: child.uiId,
+      tag: child.name ?? child.kind,
+      textPreview: typeof child.text === 'string' ? child.text.slice(0, 120) : undefined,
+      boundingBox: child.boundingBox,
+      display: child.computedStyle?.display,
+      layoutDirection: child.computedStyle?.flexDirection,
+      score: ((child.boundingBox?.width ?? 0) * (child.boundingBox?.height ?? 0)) + ((child.children?.length ?? 0) * 1000),
+      selectionReasons: ['extract_fallback_summary'],
+      area: (child.boundingBox?.width ?? 0) * (child.boundingBox?.height ?? 0)
+    })),
+    computedStyleKeys: Object.keys(computedStyle).filter((key) => computedStyle[key])
+  };
+};
 
 const importToFigmaRenderedUiSchema = extractRenderedUiSchema.extend({
   rootDir: z.string().trim().min(1).optional(),
@@ -85,6 +134,41 @@ renderedUiRouter.post(
   })
 );
 
+
+
+renderedUiRouter.post(
+  '/rendered-ui/diagnose-breakpoints',
+  validateRequest({ body: diagnoseRenderedUiBreakpointsSchema }),
+  asyncHandler(async (req, res) => {
+    const data = diagnoseRenderedUiBreakpointsSchema.parse(req.body);
+    const diagnosticsByBreakpoint: Record<string, unknown> = {};
+    for (const breakpoint of data.breakpoints) {
+      try {
+        diagnosticsByBreakpoint[breakpoint] = await req.app.locals.renderedUiExtractorService.diagnose({
+          ...data,
+          breakpoint,
+          breakpointName: breakpoint
+        });
+      } catch (error) {
+        const document = await req.app.locals.renderedUiExtractorService.extract({
+          ...data,
+          breakpoint,
+          breakpointName: breakpoint
+        });
+        diagnosticsByBreakpoint[breakpoint] = buildFallbackDiagnosticsFromDocument(document, data, breakpoint);
+      }
+    }
+    sendSuccess(res, {
+      activeBreakpoint: data.breakpoints[0],
+      diagnosticsByBreakpoint,
+      notes: [
+        'Breakpoint-aware diagnostics reuse the stable single-breakpoint diagnose flow per breakpoint.',
+        'This route is intended for surface/root/computed-style comparison across desktop/tablet/mobile.',
+        'It prepares future breakpoint-aware beauty and reconcile decisions without forcing immediate writes.'
+      ]
+    });
+  })
+);
 
 renderedUiRouter.post(
   '/rendered-ui/import-to-figma',
