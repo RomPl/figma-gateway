@@ -8,6 +8,20 @@ It should follow one deterministic operational loop when working with UI synchro
 
 This document defines the canonical flow for the visual-sync agent and aligns it with the product goal described in [agent-product-goal.md](./agent-product-goal.md).
 
+## Runtime boundary for the agent
+
+The agent should treat the runtime surfaces as intentionally split:
+
+- `figma-gateway.vazovski.art` -> Figma and rendered-UI side operations
+- `mcp.vazovski.art` -> code-side operations
+
+Operational consequence:
+
+- extraction, Figma planning, Figma reads/writes, mapping and reconcile classification happen through `figma-gateway`
+- actual code mutation happens through the separate code MCP
+
+The agent may move between these surfaces inside one user task, but it should not confuse their responsibilities.
+
 ## Primary product situations this flow must support
 
 The same canonical loop should work for all three high-level situations:

@@ -71,6 +71,22 @@ If the user edits the block in Figma and asks the agent to sync the code, the ag
 5. apply the patch through the code-editing MCP
 6. preserve stable block identity and sync history
 
+## Runtime boundary and MCP responsibility split
+
+The target system uses two different remote control surfaces with different responsibilities:
+
+- `figma-gateway.vazovski.art` -> Figma-side and visual-sync-side orchestration
+- `mcp.vazovski.art` -> code-side inspection and mutation
+
+Operational rule:
+
+- all Figma interaction, plugin-bridge execution, rendered extraction, reconcile preparation and visual planning belong to `figma-gateway`
+- all code editing belongs to the separate code MCP at `mcp.vazovski.art`
+
+This split is intentional and should remain visible in architecture and agent flow.
+
+The gateway may decide that a code change is needed, but the actual code mutation is executed through the separate code MCP.
+
 ## Product definition
 
 `figma-gateway` is not just a Figma importer.

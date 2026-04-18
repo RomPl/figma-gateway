@@ -26,6 +26,21 @@ This architecture exists to make that product possible.
 - universal round-trip for arbitrary technologies
 - uncontrolled capture of private runtime state
 
+## Runtime boundary and MCP split
+
+The target operating model uses two distinct control planes:
+
+- `figma-gateway.vazovski.art` -> Figma orchestration, rendered extraction, visual planning, mapping, reconcile and plugin-bridge execution
+- `mcp.vazovski.art` -> code-side inspection and code mutation
+
+Architectural rule:
+
+- `figma-gateway` is the visual/design orchestration surface
+- the separate code MCP is the mutation surface for code
+- `figma-gateway` may produce code patch plans, but code changes themselves should be applied through `mcp.vazovski.art`
+
+This separation keeps responsibilities clear and prevents accidental coupling between design-sync runtime and code-edit runtime.
+
 ## Product-level architecture principle
 
 `figma-gateway` is not only a Figma importer.

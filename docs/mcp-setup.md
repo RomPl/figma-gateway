@@ -1,5 +1,25 @@
 # MCP Setup
 
+## Что это за MCP и чем он не является
+
+Этот документ описывает MCP surface именно для `figma-gateway.vazovski.art`.
+
+Его зона ответственности:
+
+- Figma read/write orchestration
+- rendered UI extraction
+- visual planning
+- mapping and reconcile support around Figma and rendered UI
+
+Он не является основным MCP для правки кода.
+
+Для code-side inspection и code mutation в целевой системе используется отдельный MCP endpoint: `mcp.vazovski.art`.
+
+Практическое правило для агентов:
+
+- использовать `figma-gateway` MCP для Figma/runtime-sync задач
+- использовать `mcp.vazovski.art` для изменения кода
+
 ## Что сделано
 
 Добавлен локальный MCP adapter для gateway:

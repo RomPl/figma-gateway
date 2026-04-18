@@ -11,6 +11,15 @@ Its target role is to let an autonomous agent:
 - apply future block-level edits from natural-language commands
 - propagate Figma changes safely back into code through a separate code-editing MCP
 
+## Runtime responsibility split
+
+In the target system the responsibilities are intentionally split across two endpoints:
+
+- `figma-gateway.vazovski.art` -> Figma interaction, rendered extraction, visual planning, reconcile and mapping
+- `mcp.vazovski.art` -> code-side inspection and code mutation
+
+`figma-gateway` may determine that a code change is required, but code edits themselves belong to the separate code MCP.
+
 ## Product goal
 
 The intended end-state is documented in:
