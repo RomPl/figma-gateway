@@ -114,7 +114,7 @@ test('plugin runtime supports image-based svg icon fallback and real image fills
   assert.match(source, /createImageHashFromSvgMarkup/);
   assert.match(source, /rect\.name = 'icon-image'/);
   assert.match(source, /type: 'IMAGE', scaleMode: 'FIT', imageHash/);
-  assert.match(source, /if \(!payload\.placeholder && canReceiveImageFill\(node\)\)/);
+  assert.match(source, /if \(canReceiveImageFill\(node\)\)/);
 });
 
 test('plugin runtime font loader uses available font inventory and normalized style matching', async () => {
@@ -130,4 +130,24 @@ test('plugin runtime parses multiple box-shadow entries and inner shadows', asyn
   assert.match(source, /splitBoxShadowEntries/);
   assert.match(source, /INNER_SHADOW/);
   assert.match(source, /map\(parseSingleShadowEntry\)\.filter\(Boolean\)/);
+});
+
+test('plugin runtime excludes emoji and symbol font families from text fallback candidates', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /isEmojiFamily/);
+  assert.match(source, /normalized\.includes\('emoji'\)/);
+  assert.match(source, /normalized\.includes\('symbol'\)/);
+});
+
+test('plugin runtime imports svg assets through createNodeFromSvg path when source is .svg', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /function isSvgSource/);
+  assert.match(source, /fetchSvgMarkupFromSource/);
+  assert.match(source, /importedAs: 'svg'/);
+});
+
+test('plugin runtime enables clipsContent compatibility for spread shadows', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /applyShadowCompatibility/);
+  assert.match(source, /node\.clipsContent = true/);
 });

@@ -324,3 +324,20 @@ Additional compatibility step for older runtimes:
 - after `set_text_style`, planner also reapplies `set_text_content`
 
 This is intended to preserve the requested font style in runtimes that may reset text styling during character assignment.
+
+## Figma display names should preserve original node names and append stable uiId
+
+For operator-friendly inspection and precise discussion in Figma, display names should keep the original node/model name and append the stable `uiId` through ` - `.
+
+Example:
+
+- `div-relative.mx-auto.max-w-screen-xl - __auto__/div[2]/main[1]/...`
+- `h2-text-3xl.font-bold.text-foreground - __auto__/div[2]/main[1]/...`
+
+This improves human reference in Figma while keeping reverse sync anchored on `uiId` itself.
+
+## Figma-friendly font family normalization
+
+When browser CSS reports a generic UI font stack, planner should normalize it to a concrete Figma-friendly family before runtime font resolution.
+
+For the current template-engine project this prevents fallback into emoji/symbol families and keeps text aligned with the design intent.

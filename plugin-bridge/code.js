@@ -175,8 +175,9 @@ async function loadRequestedFont(payload) {
   const styleGuess = (!requestedStyle || (normalizedStyle === 'regular' && numericWeight >= 500)) ? weightDrivenStyle : requestedStyle;
   const familyParts = rawFamily.split(',').map(function (item) { return String(item || '').replace(/["']/g, '').trim(); }).filter(Boolean);
   const genericFamilies = new Set(['ui-sans-serif','ui-serif','ui-monospace','system-ui','sans-serif','serif','monospace','emoji','math','fangsong']);
-  const candidateFamilies = familyParts.filter(function (item) { return !genericFamilies.has(String(item).toLowerCase()); });
-  if (!candidateFamilies.length && familyParts.length) candidateFamilies.push(familyParts[0]);
+  const isEmojiFamily = function (item) { const normalized = String(item || '').toLowerCase(); return normalized.includes('emoji') || normalized.includes('symbol') || normalized.includes('color emoji'); };
+  const candidateFamilies = familyParts.filter(function (item) { return !genericFamilies.has(String(item).toLowerCase()) && !isEmojiFamily(item); });
+  if (!candidateFamilies.length) candidateFamilies.push('Inter', 'Roboto', 'Arial');
   candidateFamilies.push('Inter', 'Roboto', 'Arial');
   const uniqueFamilies = Array.from(new Set(candidateFamilies.filter(Boolean)));
   const availableFonts = await getAvailableFonts();
@@ -201,6 +202,46 @@ function parseCssColor(raw) { const rgb=String(raw).match(/^rgba?\((\d+),\s*(\d+
 function splitBoxShadowEntries(boxShadow) { const input=String(boxShadow||'').trim(); if (!input || input==='none') return []; const parts=[]; let current=''; let depth=0; for (const ch of input) { if (ch==='(') depth+=1; if (ch===')') depth=Math.max(0, depth-1); if (ch===',' && depth===0) { if (current.trim()) parts.push(current.trim()); current=''; continue; } current+=ch; } if (current.trim()) parts.push(current.trim()); return parts; }
 function parseSingleShadowEntry(entry) { const inset=/\binset\b/i.test(entry); const colorMatch=entry.match(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/); const color=parseCssColor(colorMatch ? colorMatch[1] : 'rgba(0,0,0,0.25)'); const cleaned=entry.replace(/\binset\b/i,'').replace(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/,' ').trim(); const nums=cleaned.match(/-?\d+(?:\.\d+)?px/g) || []; if (nums.length < 3) return null; return { type: inset ? 'INNER_SHADOW' : 'DROP_SHADOW', color, offset:{x:Number(nums[0].replace('px','')), y:Number(nums[1].replace('px',''))}, radius:Number(nums[2].replace('px','')), spread:nums[3]!==undefined?Number(nums[3].replace('px','')):0, visible:true, blendMode:'NORMAL' }; }
 function parseBoxShadow(boxShadow) { return splitBoxShadowEntries(boxShadow).map(parseSingleShadowEntry).filter(Boolean); }
+
+function isSvgSource(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  return raw.startsWith('data:image/svg+xml') || /\.svg(?:[?#].*)?$/.test(raw);
+}
+function decodeSvgDataUri(value) {
+  const raw = String(value || '');
+  const match = raw.match(/^data:image\/svg\+xml(?:;charset=[^;,]+)?(?:;base64)?,(.*)$/i);
+  if (!match) return null;
+  const body = match[1] || '';
+  try {
+    if (/;base64,/i.test(raw)) return atob(body);
+    return decodeURIComponent(body);
+  } catch (error) {
+    return null;
+  }
+}
+async function fetchSvgMarkupFromSource(source) {
+  const raw = String(source || '').trim();
+  if (!raw) return null;
+  const inline = decodeSvgDataUri(raw);
+  if (inline) return inline;
+  try {
+    const response = await fetch(raw, { cache: 'no-store' });
+    if (!response.ok) return null;
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    const text = await response.text();
+    if (!text.trim()) return null;
+    if (contentType.includes('image/svg+xml') || text.trim().startsWith('<svg')) return text;
+  } catch (error) {}
+  return null;
+}
+function applyShadowCompatibility(node, effects) {
+  if (!Array.isArray(effects) || !effects.length) return;
+  const needsSpreadCompatibility = effects.some(function (effect) { return effect && (effect.type === 'DROP_SHADOW' || effect.type === 'INNER_SHADOW') && typeof effect.spread === 'number' && effect.spread !== 0; });
+  if (!needsSpreadCompatibility) return;
+  if ('clipsContent' in node) {
+    try { node.clipsContent = true; } catch (error) {}
+  }
+}
 function mapIconText(label) { const value=String(label||'').toLowerCase(); if (value.includes('microphone')) return '🎤'; if (value.includes('history')) return '🕘'; if (value.includes('cloud') || value.includes('upload')) return '☁'; if (value.includes('folder')) return '📁'; if (value.includes('play')) return '▶'; if (value.includes('file')) return '📄'; return '◆'; }
 function applyAlignment(node, payload) { const alignment = payload.alignment || {}; if (alignment.layoutAlign !== undefined && 'layoutAlign' in node) node.layoutAlign = String(alignment.layoutAlign); if (alignment.layoutGrow !== undefined && 'layoutGrow' in node) node.layoutGrow = Number(alignment.layoutGrow); if (alignment.layoutPositioning !== undefined && 'layoutPositioning' in node) node.layoutPositioning = String(alignment.layoutPositioning); if (alignment.primaryAxisAlignItems !== undefined && 'primaryAxisAlignItems' in node) node.primaryAxisAlignItems = String(alignment.primaryAxisAlignItems); if (alignment.counterAxisAlignItems !== undefined && 'counterAxisAlignItems' in node) node.counterAxisAlignItems = String(alignment.counterAxisAlignItems); }
 
@@ -518,15 +559,30 @@ async function executeLowLevelCommand(step, refMap) {
   if (commandType === 'set_effects') {
     const node = await getNodeFromPayload(payload, commandType, refMap);
     if (!('effects' in node)) throw appError('UNSUPPORTED_OPERATION', 'Target node does not support effects: ' + node.id);
-    node.effects = parseBoxShadow(payload.boxShadow);
+    const parsedEffects = parseBoxShadow(payload.boxShadow);
+    applyShadowCompatibility(node, parsedEffects);
+    node.effects = parsedEffects;
     return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, effects: node.effects } });
   }
   if (commandType === 'set_asset_reference') {
     const node = await getNodeFromPayload(payload, commandType, refMap);
     if (payload.placeholder && 'setPluginData' in node) node.setPluginData('figma-gateway:asset-placeholder', String(payload.alt || payload.sourceUrl || payload.resolvedAssetPath || 'asset'));
-    if (!payload.placeholder && canReceiveImageFill(node)) {
-      const imageSource = payload.resolvedAssetPath || payload.sourceUrl;
-      if (typeof imageSource === 'string' && imageSource.trim()) {
+    const imageSource = payload.resolvedAssetPath || payload.sourceUrl;
+    if (!payload.placeholder && typeof imageSource === 'string' && imageSource.trim()) {
+      if (isSvgSource(imageSource) && 'appendChild' in node) {
+        try {
+          const svgMarkup = await fetchSvgMarkupFromSource(imageSource);
+          if (svgMarkup) {
+            const imported = figma.createNodeFromSvg(svgMarkup);
+            imported.name = 'asset-svg';
+            node.appendChild(imported);
+            if ('x' in imported) imported.x = 0;
+            if ('y' in imported) imported.y = 0;
+            return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: false, layer: payload.layer || null, importedAs: 'svg' } });
+          }
+        } catch (error) {}
+      }
+      if (canReceiveImageFill(node)) {
         try {
           const image = await figma.createImageAsync(imageSource.trim());
           node.fills = [{ type: 'IMAGE', scaleMode: 'FILL', imageHash: image.hash }];

@@ -367,3 +367,27 @@ Fix:
 
 - plugin runtime now resolves fonts against `figma.listAvailableFontsAsync()`
 - style matching is normalized (`Semi Bold`, `Semibold`, `ExtraBold`, etc.) before choosing the final font
+
+## Browser UI font stack falls back to emoji family in Figma
+
+Cause:
+
+- browser-computed stacks can include emoji/symbol fallback families
+- if the plugin forwards that stack too literally, Figma may choose an emoji family during text-node creation
+
+Fix:
+
+- planner now normalizes generic UI stacks to a concrete Figma-friendly family
+- runtime also excludes emoji/symbol families from candidate font resolution
+
+## SVG file assets need vector import, not raster fill
+
+Cause:
+
+- SVG is best handled by the editor's native SVG import path
+- raster-style image fill paths are a poor fit for SVG visual fidelity and editability
+
+Fix:
+
+- runtime now treats accessible `.svg` asset sources as SVG import candidates
+- only raster assets continue through image fill paths

@@ -216,3 +216,11 @@ This returns a runtime build marker plus the list of available `Inter` font styl
 ## Runtime shadow parsing
 
 `set_effects` now supports parsing multiple CSS box-shadow entries, including `inset` shadows, into Figma-compatible effect payloads.
+
+## SVG asset and effect compatibility
+
+Best-practice runtime behavior for visual fidelity:
+
+- inline SVG and accessible `.svg` asset sources should be imported through `createNodeFromSvg`, not treated as raster image fills
+- raster assets should continue to use image fills
+- shadow effects with non-zero spread may require `clipsContent = true` on eligible Figma containers to be accepted by the editor

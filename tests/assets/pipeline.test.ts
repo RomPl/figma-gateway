@@ -187,3 +187,24 @@ test('code-to-figma planner sanitizes svg markup for figma icon import', async (
 
 
 
+
+test('sanitized svg markup matches actual rendered icon size and scaled stroke width', async () => {
+  const document: any = {
+    version: 'ui-model.v1',
+    root: {
+      kind: 'frame', uiId: 'icon.page', name: 'Page', visible: true, children: [{
+        kind: 'icon', uiId: 'icon.root', name: 'svg-lucide', visible: true,
+        boundingBox: { x: 0, y: 0, width: 28, height: 28 },
+        computedStyle: { width: 28, height: 28 },
+        icon: { sourceType: 'inline-svg', textLabel: 'upload', svgMarkup: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 1"/></svg>', fill: 'rgb(255, 255, 255)', stroke: 'rgb(255, 255, 255)', size: { width: 28, height: 28 }, placement: 'standalone' },
+        asset: { layer: 'svg-icon' }, meta: {}, children: []
+      }]
+    }
+  };
+  const plan = buildCodeToFigmaPlan(document, 'IconThing', 'src/components/IconThing.tsx');
+  const cmd = plan.commands.find((item: any) => item.type === 'set_icon_reference');
+  assert.equal(Boolean(cmd), true);
+  assert.equal(String(cmd.payload.svgMarkup).includes('width="28"'), true);
+  assert.equal(String(cmd.payload.svgMarkup).includes('height="28"'), true);
+  assert.equal(String(cmd.payload.svgMarkup).includes('stroke-width="2.333"') || String(cmd.payload.svgMarkup).includes('stroke-width="2.334"'), true);
+});

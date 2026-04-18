@@ -93,36 +93,13 @@ const mapIconPlaceholderText = (label: string | undefined): string => {
 
 const buildFigmaNodeName = (node: UiNode, fallbackTag?: string): string => {
   const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined;
-  const tagRaw = String(typeof dom?.tag === 'string' ? dom.tag : fallbackTag ?? node.kind).toLowerCase();
-  const classRaw = String(dom?.className || '').toLowerCase();
-  const roleRaw = String(node.role || '').toLowerCase();
-  const headingLevel = typeof dom?.tag === 'string' && /^h[1-6]$/i.test(String(dom.tag)) ? String(dom.tag).toUpperCase() : '';
-  const semanticName = (() => {
-    if (tagRaw === 'header' || classRaw.includes('header')) return 'Header';
-    if (tagRaw === 'main' || classRaw.includes('main')) return 'Main';
-    if (tagRaw === 'footer' || classRaw.includes('footer')) return 'Footer';
-    if (tagRaw === 'nav' || roleRaw.includes('nav')) return 'Navigation';
-    if (tagRaw === 'section' || node.kind === 'section') return 'Section';
-    if (node.kind === 'button' || tagRaw === 'button' || roleRaw.includes('button')) return 'Button';
-    if (node.kind === 'icon' || Boolean(node.icon?.sourceType) || tagRaw === 'svg') return 'Icon';
-    if (node.kind === 'image' || tagRaw === 'img' || Boolean(node.asset?.sourceUrl)) return 'Image';
-    if (node.kind === 'text') {
-      if (headingLevel) return headingLevel;
-      if (tagRaw === 'p') return 'Paragraph';
-      if (tagRaw === 'span' && /label/.test(classRaw)) return 'Label';
-      return 'Text';
-    }
-    if (classRaw.includes('container') || classRaw.includes('mx-auto') || classRaw.includes('max-w-')) return 'Container';
-    if (classRaw.includes('card') || ((node.computedStyle?.borderRadius ?? 0) >= 12 && !!resolvedBackgroundPaintRaw(node) && (node.children?.length ?? 0) > 0)) return 'Card';
-    if (classRaw.includes('grid') || classRaw.includes('flex') || classRaw.includes('wrap') || node.children.length > 0) return 'Container';
-    return '';
-  })();
-  if (semanticName) return semanticName;
   const tag = sanitizeFigmaNamePart(typeof dom?.tag === 'string' ? dom.tag : fallbackTag ?? node.kind);
   const domId = sanitizeFigmaNamePart(typeof dom?.id === 'string' ? dom.id : undefined);
   const className = sanitizeFigmaNamePart(typeof dom?.className === 'string' ? String(dom.className).split(/\s+/).filter(Boolean).slice(0, 3).join('.') : undefined);
   const combined = [tag, domId, className].filter(Boolean).join('-');
-  return combined || node.name || node.uiId;
+  const baseName = (node.name && node.name.trim()) || combined || fallbackTag || node.kind || 'node';
+  const uiIdSuffix = node.uiId && node.uiId.trim() ? ` - ${node.uiId.trim()}` : '';
+  return `${baseName}${uiIdSuffix}`;
 };
 
 
@@ -216,8 +193,9 @@ const placeholderReasonsForNode = (node: UiNode): string[] => {
     reasons.push(...guardrails.unsupportedRegions.map((item) => String(item)).filter((item) => item && item !== 'heuristic_node'));
   }
   const bgImage = node.computedStyle?.backgroundImage;
+  const hasInlineSvgSource = Boolean(node.kind === 'icon' && typeof node.icon?.svgMarkup === 'string' && node.icon.svgMarkup.trim());
   if (isMeaningfulPaintRaw(bgImage) && !hasRenderablePaint(bgImage, node.computedStyle?.opacity ?? 1) && !String(bgImage).includes('gradient(')) reasons.push('background-image-unsupported');
-  if ((node.kind === 'image' || Boolean(node.asset?.layer)) && !node.asset?.sourceUrl && !node.asset?.resolvedAssetPath && node.asset?.layer !== 'decorative-asset') reasons.push('asset-source-missing');
+  if ((node.kind === 'image' || (Boolean(node.asset?.layer) && !hasInlineSvgSource)) && !node.asset?.sourceUrl && !node.asset?.resolvedAssetPath && node.asset?.layer !== 'decorative-asset') reasons.push('asset-source-missing');
   return Array.from(new Set(reasons.filter(Boolean)));
 };
 const shouldRenderAsRedPlaceholder = (node: UiNode): boolean => placeholderReasonsForNode(node).length > 0;
@@ -272,11 +250,72 @@ const sanitizeSvgMarkupForFigma = (svgMarkup: unknown, icon: UiNode['icon'] | un
   markup = markup.replace(/\s(data-[\w-]+|aria-[\w-]+|role|focusable|tabindex)=(['"]).*?\2/g, '');
   const explicitStroke = typeof icon?.stroke === 'string' && icon.stroke.trim() ? icon.stroke.trim() : undefined;
   const explicitFill = typeof icon?.fill === 'string' && icon.fill.trim() ? icon.fill.trim() : undefined;
+  const actualWidth = Number(icon?.size?.width || 0);
+  const actualHeight = Number(icon?.size?.height || 0);
+  const originalWidthMatch = markup.match(/\swidth=(['"])(\d+(?:\.\d+)?)\1/i);
+  const originalHeightMatch = markup.match(/\sheight=(['"])(\d+(?:\.\d+)?)\1/i);
+  const originalWidth = Number(originalWidthMatch ? originalWidthMatch[2] : 0);
+  const originalHeight = Number(originalHeightMatch ? originalHeightMatch[2] : 0);
+  const strokeScale = Math.max(originalWidth > 0 && actualWidth > 0 ? actualWidth / originalWidth : 1, originalHeight > 0 && actualHeight > 0 ? actualHeight / originalHeight : 1);
+  if (actualWidth > 0) markup = /\swidth=(['"]).*?\1/i.test(markup) ? markup.replace(/\swidth=(['"]).*?\1/i, ` width="${actualWidth}"`) : markup.replace('<svg', `<svg width="${actualWidth}"`);
+  if (actualHeight > 0) markup = /\sheight=(['"]).*?\1/i.test(markup) ? markup.replace(/\sheight=(['"]).*?\1/i, ` height="${actualHeight}"`) : markup.replace('<svg', `<svg height="${actualHeight}"`);
+  const strokeWidthMatch = markup.match(/stroke-width=(['"])(\d+(?:\.\d+)?)\1/i);
+  if (strokeWidthMatch && strokeScale !== 1) {
+    const scaled = (Number(strokeWidthMatch[2]) * strokeScale).toFixed(3).replace(/\.0+$/,'').replace(/(\.\d*?)0+$/,'$1');
+    markup = markup.replace(/stroke-width=(['"])(\d+(?:\.\d+)?)\1/i, `stroke-width="${scaled}"`);
+  }
   if (explicitStroke) markup = markup.replace(/stroke=(['"])currentColor\1/g, `stroke="${explicitStroke}"`);
   if (explicitFill) markup = markup.replace(/fill=(['"])currentColor\1/g, `fill="${explicitFill}"`);
   if (explicitStroke && !/\sstroke=/.test(markup)) markup = markup.replace('<svg', `<svg stroke="${explicitStroke}"`);
   if (explicitFill && !/\sfill=/.test(markup)) markup = markup.replace('<svg', `<svg fill="${explicitFill}"`);
   return markup;
+};
+
+
+
+const normalizeBoxShadowForPlugin = (boxShadow: string | undefined): string | undefined => {
+  if (!boxShadow || boxShadow === 'none') return undefined;
+  const parts: string[] = [];
+  let current = '';
+  let depth = 0;
+  for (const ch of String(boxShadow)) {
+    if (ch === '(') depth += 1;
+    if (ch === ')') depth = Math.max(0, depth - 1);
+    if (ch === ',' && depth === 0) { if (current.trim()) parts.push(current.trim()); current = ''; continue; }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current.trim());
+  const parsed = parts.map((entry) => {
+    const colorMatch = entry.match(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/);
+    const color = colorMatch ? colorMatch[1] : 'rgba(0,0,0,0.25)';
+    const cleaned = entry.replace(/inset/i, '').replace(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/, ' ').trim();
+    const nums = cleaned.match(/-?\d+(?:\.\d+)?px/g) || [];
+    if (nums.length < 3) return null;
+    const xRaw = nums[0] ?? '0px';
+    const yRaw = nums[1] ?? '0px';
+    const blurRaw = nums[2] ?? '0px';
+    const spreadRaw = nums[3];
+    const x = Number(xRaw.replace('px',''));
+    const y = Number(yRaw.replace('px',''));
+    const blur = Number(blurRaw.replace('px',''));
+    const spread = spreadRaw !== undefined ? Number(spreadRaw.replace('px','')) : 0;
+    if (x === 0 && y === 0 && blur === 0 && spread === 0) return null;
+    return { x, y, blur, spread, color };
+  }).filter(Boolean) as Array<{x:number;y:number;blur:number;spread:number;color:string}>;
+  if (!parsed.length) return undefined;
+  const best = parsed.sort((a,b) => (Math.abs(b.blur)+Math.abs(b.spread)+Math.abs(b.y)) - (Math.abs(a.blur)+Math.abs(a.spread)+Math.abs(a.y)))[0];
+  if (!best) return undefined;
+  return `${best.x}px ${best.y}px ${best.blur}px ${best.spread}px ${best.color}`;
+};
+
+const normalizeFontFamilyForFigma = (rawFamily: unknown): string | undefined => {
+  const parts = String(rawFamily || '').split(',').map((item) => String(item || '').replace(/["']/g, '').trim()).filter(Boolean);
+  const genericFamilies = new Set(['ui-sans-serif','ui-serif','ui-monospace','system-ui','sans-serif','serif','monospace','emoji','math','fangsong']);
+  const concrete = parts.filter((item) => {
+    const normalized = item.toLowerCase();
+    return !genericFamilies.has(normalized) && !normalized.includes('emoji') && !normalized.includes('symbol') && !normalized.includes('color emoji');
+  });
+  return concrete[0] || 'Inter';
 };
 
 const inferFigmaFontStyle = (fontWeight: unknown, explicitStyle: unknown): string | undefined => {
@@ -433,7 +472,7 @@ const planTextNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: s
     y: plannedY,
     width: plannedWidth,
     height: plannedHeight,
-    fontFamily: font.fontFamily ?? declaredText?.fontFamily,
+    fontFamily: normalizeFontFamilyForFigma(font.fontFamily ?? declaredText?.fontFamily),
     fontStyle: resolvedFontStyle,
     fontSize: font.fontSize ?? declaredText?.fontSize,
     lineHeight: font.lineHeight ?? declaredText?.lineHeight,
@@ -508,7 +547,7 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
   }
   if (hasMeaningfulEffects(node.computedStyle?.boxShadow)) {
     actions.push({ id: `${ref}:effects`, type: 'set_effects', uiId: node.uiId, payload: { nodeRef: ref } });
-    commands.push({ type: 'set_effects', payload: { nodeRef: ref, boxShadow: node.computedStyle?.boxShadow } });
+    commands.push({ type: 'set_effects', payload: { nodeRef: ref, boxShadow: normalizeBoxShadowForPlugin(node.computedStyle?.boxShadow) } });
   }
 
   const deferSizeUntilAfterChildren = Boolean(autoLayout && (node.children.length > 0 || node.kind === 'button' || ((node.computedStyle?.display === 'inline-flex' || node.computedStyle?.display === 'flex') && (Boolean(node.text) || Boolean(node.icon?.sourceType)))));
@@ -559,7 +598,8 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
   }
 
   if (node.icon?.sourceType) {
-    const figmaStrategy = (needsReview || renderAsPlaceholder) ? 'placeholder' : (node.icon.figmaStrategy ?? 'vector_icon');
+    const hasInlineSvgSource = Boolean(typeof node.icon.svgMarkup === 'string' && node.icon.svgMarkup.trim());
+    const figmaStrategy = (hasInlineSvgSource ? (node.icon.figmaStrategy ?? 'vector_icon') : ((needsReview || renderAsPlaceholder) ? 'placeholder' : (node.icon.figmaStrategy ?? 'vector_icon')));
     actions.push({ id: `${ref}:icon`, type: 'set_icon', uiId: node.uiId, payload: { nodeRef: ref, sourceType: node.icon.sourceType } });
     commands.push({ type: 'set_icon_reference', payload: { nodeRef: ref, sourceType: node.icon.sourceType, textLabel: node.icon.textLabel, svgMarkup: sanitizeSvgMarkupForFigma(node.icon.svgMarkup, node.icon), fill: node.icon.fill, stroke: node.icon.stroke, size: node.icon.size, placement: node.icon.placement, spriteRef: node.icon.spriteRef, hash: node.icon.hash, assetId: node.icon.assetId, figmaStrategy } });
   }
@@ -578,7 +618,7 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
         name: 'text-button-label',
         text: labelText,
         fontSize: font.fontSize,
-        fontFamily: font.fontFamily,
+        fontFamily: normalizeFontFamilyForFigma(font.fontFamily),
         fontWeight: font.fontWeight,
         lineHeight: font.lineHeight,
         letterSpacing: font.letterSpacing,
