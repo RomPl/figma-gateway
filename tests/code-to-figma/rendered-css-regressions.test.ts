@@ -783,3 +783,56 @@ test('planner preserves small centered icon-holder wrappers as frames with child
   assert.equal(wrapLayout.payload.counterAxisAlignItems, 'CENTER');
   assert.equal(Boolean(iconRef), true);
 });
+
+
+test('planner preserves repeated feature-card wrappers and their internal text stacks inside grid sections', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: {
+      kind: 'section', uiId: 'features.root', name: 'Features', visible: true, children: [{
+        kind: 'frame', uiId: 'features.grid', name: 'div-grid.grid-cols-3.gap-8', visible: true,
+        boundingBox: { x: 0, y: 0, width: 1248, height: 320 },
+        computedStyle: { display: 'grid', width: 1248, height: 320, gap: 32, rowGap: 32, columnGap: 32 },
+        children: [
+          {
+            kind: 'card', uiId: 'features.card.1', name: 'div-rounded-3xl.border.bg-slate-950', visible: true,
+            boundingBox: { x: 0, y: 0, width: 394, height: 320 },
+            computedStyle: { display: 'flex', flexDirection: 'column', width: 394, height: 320, gap: 20, paddingTop: 32, paddingRight: 32, paddingBottom: 32, paddingLeft: 32, borderRadius: 24, backgroundColor: 'rgb(2,6,23)' },
+            children: [
+              { kind: 'text', uiId: 'features.card.1.title', name: 'h3-title', text: 'Import websites', visible: true, boundingBox: { x: 32, y: 32, width: 220, height: 28 }, computedStyle: { display: 'block', width: 220, height: 28, fontSize: 20, lineHeight: 28, fontWeight: '700', color: 'rgb(248,250,252)' }, children: [] },
+              { kind: 'text', uiId: 'features.card.1.body', name: 'p-body', text: 'Keep editable layout and typography.', visible: true, boundingBox: { x: 32, y: 72, width: 300, height: 48 }, computedStyle: { display: 'block', width: 300, height: 48, fontSize: 16, lineHeight: 24, fontWeight: '400', color: 'rgb(148,163,184)' }, children: [] }
+            ]
+          },
+          {
+            kind: 'card', uiId: 'features.card.2', name: 'div-rounded-3xl.border.bg-slate-950', visible: true,
+            boundingBox: { x: 427, y: 0, width: 394, height: 320 },
+            computedStyle: { display: 'flex', flexDirection: 'column', width: 394, height: 320, gap: 20, paddingTop: 32, paddingRight: 32, paddingBottom: 32, paddingLeft: 32, borderRadius: 24, backgroundColor: 'rgb(2,6,23)' },
+            children: [
+              { kind: 'text', uiId: 'features.card.2.title', name: 'h3-title', text: 'Keep sync-safe ids', visible: true, boundingBox: { x: 32, y: 32, width: 220, height: 28 }, computedStyle: { display: 'block', width: 220, height: 28, fontSize: 20, lineHeight: 28, fontWeight: '700', color: 'rgb(248,250,252)' }, children: [] },
+              { kind: 'text', uiId: 'features.card.2.body', name: 'p-body', text: 'Preserve stable uiId mapping.', visible: true, boundingBox: { x: 32, y: 72, width: 300, height: 48 }, computedStyle: { display: 'block', width: 300, height: 48, fontSize: 16, lineHeight: 24, fontWeight: '400', color: 'rgb(148,163,184)' }, children: [] }
+            ]
+          }
+        ]
+      }]
+    }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'Features', 'src/components/Features.tsx');
+  const cmds = plan.commands;
+  const gridAuto = cmds.find((c: any) => c.type === 'set_auto_layout' && c.payload?.nodeRef === 'features.grid');
+  const card1Create = cmds.find((c: any) => c.type === 'create_frame' && c.payload?.ref === 'features.card.1');
+  const card1Auto = cmds.find((c: any) => c.type === 'set_auto_layout' && c.payload?.nodeRef === 'features.card.1');
+  const card2Auto = cmds.find((c: any) => c.type === 'set_auto_layout' && c.payload?.nodeRef === 'features.card.2');
+  assert.equal(Boolean(gridAuto), true);
+  assert.equal(gridAuto?.payload?.layoutWrap, 'WRAP');
+  assert.equal(Boolean(card1Create), true);
+  assert.equal(card1Create?.payload?.name, 'Card - features.card.1');
+  assert.equal(Boolean(card1Auto), true);
+  assert.equal(card1Auto?.payload?.layoutMode, 'VERTICAL');
+  assert.equal(Boolean(card2Auto), true);
+  const leakedTexts = cmds.filter((c: any) => c.type === 'create_text' && c.payload?.parentRef === 'features.grid');
+  assert.equal(leakedTexts.length, 0);
+  const nestedCard1Texts = cmds.filter((c: any) => c.type === 'create_text' && c.payload?.parentRef === 'features.card.1');
+  const nestedCard2Texts = cmds.filter((c: any) => c.type === 'create_text' && c.payload?.parentRef === 'features.card.2');
+  assert.equal(nestedCard1Texts.length, 2);
+  assert.equal(nestedCard2Texts.length, 2);
+});
