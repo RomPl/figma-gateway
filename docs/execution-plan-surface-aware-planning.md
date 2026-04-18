@@ -8,7 +8,7 @@ It should be updated when a major implementation chunk is completed.
 
 ## Current phase
 
-Phase I: add breakpoint-aware diagnostics and reconcile orchestration so variant families can be compared and reasoned about without dropping to manual per-breakpoint calls.
+Phase J: add a variant-group scaffold for multi-breakpoint results so future durable bindings can be introduced without breaking the current `uiId` reverse-sync contract.
 
 ## Completed phase
 
@@ -212,3 +212,12 @@ Phase I completed:
 - added breakpoint-aware diagnostics route with extract-based fallback summaries
 - kept reconcile/conflict logic consistent by reusing the stable single-breakpoint pipelines per breakpoint
 - made variant-family comparison available without manual per-breakpoint calls
+
+## Completed phase
+
+Phase J completed:
+
+- added a `variantGroup` preview scaffold for multi-breakpoint routes and intent results
+- exposed one logical variant-group id with per-breakpoint variant uiIds and aliases
+- kept the scaffold additive and deferred, without changing the authoritative `uiId` reverse-sync contract
+- prepared the system for future durable multi-breakpoint bindings without forcing a database migration

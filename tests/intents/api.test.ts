@@ -178,6 +178,7 @@ test('intent API can orchestrate multi-breakpoint reconstruct requests', async (
       assert.equal(json.data.artifacts.breakpointCount, 2);
       assert.equal(json.data.result.resultsByBreakpoint.mobile.plan.model.root.uiId.endsWith('--mobile'), true);
       assert.equal(json.data.result.resultsByBreakpoint.desktop.plan.model.root.uiId.endsWith('--desktop'), true);
+      assert.equal(json.data.result.variantGroup.variantGroupId, 'landing.hero');
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
     }

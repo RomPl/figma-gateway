@@ -13,6 +13,7 @@ import type { RenderedUiExtractorService } from './rendered-ui-extractor';
 import type { UiMappingService } from './ui-mapping-registry';
 import type { UiModelDocument, UiNode } from './ui-model';
 import { materializeBreakpointVariantNodeRefs } from './breakpoint-variant-materializer';
+import { buildVariantGroupPreview } from './variant-group-preview';
 
 export const intentCommandSchema = z.enum([
   'reconstruct_design_from_code',
@@ -134,6 +135,7 @@ export class IntentApiService {
       resultsByBreakpoint[breakpoint] = result;
       combinedCommands.push(...(result.plan.commands as Array<Record<string, unknown>>));
     }
+    const variantGroup = buildVariantGroupPreview(Object.fromEntries(Object.entries(resultsByBreakpoint).map(([breakpoint, result]) => [breakpoint, (result as any).plan.model])) as any);
     let queued: { sessionId: string; commandId: string; status: string } | undefined;
     if (!payload.dryRun && session) {
       const command = this.pluginBridgeService.queueExecutePluginBatch({ sessionId: session.sessionId, fileKey: (payload.fileKey as string | undefined) ?? session.fileKey, commands: combinedCommands as any, actorId: `intent.${intent}.breakpoints` });
@@ -142,7 +144,7 @@ export class IntentApiService {
     return {
       phases: [...VISUAL_INTENT_PHASES],
       artifacts: { visualSource: 'rendered_ui_snapshot', breakpointCount: breakpoints.length, breakpoints },
-      result: { breakpoints, resultsByBreakpoint, queued, notes: ['Intent used breakpoint-aware orchestration across multiple rendered/code-backed planning runs.', 'Variant node refs were materialized per breakpoint family before aggregate queueing.', 'Multi-breakpoint mapping persistence remains deferred until reverse-sync variant bindings are finalized.'] }
+      result: { breakpoints, resultsByBreakpoint, variantGroup, queued, notes: ['Intent used breakpoint-aware orchestration across multiple rendered/code-backed planning runs.', 'Variant node refs were materialized per breakpoint family before aggregate queueing.', 'Variant-group preview is now exposed as a durable scaffold for future multi-breakpoint bindings.', 'Multi-breakpoint mapping persistence remains deferred until reverse-sync variant bindings are finalized.'] }
     };
   }
 

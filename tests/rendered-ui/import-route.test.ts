@@ -159,6 +159,7 @@ test('rendered-ui import-breakpoints-to-figma builds separate variant node refs 
       assert.equal(json.data.activeBreakpoint, 'mobile');
       assert.equal(json.data.plansByBreakpoint.mobile.model.root.uiId.endsWith('--mobile'), true);
       assert.equal(json.data.plansByBreakpoint.desktop.model.root.uiId.endsWith('--desktop'), true);
+      assert.equal(json.data.variantGroup.variantGroupId, 'landing.hero');
       assert.equal(json.data.notes.some((note: string) => note.includes('variant node refs')), true);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

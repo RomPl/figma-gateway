@@ -5,6 +5,7 @@ import { buildCodeToFigmaPlan, auditFirstPassVisualAcceptance } from '../../core
 import { segmentVisualBlocks } from '../../core/visual-segmentation';
 import { attachBreakpointVariantSet } from '../../core/breakpoint-variant-set';
 import { materializeBreakpointVariantNodeRefs } from '../../core/breakpoint-variant-materializer';
+import { buildVariantGroupPreview } from '../../core/variant-group-preview';
 import { z } from 'zod';
 
 import { mapRenderedToCodeSchema } from '../../core/rendered-to-code-mapper';
@@ -270,6 +271,7 @@ renderedUiRouter.post(
       modelsByBreakpoint[breakpoint] = plan.model;
       queuedCommandSteps.push(...plan.commands);
     }
+    const variantGroup = buildVariantGroupPreview(modelsByBreakpoint as any);
     let queued: { sessionId: string; commandId: string; status: string } | undefined;
     if (!data.dryRun) {
       const session = liveSession!;
@@ -286,6 +288,7 @@ renderedUiRouter.post(
       snapshots: extracted.snapshots,
       modelsByBreakpoint,
       plansByBreakpoint,
+      variantGroup,
       queued,
       notes: [
         'Multi-breakpoint rendered-first planning produced separate variant node refs per breakpoint family.',

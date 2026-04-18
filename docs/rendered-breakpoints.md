@@ -131,3 +131,17 @@ A new route now compares rendered diagnostics across breakpoint families:
 `POST /api/rendered-ui/diagnose-breakpoints`
 
 It returns one diagnostic result per breakpoint using the same single-breakpoint diagnose logic under the hood.
+
+
+## Variant-group preview scaffold
+
+Multi-breakpoint routes now return a `variantGroup` preview object.
+
+It is not a final stored binding yet.
+
+It exists to give the agent a stable scaffold for:
+
+- one logical variant group id
+- the original root uiId
+- per-breakpoint variant uiIds
+- aliases that can later participate in durable reverse-sync bindings

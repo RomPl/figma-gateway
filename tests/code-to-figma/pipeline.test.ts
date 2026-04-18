@@ -199,6 +199,7 @@ test('code-to-figma build-breakpoints route produces breakpoint-specific variant
       assert.equal(response.status, 200);
       assert.equal(json.data.resultsByBreakpoint.mobile.plan.model.root.uiId.endsWith('--mobile'), true);
       assert.equal(json.data.resultsByBreakpoint.desktop.plan.model.root.uiId.endsWith('--desktop'), true);
+      assert.equal(json.data.variantGroup.variantGroupId, 'landing.hero');
       assert.equal(json.data.notes.some((note: string) => note.includes('single-breakpoint pipeline')), true);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

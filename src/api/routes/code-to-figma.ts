@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { codeToFigmaPipelineSchema } from '../../core/code-to-figma-pipeline';
 import { materializeBreakpointVariantNodeRefs } from '../../core/breakpoint-variant-materializer';
+import { buildVariantGroupPreview } from '../../core/variant-group-preview';
 import { AppError } from '../../core/errors';
 import { asyncHandler, sendSuccess, validateRequest } from './helpers';
 
@@ -50,6 +51,7 @@ codeToFigmaRouter.post(
       resultsByBreakpoint[breakpoint] = result;
       combinedCommands.push(...result.plan.commands);
     }
+    const variantGroup = buildVariantGroupPreview(Object.fromEntries(Object.entries(resultsByBreakpoint).map(([breakpoint, result]) => [breakpoint, (result as any).plan.model])) as any);
     let queued: { sessionId: string; commandId: string; status: string } | undefined;
     if (!data.dryRun) {
       const session = liveSession!;
@@ -64,6 +66,7 @@ codeToFigmaRouter.post(
     sendSuccess(res, {
       breakpoints: data.breakpoints,
       resultsByBreakpoint,
+      variantGroup,
       queued,
       notes: [
         'Code-backed multi-breakpoint build reuses the stable single-breakpoint pipeline per breakpoint.',
