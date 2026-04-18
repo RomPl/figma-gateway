@@ -81,6 +81,8 @@ bash deploy/scripts/deploy.sh
 - `npm run check`
 - `npm test`
 - `systemctl restart`
+
+Startup note: production `createApp()` can take noticeably longer than a minimal Express boot because it opens SQLite, runs migrations, restores registries and initializes gateway services. Keep the `ExecStartPost` self-check window long enough for this cold start path.
 - `systemctl status`
 - `npm run self-check`
 

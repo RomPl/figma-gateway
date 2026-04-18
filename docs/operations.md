@@ -12,6 +12,8 @@ sudo systemctl status figma-gateway.service --no-pager
 
 ```bash
 sudo systemctl restart figma-gateway.service
+
+Startup note: production `createApp()` can take noticeably longer than a minimal Express boot because it opens SQLite, runs migrations, restores registries and initializes gateway services. Keep the `ExecStartPost` self-check window long enough for this cold start path.
 ```
 
 Остановить:
@@ -64,6 +66,8 @@ bash deploy/scripts/deploy.sh
 3. Перезапустить сервис:
 ```bash
 sudo systemctl restart figma-gateway.service
+
+Startup note: production `createApp()` can take noticeably longer than a minimal Express boot because it opens SQLite, runs migrations, restores registries and initializes gateway services. Keep the `ExecStartPost` self-check window long enough for this cold start path.
 ```
 4. Прогнать:
 ```bash

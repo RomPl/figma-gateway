@@ -28,7 +28,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const run = async () => {
   for (const url of endpoints) {
     let lastError = null;
-    for (let attempt = 1; attempt <= 15; attempt += 1) {
+    for (let attempt = 1; attempt <= 60; attempt += 1) {
       try {
         const response = await fetch(url, { headers: { accept: 'application/json' } });
         if (!response.ok) {
