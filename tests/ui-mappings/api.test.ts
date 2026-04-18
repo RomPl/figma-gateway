@@ -135,3 +135,35 @@ test('ui-mapping registry stores durable code-figma correspondence and sync stat
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+
+test('variant group registry API exposes derived multi-breakpoint groups', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'variant-groups-api-'));
+  const dbPath = join(dir, 'variant-groups.sqlite');
+  try {
+    const db = createSqliteDatabase(dbPath);
+    migrateDatabase(db);
+    const auditService = new AuditService(db);
+    const app = createApp({ apiBearerToken: 'test-api-token', corsAllowedOrigins: ['https://chat.openai.com'], db, auditService });
+    const server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Failed to get server address');
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    try {
+      await requestJson(baseUrl, '/api/ui-mappings', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ uiId: 'landing.hero', project: 'marketing-site', code: { file: 'src/Hero.tsx', component: 'Hero', snapshot: { kind: 'section', uiId: 'landing.hero--desktop', visible: true, meta: { breakpointVariantSet: { variantGroupId: 'landing.hero' }, breakpointVariantRef: { originalUiId: 'landing.hero', variantUiId: 'landing.hero--desktop', breakpointFamily: 'desktop' } } } }, figma: { fileKey: 'abc123', nodeId: '1:2', snapshot: { kind: 'section', uiId: 'landing.hero--desktop', visible: true } }, sync: { lastDirection: 'code_to_figma' } })
+      });
+      const search = await requestJson(baseUrl, '/api/search/variant-groups', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: 'landing.hero--desktop' })
+      });
+      assert.equal(search.status, 200);
+      assert.equal((search.json as { data: Array<{ variantGroupId: string }> }).data[0].variantGroupId, 'landing.hero');
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

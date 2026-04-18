@@ -145,3 +145,13 @@ It exists to give the agent a stable scaffold for:
 - the original root uiId
 - per-breakpoint variant uiIds
 - aliases that can later participate in durable reverse-sync bindings
+
+
+## Derived variant-group registry
+
+A new additive registry surface is available for multi-breakpoint memory:
+
+- `GET /api/variant-groups`
+- `POST /api/search/variant-groups`
+
+This registry is derived from existing mapping snapshots and variant metadata. It does not replace authoritative `uiId` reverse-sync bindings, but it gives the agent a stable way to discover logical breakpoint groups.
