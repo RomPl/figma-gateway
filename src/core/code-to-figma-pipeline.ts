@@ -332,6 +332,7 @@ const normalizeBoxShadowForPlugin = (boxShadow: string | undefined): string | un
   }
   if (current.trim()) parts.push(current.trim());
   const parsed = parts.map((entry) => {
+    const inset = /inset/i.test(entry);
     const colorMatch = entry.match(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/);
     const color = colorMatch ? colorMatch[1] : 'rgba(0,0,0,0.25)';
     const cleaned = entry.replace(/inset/i, '').replace(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/, ' ').trim();
@@ -346,12 +347,10 @@ const normalizeBoxShadowForPlugin = (boxShadow: string | undefined): string | un
     const blur = Number(blurRaw.replace('px',''));
     const spread = spreadRaw !== undefined ? Number(spreadRaw.replace('px','')) : 0;
     if (x === 0 && y === 0 && blur === 0 && spread === 0) return null;
-    return { x, y, blur, spread, color };
-  }).filter(Boolean) as Array<{x:number;y:number;blur:number;spread:number;color:string}>;
+    return { inset, x, y, blur, spread, color };
+  }).filter(Boolean) as Array<{inset:boolean;x:number;y:number;blur:number;spread:number;color:string}>;
   if (!parsed.length) return undefined;
-  const best = parsed.sort((a,b) => (Math.abs(b.blur)+Math.abs(b.spread)+Math.abs(b.y)) - (Math.abs(a.blur)+Math.abs(a.spread)+Math.abs(a.y)))[0];
-  if (!best) return undefined;
-  return `${best.x}px ${best.y}px ${best.blur}px ${best.spread}px ${best.color}`;
+  return parsed.map((entry) => `${entry.inset ? 'inset ' : ''}${entry.x}px ${entry.y}px ${entry.blur}px ${entry.spread}px ${entry.color}`).join(', ');
 };
 
 

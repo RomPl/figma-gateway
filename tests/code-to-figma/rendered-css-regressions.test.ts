@@ -669,7 +669,7 @@ test('planner normalizes multi-shadow css into plugin-friendly primary shadow pa
   const plan = buildCodeToFigmaPlan(model, 'Home', 'src/app/page.tsx');
   const cmd = plan.commands.find((item: any) => item.type === 'set_effects' && item.payload?.nodeRef === 'page.shadow');
   assert.equal(Boolean(cmd), true);
-  assert.equal(cmd.payload.boxShadow, '0px 10px 15px -3px rgba(36, 99, 235, 0.3)');
+  assert.equal(cmd.payload.boxShadow, '0px 10px 15px -3px rgba(36, 99, 235, 0.3), 0px 4px 6px -4px rgba(36, 99, 235, 0.3)');
 });
 
 test('planner appends stable uiId to figma-facing node names while preserving original base names', async () => {
@@ -835,4 +835,21 @@ test('planner preserves repeated feature-card wrappers and their internal text s
   const nestedCard2Texts = cmds.filter((c: any) => c.type === 'create_text' && c.payload?.parentRef === 'features.card.2');
   assert.equal(nestedCard1Texts.length, 2);
   assert.equal(nestedCard2Texts.length, 2);
+});
+
+
+test('planner preserves multi-shadow and inset effect stacks for plugin effect parsing', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: { kind:'frame', uiId:'page.root', name:'Page', visible:true, children:[{
+      kind:'frame', uiId:'page.effects', name:'effect-card', visible:true,
+      boundingBox:{x:0,y:0,width:320,height:180},
+      computedStyle:{ width:320, height:180, backgroundColor:'rgb(15,23,42)', borderRadius:24, boxShadow:'inset rgba(255, 255, 255, 0.08) 0px 1px 0px 0px, rgba(15, 23, 42, 0.24) 0px 12px 24px -8px' },
+      children:[]
+    }] }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'Home', 'src/app/page.tsx');
+  const cmd = plan.commands.find((item: any) => item.type === 'set_effects' && item.payload?.nodeRef === 'page.effects');
+  assert.equal(Boolean(cmd), true);
+  assert.equal(cmd.payload.boxShadow, '0px 1px 0px 0px rgba(255, 255, 255, 0.08), 0px 12px 24px -8px rgba(15, 23, 42, 0.24)');
 });

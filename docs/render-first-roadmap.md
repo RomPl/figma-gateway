@@ -188,22 +188,22 @@ Tasks:
 ## Execution order
 
 1. finish surface-aware planning and shell/content operationalization
-2. finish subtree cleanup / dedup runtime
-3. finish typography runtime mapping and verification
-4. add semantic normalization with reverse-sync safety
-5. harden wrapper preservation for icon holders / flex-wrap / grid items
+[x] 2. finish subtree cleanup / dedup runtime
+[x] 3. finish typography runtime mapping and verification
+[x] 4. add semantic normalization with reverse-sync safety
+[x] 5. harden wrapper preservation for icon holders / flex-wrap / grid items
 6. improve SVG and effects fidelity
-7. expand reverse-sync regression coverage for normalized trees
+[x] 7. expand reverse-sync regression coverage for normalized trees
 8. run final live comparison against reference beauty transfers
 
 ## Acceptance criteria
 
-- live import does not create duplicate synthetic uiIds
+[x] live import does not create duplicate synthetic uiIds
 - repeated imports stay stable
 - shell-like surfaces target the correct content work surface
-- headings/body/CTA labels use the correct font family/style in snapshot export
-- icon-holder wrappers are preserved as frames
-- grid and flex-wrap sections preserve item hierarchy
+[x] headings/body/CTA labels use the correct font family/style in snapshot export
+[x] icon-holder wrappers are preserved as frames
+[x] grid and flex-wrap sections preserve item hierarchy
 - SVG geometry and common effects are represented with materially improved fidelity
-- reverse sync tests stay green after beauty-planner changes
+[x] reverse sync tests stay green after beauty-planner changes
 - reference comparison shows comparable section/container/text hierarchy quality without losing future code-sync addressability

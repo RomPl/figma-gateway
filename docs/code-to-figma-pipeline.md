@@ -308,6 +308,7 @@ This is intentionally redundant for newer runtimes, but helps older running plug
 Render-first planning should expose cleaner Figma-facing names such as `Header`, `Main`, `Footer`, `Section`, `Container`, `Card`, `Text`, `Icon`, and `Button`.
 This normalization is conservative: it only replaces clearly technical DOM/class-derived names, while preserving human-authored names like `Hero` or `CTA` and still appending the stable `uiId`.
 Small visual icon-holder wrappers (for example `48x48` centered circular containers around SVG icons) must stay as their own frame nodes with child icon attachment and auto-layout centering. They must not collapse into a bare icon layer during render-first planning.
+When CSS `box-shadow` contains several non-zero entries, planner should preserve the normalized multi-entry stack for plugin-side effect parsing instead of collapsing everything to a single strongest shadow. Inset-specific fidelity still needs a dedicated follow-up pass.
 Repeated card grids must preserve both layers: the outer wrapping grid container and each individual card wrapper with its own internal vertical text stack. Card copy must stay attached to its own card frame instead of leaking directly into the grid parent.
 
 This naming layer must not change the stable `uiId`. Reverse sync and selector resolution continue to use `uiId` as the primary durable identity.
