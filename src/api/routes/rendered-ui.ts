@@ -32,6 +32,37 @@ const collectUiIdsDeepFirst = (node: UiNode): string[] => {
   return items.sort((a, b) => b.depth - a.depth).map((item) => item.uiId);
 };
 
+const collectUiIdStats = (node: UiNode): { total: number; unique: number; duplicates: Array<{ uiId: string; count: number; synthetic: boolean }>; syntheticDuplicates: string[] } => {
+  const counts = new Map<string, number>();
+  const walk = (current: UiNode): void => {
+    if (current.uiId) counts.set(current.uiId, (counts.get(current.uiId) ?? 0) + 1);
+    for (const child of current.children) walk(child);
+  };
+  walk(node);
+  const duplicates = Array.from(counts.entries())
+    .filter(([, count]) => count > 1)
+    .map(([uiId, count]) => ({ uiId, count, synthetic: uiId.startsWith('__auto__/') }))
+    .sort((a, b) => b.count - a.count || a.uiId.localeCompare(b.uiId));
+  return {
+    total: Array.from(counts.values()).reduce((sum, count) => sum + count, 0),
+    unique: counts.size,
+    duplicates,
+    syntheticDuplicates: duplicates.filter((item) => item.synthetic).map((item) => item.uiId)
+  };
+};
+
+const assertNoDuplicateUiIdsForLiveImport = (stats: ReturnType<typeof collectUiIdStats>, routeLabel: string): void => {
+  if (!stats.duplicates.length) return;
+  throw new AppError(
+    `${routeLabel} detected duplicate uiIds in the planned model and refused to queue a live batch`,
+    409,
+    'DUPLICATE_UI_IDS_IN_PLAN',
+    {
+      duplicateUiIds: stats.duplicates,
+      syntheticDuplicateUiIds: stats.syntheticDuplicates
+    }
+  );
+};
 
 const diagnoseRenderedUiBreakpointsSchema = extractRenderedUiBreakpointsSchema.extend({
   rootUiId: z.string().trim().min(1).optional(),
@@ -190,7 +221,9 @@ renderedUiRouter.post(
       : null;
     const model = attachBreakpointVariantSet(segmentVisualBlocks(mapped?.rendered ?? await req.app.locals.renderedUiExtractorService.extract(data)));
     const plan = buildCodeToFigmaPlan(model, data.componentName, data.filePath);
+    const uiIdStats = collectUiIdStats(plan.model.root);
     if (!data.dryRun) {
+      assertNoDuplicateUiIdsForLiveImport(uiIdStats, 'Rendered-first import');
       const cleanupUiIds = collectUiIdsDeepFirst(plan.model.root);
       const cleanupCommands = cleanupUiIds.map((uiId) => ({ type: 'delete_matching_nodes' as const, payload: { query: { uiId } } }));
       plan.commands = [...cleanupCommands, ...plan.commands];
@@ -236,6 +269,7 @@ renderedUiRouter.post(
       acceptance,
       notes,
       queued,
+      uiIdStats,
       model: plan.model,
       plan,
       mappingCount: mappedNodes.length,
@@ -261,6 +295,7 @@ renderedUiRouter.post(
     const extracted = await req.app.locals.renderedUiExtractorService.extractBreakpoints(data);
     const plansByBreakpoint: Record<string, unknown> = {};
     const modelsByBreakpoint: Record<string, unknown> = {};
+    const uiIdStatsByBreakpoint: Record<string, unknown> = {};
     const queuedCommandSteps: any[] = [];
     for (const breakpoint of data.breakpoints) {
       const snapshot = extracted.snapshots[breakpoint];
@@ -268,10 +303,13 @@ renderedUiRouter.post(
       const family = ((segmented.root.meta as any)?.planningContext?.breakpointFamily ?? breakpoint) as 'desktop' | 'tablet' | 'mobile';
       const variantModel = materializeBreakpointVariantNodeRefs(segmented, family);
       const plan = buildCodeToFigmaPlan(variantModel, `${data.componentName}`, data.filePath);
+      const uiIdStats = collectUiIdStats(plan.model.root);
+      if (!data.dryRun) assertNoDuplicateUiIdsForLiveImport(uiIdStats, `Rendered-first multi-breakpoint import (${breakpoint})`);
       const cleanupCommands = collectVariantCleanupUiIds(plan.model.root).map((uiId) => ({ type: 'delete_matching_nodes' as const, payload: { query: { uiId } } }));
       plan.commands = [...cleanupCommands, ...plan.commands];
       plansByBreakpoint[breakpoint] = plan;
       modelsByBreakpoint[breakpoint] = plan.model;
+      uiIdStatsByBreakpoint[breakpoint] = uiIdStats;
       queuedCommandSteps.push(...plan.commands);
     }
     const variantGroup = buildVariantGroupPreview(modelsByBreakpoint as any);
@@ -291,6 +329,7 @@ renderedUiRouter.post(
       snapshots: extracted.snapshots,
       modelsByBreakpoint,
       plansByBreakpoint,
+      uiIdStatsByBreakpoint,
       variantGroup,
       queued,
       notes: [

@@ -249,7 +249,13 @@ test('POST /api/nodes/batch validates request body', async () => {
       success: false,
       error: {
         code: 'VALIDATION_ERROR',
-        message: 'body.nodeIds: Too small: expected array to have >=1 items'
+        message: 'body.nodeIds: Too small: expected array to have >=1 items',
+        details: {
+          fieldErrors: {
+            body: ['Too small: expected array to have >=1 items']
+          },
+          formErrors: []
+        }
       }
     });
   } finally {

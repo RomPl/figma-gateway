@@ -206,3 +206,89 @@ test('diagnose-breakpoints returns diagnostics by breakpoint', async () => {
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+
+test('rendered-ui live import blocks queued batch when planned model contains duplicate uiIds', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'rendered-import-duplicate-uiids-'));
+  const dbPath = join(rootDir, 'rendered-import-duplicate-uiids.sqlite');
+  const duplicateRuntime: RenderedUiRuntime = {
+    capture: async () => ({
+      uiId: 'landing.hero',
+      tag: 'section',
+      text: 'Build faster Start',
+      treePath: 'landing.hero',
+      clientRect: { x: 20, y: 40, width: 1280, height: 680 },
+      computedStyle: { backgroundColor: 'rgb(17, 34, 51)', borderRadius: 24, display: 'flex', flexDirection: 'column', gap: 24, width: 1280, height: 680 },
+      visibility: { visible: true, display: 'flex', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [],
+      children: [
+        { uiId: 'landing.hero.title', tag: 'h1', text: 'Build faster', treePath: 'landing.hero > landing.hero.title[1]', clientRect: { x: 120, y: 120, width: 640, height: 72 }, computedStyle: { color: 'rgb(255,255,255)', fontFamily: 'Inter', fontSize: 56, fontWeight: '700', lineHeight: 64, width: 640, height: 72, display: 'block' }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [], children: [] },
+        { uiId: 'landing.hero.title', tag: 'p', text: 'Duplicate', treePath: 'landing.hero > landing.hero.title[2]', clientRect: { x: 120, y: 220, width: 320, height: 40 }, computedStyle: { color: 'rgb(255,255,255)', fontFamily: 'Inter', fontSize: 18, fontWeight: '400', lineHeight: 24, width: 320, height: 40, display: 'block' }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: 1440, viewportHeight: 900, name: 'desktop' }, syncRelevantFields: [], children: [] }
+      ]
+    })
+  };
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(rootDir, 'src', 'components', 'Hero.tsx'), `
+      import React from 'react';
+      export function Hero() {
+        return (
+          <section data-ui-id="landing.hero">
+            <h1 data-ui-id="landing.hero.title">Build faster</h1>
+          </section>
+        );
+      }
+    `, 'utf8');
+    const db = createSqliteDatabase(dbPath);
+    migrateDatabase(db);
+    const auditService = new AuditService(db);
+    const app = createApp({
+      figmaClient: createMockClient(),
+      apiBearerToken: 'test-api-token',
+      corsAllowedOrigins: ['https://chat.openai.com'],
+      db,
+      auditService,
+      enableWriteActions: true,
+      writeAllowedOperations: ['execute-plugin-batch'],
+      codeUiParserService: new CodeUiParserService({ rootDir }),
+      renderedUiExtractorService: new RenderedUiExtractorService(duplicateRuntime)
+    });
+    const server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Failed to get server address');
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    try {
+      const registration = await fetch(`${baseUrl}/api/plugin-bridge/sessions/register`, {
+        method: 'POST',
+        headers: { authorization: 'Bearer test-api-token', 'content-type': 'application/json' },
+        body: JSON.stringify({ fileKey: 'abc123', localFileKey: 'local:figma', fileName: 'Landing', clientName: 'test-plugin' })
+      });
+      const registrationJson = await registration.json() as any;
+      const sessionId = registrationJson.data.sessionId;
+
+      const response = await fetch(`${baseUrl}/api/rendered-ui/import-to-figma`, {
+        method: 'POST',
+        headers: { authorization: 'Bearer test-api-token', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          project: 'marketing-site',
+          target: { mode: 'existing_url', url: 'http://127.0.0.1:3000' },
+          rootDir,
+          componentName: 'Hero',
+          filePath: 'src/components/Hero.tsx',
+          fileKey: 'abc123',
+          sessionId,
+          dryRun: false
+        })
+      });
+      const json = await response.json() as any;
+      assert.equal(response.status, 409);
+      assert.equal(json.error.code, 'DUPLICATE_UI_IDS_IN_PLAN');
+      assert.equal(Array.isArray(json.error.details.duplicateUiIds), true);
+      assert.equal(json.error.details.duplicateUiIds[0].uiId, 'landing.hero.title');
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    }
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

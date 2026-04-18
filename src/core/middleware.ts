@@ -34,7 +34,8 @@ export const errorHandler = (
     success: false,
     error: {
       code: appError.code,
-      message: appError.message
+      message: appError.message,
+      ...(appError.details !== undefined ? { details: appError.details } : {})
     }
   });
 };
