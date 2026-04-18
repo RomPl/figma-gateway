@@ -50,6 +50,9 @@ test('low visual confidence marks nodes as needs review and avoids complex figma
     assert.equal(Boolean(iconRef), true);
     assert.equal(iconRef.payload.figmaStrategy, 'placeholder');
     assert.equal(result.plan.commands.some((item) => item.type === 'set_plugin_data'), true);
+    assert.equal(result.notes.some((note) => note.includes('Low-confidence nodes were marked as needs review')), true);
+    assert.equal(result.notes.some((note) => note.includes('First-pass visual acceptance failed')), true);
+    assert.equal(Boolean((result.plan.model.root.meta as any)?.needsReview), true);
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
   }
