@@ -391,7 +391,6 @@ writeRouter.post(
       return;
     }
     assertQueuedWriteAllowed(req, 'execute-plugin-command');
-    assertMvpWriteCommandAllowed(req.body.command);
     const resolvedSession = resolveQueuedSession(req);
     const command = req.app.locals.pluginBridgeService.queueCreatePage({
       sessionId: resolvedSession.sessionId,

@@ -6,7 +6,25 @@ This is the execution path for the scenario:
 
 - "sync code with the mockup"
 
-The pipeline reads Figma UI, reads code UI, normalizes both into Unified UI Model, computes visual diff, and produces a safe JSX patch.
+The pipeline must compare Figma not only against static code parsing, but against rendered visual truth.
+
+## Main rule
+
+For visual sync, the code side must be interpreted through two different sources:
+
+- Code AST for source mapping and safe patching
+- Rendered UI Snapshot for actual visual state
+
+This means the pipeline should no longer assume that AST is enough to describe the current UI.
+
+## Comparison model
+
+The effective comparison becomes:
+
+- Figma Snapshot as design target
+- Rendered UI Snapshot as current visual truth
+- Code AST as patch surface
+- Design Tokens as semantic normalization layer
 
 ## MVP patch scope
 
@@ -54,31 +72,13 @@ Managed attributes in MVP:
 - `style`
 - simple static children
 
-## API
+## Outcome
 
-`POST /api/figma-to-code/sync`
+The agent should understand a strict split:
 
-Example body:
+- visual truth comes from browser render
+- patch location comes from AST
+- design target comes from Figma
+- semantic normalization comes from tokens
 
-```json
-{
-  "project": "marketing-site",
-  "fileKey": "abc123",
-  "rootDir": "/repo",
-  "apply": true,
-  "uiIds": ["landing.hero"]
-}
-```
-
-## Output
-
-Returns:
-
-- normalized Figma document
-- diff entries
-- patch summary
-- safety notes
-
-## Current implementation note
-
-For MVP, patching uses safe replacement of simple JSX subtrees identified by stable `uiId`, while preserving non-managed attributes from the original code when possible.
+That split is the basis for safe visual sync.

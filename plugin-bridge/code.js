@@ -242,6 +242,24 @@ function applyShadowCompatibility(node, effects) {
     try { node.clipsContent = true; } catch (error) {}
   }
 }
+
+function centerImportedNodeInContainer(container, child, size) {
+  const targetWidth = size && Number(size.width) > 0 ? Number(size.width) : (typeof child.width === 'number' ? child.width : 0);
+  const targetHeight = size && Number(size.height) > 0 ? Number(size.height) : (typeof child.height === 'number' ? child.height : 0);
+  if (targetWidth > 0 && targetHeight > 0 && 'resizeWithoutConstraints' in child) {
+    try { child.resizeWithoutConstraints(targetWidth, targetHeight); } catch (error) {}
+  }
+  const containerWidth = typeof container.width === 'number' ? container.width : targetWidth;
+  const containerHeight = typeof container.height === 'number' ? container.height : targetHeight;
+  const childWidth = typeof child.width === 'number' ? child.width : targetWidth;
+  const childHeight = typeof child.height === 'number' ? child.height : targetHeight;
+  if ('x' in child) {
+    try { child.x = Math.round((containerWidth - childWidth) / 2); } catch (error) {}
+  }
+  if ('y' in child) {
+    try { child.y = Math.round((containerHeight - childHeight) / 2); } catch (error) {}
+  }
+}
 function mapIconText(label) { const value=String(label||'').toLowerCase(); if (value.includes('microphone')) return '🎤'; if (value.includes('history')) return '🕘'; if (value.includes('cloud') || value.includes('upload')) return '☁'; if (value.includes('folder')) return '📁'; if (value.includes('play')) return '▶'; if (value.includes('file')) return '📄'; return '◆'; }
 function applyAlignment(node, payload) { const alignment = payload.alignment || {}; if (alignment.layoutAlign !== undefined && 'layoutAlign' in node) node.layoutAlign = String(alignment.layoutAlign); if (alignment.layoutGrow !== undefined && 'layoutGrow' in node) node.layoutGrow = Number(alignment.layoutGrow); if (alignment.layoutPositioning !== undefined && 'layoutPositioning' in node) node.layoutPositioning = String(alignment.layoutPositioning); if (alignment.primaryAxisAlignItems !== undefined && 'primaryAxisAlignItems' in node) node.primaryAxisAlignItems = String(alignment.primaryAxisAlignItems); if (alignment.counterAxisAlignItems !== undefined && 'counterAxisAlignItems' in node) node.counterAxisAlignItems = String(alignment.counterAxisAlignItems); }
 
@@ -576,8 +594,7 @@ async function executeLowLevelCommand(step, refMap) {
             const imported = figma.createNodeFromSvg(svgMarkup);
             imported.name = 'asset-svg';
             node.appendChild(imported);
-            if ('x' in imported) imported.x = 0;
-            if ('y' in imported) imported.y = 0;
+            centerImportedNodeInContainer(node, imported, { width: typeof node.width === 'number' ? node.width : undefined, height: typeof node.height === 'number' ? node.height : undefined });
             return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: false, layer: payload.layer || null, importedAs: 'svg' } });
           }
         } catch (error) {}
@@ -599,7 +616,10 @@ async function executeLowLevelCommand(step, refMap) {
       try {
         iconNode = figma.createNodeFromSvg(String(payload.svgMarkup));
         iconNode.name = 'icon-svg';
-        if (payload.size && Number(payload.size.width) > 0 && Number(payload.size.height) > 0 && 'resizeWithoutConstraints' in iconNode) iconNode.resizeWithoutConstraints(Number(payload.size.width), Number(payload.size.height));
+        if ('fills' in iconNode) {
+          try { iconNode.fills = []; } catch (error) {}
+        }
+        centerImportedNodeInContainer(node, iconNode, payload.size);
       } catch (error) {
         iconNode = null;
       }

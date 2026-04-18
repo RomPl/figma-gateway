@@ -151,3 +151,18 @@ test('plugin runtime enables clipsContent compatibility for spread shadows', asy
   assert.match(source, /applyShadowCompatibility/);
   assert.match(source, /node\.clipsContent = true/);
 });
+
+test('plugin runtime clears imported svg frame fills for icon-svg wrappers', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /iconNode = figma\.createNodeFromSvg/);
+  assert.match(source, /if \('fills' in iconNode\)/);
+  assert.match(source, /iconNode\.fills = \[\]/);
+});
+
+test('plugin runtime centers imported svg roots inside icon containers', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /function centerImportedNodeInContainer/);
+  assert.match(source, /child\.x = Math\.round\(\(containerWidth - childWidth\) \/ 2\)/);
+  assert.match(source, /child\.y = Math\.round\(\(containerHeight - childHeight\) \/ 2\)/);
+  assert.match(source, /centerImportedNodeInContainer\(node, iconNode, payload\.size\)/);
+});

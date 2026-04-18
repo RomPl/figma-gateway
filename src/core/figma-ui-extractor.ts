@@ -176,6 +176,11 @@ const buildUiNode = (fileKey: string, node: FigmaNode): UiNode => {
     padding: extractPadding(node),
     layout,
     style: Object.keys(style).length ? style : undefined,
+    declarativeStyle: Object.keys(style).length ? style : undefined,
+    semanticTokens: undefined,
+    boundingBox: position || size ? { ...(position ?? {}), ...(size ?? {}) } : undefined,
+    state: { visible: typeof node.visible === 'boolean' ? node.visible : true },
+    responsive: undefined,
     meta: {
       figmaType: node.type,
       nodeName: node.name,

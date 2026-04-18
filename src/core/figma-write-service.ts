@@ -117,10 +117,17 @@ const commandPayloadSchema = z.object({
   includePages: z.coerce.boolean().optional()
 }).passthrough();
 
-export const pluginCommandStepSchema = z.object({
+export const pluginCommandStepSchema = z.preprocess((input) => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
+  const value = input as Record<string, unknown>;
+  if (value.payload && typeof value.payload === 'object' && !Array.isArray(value.payload)) return value;
+  const { type, ...rest } = value;
+  const payload = Object.keys(rest).length ? rest : undefined;
+  return { type, payload };
+}, z.object({
   type: z.enum(FIGMA_LOW_LEVEL_COMMAND_TYPES),
   payload: commandPayloadSchema.optional()
-});
+}));
 
 export const createFrameSchema = z.object({
   uiId: z.string().trim().min(1).max(200).optional(),

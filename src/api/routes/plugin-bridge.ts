@@ -99,6 +99,22 @@ pluginBridgeRouter.get(
   })
 );
 
+
+
+pluginBridgeRouter.get(
+  '/plugin-bridge/sessions/:sessionId/commands/:commandId',
+  asyncHandler(async (req, res) => {
+    const token = req.header('x-plugin-session-token') ?? getSingleValue(req.query.sessionToken);
+    const sessionId = String(req.params.sessionId);
+    const commandId = String(req.params.commandId);
+    const data = req.app.locals.pluginBridgeService.getCommand(sessionId, commandId, token);
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    sendSuccess(res, data);
+  })
+);
+
 pluginBridgeRouter.post(
   '/plugin-bridge/sessions/:sessionId/commands/:commandId/complete',
   validateRequest({ body: completeCommandSchema }),

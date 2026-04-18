@@ -5,6 +5,9 @@ import type { FigmaCache } from '../core/cache';
 import type { DesignContextService } from '../core/design-context';
 import type { CodeUiParserService } from '../core/code-ui-parser';
 import type { FigmaUiExtractorService } from '../core/figma-ui-extractor';
+import type { RenderedUiExtractorService } from '../core/rendered-ui-extractor';
+import type { BrowserRendererService } from '../core/browser-renderer';
+import type { RenderedToCodeMapperService } from '../core/rendered-to-code-mapper';
 import type { CodeToFigmaPipelineService } from '../core/code-to-figma-pipeline';
 import type { FigmaToCodePipelineService } from '../core/figma-to-code-pipeline';
 import type { ReconcilePipelineService } from '../core/reconcile-pipeline';
@@ -17,6 +20,7 @@ import type { PluginBridgeService } from '../core/plugin-bridge';
 import type { UiBlockRegistry, UiBlockService } from '../core/ui-block-registry';
 import type { UiMappingRegistry, UiMappingService } from '../core/ui-mapping-registry';
 import type { DesignTokenRegistry, DesignTokenService } from '../core/design-token-registry';
+import type { AssetRegistry } from '../core/asset-registry';
 
 declare global {
   namespace Express {
@@ -34,6 +38,9 @@ declare global {
       designContextService: DesignContextService;
       codeUiParserService: CodeUiParserService;
       figmaUiExtractorService: FigmaUiExtractorService;
+      renderedUiExtractorService: RenderedUiExtractorService;
+      browserRendererService: BrowserRendererService;
+      renderedToCodeMapperService: RenderedToCodeMapperService;
       codeToFigmaPipelineService: CodeToFigmaPipelineService;
       figmaToCodePipelineService: FigmaToCodePipelineService;
       reconcilePipelineService: ReconcilePipelineService;
@@ -48,6 +55,8 @@ declare global {
       uiMappingService: UiMappingService;
       designTokenRegistry: DesignTokenRegistry;
       designTokenService: DesignTokenService;
+      assetRegistry: AssetRegistry;
+      assetRegistryService: ReturnType<typeof import('../core/asset-registry').createAssetRegistryService>;
       writeRuntime: {
         enabled: boolean;
         allowedOperations: FigmaWriteOperation[];

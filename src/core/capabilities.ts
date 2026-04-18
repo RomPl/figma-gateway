@@ -32,6 +32,7 @@ export type GatewayCapabilities = {
   pluginBridgeConfigured: boolean;
   supportedWriteOperations: string[];
   mvpScope: GatewayMvpScope;
+  uiSources: string[];
 };
 
 export const getGatewayMvpScope = (): GatewayMvpScope => ({
@@ -71,5 +72,6 @@ export const getGatewayCapabilities = (): GatewayCapabilities => ({
   liveWriteBackendConfigured: false,
   pluginBridgeConfigured: true,
   supportedWriteOperations: config.writeAllowedOperations,
-  mvpScope: getGatewayMvpScope()
+  mvpScope: getGatewayMvpScope(),
+  uiSources: ['Code UI Model', 'Rendered UI Model', 'Figma UI Model']
 });

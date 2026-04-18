@@ -20,3 +20,8 @@ data/*.sqlite-wal
 .DS_Store
 .idea/
 .vscode/
+.cache/
+.config/
+.local/
+.pki/
+data/*.db

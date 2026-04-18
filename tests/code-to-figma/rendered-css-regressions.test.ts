@@ -614,12 +614,99 @@ test('planner emits semantic figma-facing names while keeping stable uiIds for r
   };
   const plan = buildCodeToFigmaPlan(model, 'Home', 'src/app/page.tsx');
   const createNames = new Map(plan.commands.filter((c: any) => ['create_frame','create_text'].includes(c.type)).map((c: any) => [c.payload?.uiId, c.payload?.name]));
-  assert.equal(createNames.get('__auto__/header[1]'), 'Header');
-  assert.equal(createNames.get('__auto__/main[1]'), 'Main');
-  assert.equal(createNames.get('__auto__/main[1]/section[1]'), 'Section');
-  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]'), 'Container');
-  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]/h2[1]'), 'H2');
-  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]/svg[1]'), 'Icon');
-  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]/button[1]'), 'Button');
-  assert.equal(createNames.get('__auto__/footer[1]'), 'Footer');
+  assert.equal(createNames.get('__auto__/header[1]'), 'header-classic - __auto__/header[1]');
+  assert.equal(createNames.get('__auto__/main[1]'), 'main-root - __auto__/main[1]');
+  assert.equal(createNames.get('__auto__/main[1]/section[1]'), 'hero - __auto__/main[1]/section[1]');
+  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]'), 'div-container - __auto__/main[1]/section[1]/div[1]');
+  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]/h2[1]'), 'h2-text-3xl.font-bold - __auto__/main[1]/section[1]/div[1]/h2[1]');
+  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]/svg[1]'), 'svg-lucide - __auto__/main[1]/section[1]/div[1]/svg[1]');
+  assert.equal(createNames.get('__auto__/main[1]/section[1]/div[1]/button[1]'), 'cta - __auto__/main[1]/section[1]/div[1]/button[1]');
+  assert.equal(createNames.get('__auto__/footer[1]'), 'footer-classic - __auto__/footer[1]');
+});
+
+test('planner normalizes generic ui-sans-serif stacks to figma-friendly font families', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: {
+      kind: 'frame', uiId: 'page.root', name: 'Page', visible: true, children: [{
+        kind: 'text', uiId: 'page.title', name: 'hero-title', text: 'Hello', visible: true,
+        boundingBox: { x: 0, y: 0, width: 200, height: 40 },
+        computedStyle: { fontFamily: 'ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"', fontSize: 36, fontWeight: '700', lineHeight: 40, color: 'rgb(255,255,255)', textAlign: 'center' },
+        children: []
+      }]
+    }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'Home', 'src/app/page.tsx');
+  const create = plan.commands.find((item: any) => item.type === 'create_text');
+  assert.equal(create.payload.fontFamily, 'Inter');
+});
+
+test('inline svg icons stay on vector path even when node is flagged needs review', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: { kind:'frame', uiId:'page.root', name:'Page', visible:true, children:[{
+      kind:'icon', uiId:'page.icon', name:'upload', visible:true, confidence:{ needsReview:true },
+      boundingBox:{x:0,y:0,width:28,height:28}, computedStyle:{ width:28, height:28 },
+      icon:{ sourceType:'inline-svg', textLabel:'upload', svgMarkup:'<svg width="24" height="24" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M1 1"/></svg>', stroke:'rgb(255,255,255)', fill:'none', size:{width:28,height:28}, placement:'standalone' },
+      asset:{ layer:'svg-icon' }, children:[]
+    }] }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'Home', 'src/app/page.tsx');
+  const cmd = plan.commands.find((item: any) => item.type === 'set_icon_reference');
+  assert.equal(cmd.payload.figmaStrategy, 'vector_icon');
+});
+
+test('planner normalizes multi-shadow css into plugin-friendly primary shadow payload', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: { kind:'frame', uiId:'page.root', name:'Page', visible:true, children:[{
+      kind:'frame', uiId:'page.shadow', name:'shadow-node', visible:true,
+      boundingBox:{x:0,y:0,width:64,height:64},
+      computedStyle:{ width:64, height:64, backgroundColor:'rgb(36,99,235)', borderRadius:9999, boxShadow:'rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(36, 99, 235, 0.3) 0px 10px 15px -3px, rgba(36, 99, 235, 0.3) 0px 4px 6px -4px' },
+      children:[]
+    }] }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'Home', 'src/app/page.tsx');
+  const cmd = plan.commands.find((item: any) => item.type === 'set_effects' && item.payload?.nodeRef === 'page.shadow');
+  assert.equal(Boolean(cmd), true);
+  assert.equal(cmd.payload.boxShadow, '0px 10px 15px -3px rgba(36, 99, 235, 0.3)');
+});
+
+test('planner appends stable uiId to figma-facing node names while preserving original base names', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: {
+      kind: 'frame', uiId: 'page.root', name: 'body', visible: true, children: [{
+        kind: 'frame', uiId: 'page.hero.card', name: 'div-relative.mx-auto.max-w-screen-xl', visible: true,
+        boundingBox: { x: 0, y: 0, width: 320, height: 200 }, computedStyle: { width: 320, height: 200 }, children: []
+      }, {
+        kind: 'text', uiId: 'page.hero.title', name: 'h2-text-3xl.font-bold.text-foreground', text: 'Hello', visible: true,
+        boundingBox: { x: 0, y: 0, width: 200, height: 40 }, computedStyle: { width: 200, height: 40, fontFamily: 'Inter', fontWeight: '700', fontSize: 36, lineHeight: 40, color: 'rgb(0,0,0)' }, children: []
+      }]
+    }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'Home', 'src/app/page.tsx');
+  const frameCreate = plan.commands.find((item: any) => item.type === 'create_frame' && item.payload?.uiId === 'page.hero.card');
+  const textCreate = plan.commands.find((item: any) => item.type === 'create_text' && item.payload?.uiId === 'page.hero.title');
+  assert.equal(frameCreate.payload.name, 'div-relative.mx-auto.max-w-screen-xl - page.hero.card');
+  assert.equal(textCreate.payload.name, 'h2-text-3xl.font-bold.text-foreground - page.hero.title');
+});
+
+test('planner adds Overlay+Shadow helper child for circular icon holders with shadows', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: { kind:'frame', uiId:'page.root', name:'Page', visible:true, children:[{
+      kind:'frame', uiId:'circle.icon', name:'div--mt-6.flex.h-16', visible:true,
+      boundingBox:{x:0,y:0,width:64,height:64},
+      computedStyle:{ display:'flex', width:64, height:64, justifyContent:'center', alignItems:'center', borderRadius:9999, boxShadow:'rgba(36, 99, 235, 0.3) 0px 10px 15px -3px' },
+      children:[{ kind:'icon', uiId:'circle.icon.svg', name:'svg-upload', visible:true, boundingBox:{x:0,y:0,width:28,height:28}, computedStyle:{ width:28, height:28 }, icon:{ sourceType:'inline-svg', textLabel:'upload', svgMarkup:'<svg width="24" height="24" viewBox="0 0 24 24"><path d="M1 1"/></svg>', size:{width:28,height:28}, placement:'standalone' }, asset:{layer:'svg-icon'}, children:[] }]
+    }] }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'Home', 'src/app/page.tsx');
+  const overlayCreate = plan.commands.find((item: any) => item.type === 'create_frame' && item.payload?.ref === 'circle.icon.overlay_shadow');
+  const overlayAlign = plan.commands.find((item: any) => item.type === 'set_alignment' && item.payload?.nodeRef === 'circle.icon.overlay_shadow');
+  assert.equal(Boolean(overlayCreate), true);
+  assert.equal(overlayCreate.payload.width, 64);
+  assert.equal(overlayCreate.payload.height, 64);
+  assert.equal(overlayAlign.payload.alignment.layoutPositioning, 'ABSOLUTE');
 });
