@@ -22,8 +22,9 @@ In the target system the responsibilities are intentionally split across two end
 
 ## Product goal
 
-The intended end-state is documented in:
+The intended end-state and documentation entrypoints are documented in:
 
+- `docs/README.md`
 - `docs/agent-product-goal.md`
 - `docs/architecture.md`
 - `docs/agent-canonical-flow.md`

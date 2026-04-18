@@ -29,6 +29,19 @@ A successful render-first transfer should produce:
 - do not hardcode fixes to a single page/template when a reusable rule is possible
 - do not optimize visual prettiness in ways that break later reverse sync
 
+## Current runtime baseline
+
+The project now already has:
+
+- surface-aware planning context
+- shell/content-aware extraction metadata
+- block identity scaffold with alias-aware lookup
+- explicit breakpoint variant-set metadata
+- multi-breakpoint planning and diagnostics scaffolding
+- derived variant-group memory surface
+
+This roadmap now focuses on beauty/fidelity improvements on top of that baseline rather than on foundational surface-mode plumbing.
+
 ## Working principles
 
 1. Render-first remains the source of visual truth.

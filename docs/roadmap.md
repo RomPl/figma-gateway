@@ -16,6 +16,20 @@ The north star is:
 
 See [agent-product-goal.md](./agent-product-goal.md).
 
+## Current implementation status
+
+Recently completed foundational work:
+
+- mode-based surface resolution instead of framework-specific profiling
+- surface-aware planning context propagated through extractor and downstream pipelines
+- block identity scaffold and alias-aware resolution
+- breakpoint families and variant-set contract (`desktop` / `tablet` / `mobile`)
+- multi-breakpoint rendered-first and code-backed planning routes
+- breakpoint-aware intent, diagnostics and reconcile orchestration
+- derived variant-group registry surface without breaking authoritative `uiId` bindings
+
+This means the project now has a real runtime foundation for future multi-breakpoint beauty planning and reverse-sync evolution.
+
 ## Foundation phases
 
 ### Phase 1
