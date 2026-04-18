@@ -9,6 +9,7 @@ import { buildUiReconcilePlan, toUiMap, syncModeSchema, type UiReconcilePlan } f
 import type { UiMappingRecord, UiMappingService } from './ui-mapping-registry';
 import type { UiModelDocument } from './ui-model';
 import { attachPlanningContext, createPlanningContextFromNode } from './planning-context';
+import { attachBlockIdentity } from './block-identity';
 import { annotateVisualConfidence } from './visual-confidence';
 
 export const reconcilePipelineSchema = z.object({
@@ -61,11 +62,11 @@ export class ReconcilePipelineService {
   public async run(input: z.input<typeof reconcilePipelineSchema>): Promise<ReconcilePipelineResult> {
     const data = reconcilePipelineSchema.parse(input);
     const mappings = this.uiMappingService.listUiMappings({ project: data.project, fileKey: data.fileKey, limit: 100 });
-    const figmaDocument = overlayMappedUiIds(await this.figmaUiExtractorService.extract({ fileKey: data.fileKey, project: data.project, nodeId: data.nodeId }), mappings);
+    const figmaDocument = attachBlockIdentity(overlayMappedUiIds(await this.figmaUiExtractorService.extract({ fileKey: data.fileKey, project: data.project, nodeId: data.nodeId }), mappings));
     const code = this.codeUiParserService.parseProject({ rootDir: data.rootDir, limit: 200 });
     const codeDocument = pickRootCodeDocument(code.components.map((component) => component.tree), mappings);
     const renderedResult = await this.renderedToCodeMapperService.map({ project: data.project, rootDir: data.rootDir, render: data.render as unknown as Record<string, unknown> });
-    annotateVisualConfidence(codeDocument);
+    attachBlockIdentity(annotateVisualConfidence(codeDocument));
     attachPlanningContext(annotateVisualConfidence(renderedResult.rendered));
     annotateVisualConfidence(figmaDocument);
     const plan = buildUiReconcilePlan(data.mode, codeDocument, renderedResult.rendered, figmaDocument, mappings, data.uiIds);

@@ -7,6 +7,7 @@ import type { FigmaCommandStep } from './figma-write-types';
 import type { PluginBridgeService } from './plugin-bridge';
 import type { UiModelDocument, UiNode, UiPaint } from './ui-model';
 import { createPlanningContextFromNode, formatPlanningVariantName } from './planning-context';
+import { attachBlockIdentity } from './block-identity';
 import { annotateVisualConfidence } from './visual-confidence';
 import { segmentVisualBlocks } from './visual-segmentation';
 import { visualLogger, summarizeNode } from './visual-debug';
@@ -723,7 +724,7 @@ export class CodeToFigmaPipelineService {
       renderedUsed = true;
     }
 
-    annotateVisualConfidence(model);
+    attachBlockIdentity(annotateVisualConfidence(model));
     visualLogger.info({ renderedUsed, root: summarizeNode(model.root) }, 'code-to-figma model ready');
     const planningContext = createPlanningContextFromNode(model.root);
     model.root.meta = { ...(model.root.meta ?? {}), planningContext };

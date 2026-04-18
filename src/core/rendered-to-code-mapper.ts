@@ -4,6 +4,7 @@ import type { CodeUiParserService } from './code-ui-parser';
 import type { RenderedUiExtractorService } from './rendered-ui-extractor';
 import type { UiModelDocument, UiNode, UiSourceMapping } from './ui-model';
 import { annotateVisualConfidence } from './visual-confidence';
+import { attachBlockIdentity } from './block-identity';
 import { segmentVisualBlocks } from './visual-segmentation';
 
 export const mapRenderedToCodeSchema = z.object({
@@ -215,7 +216,7 @@ export class RenderedToCodeMapperService {
     const rendered = segmentVisualBlocks(await this.renderedUiExtractorService.extract(data.render as any));
     const code = collectCodeCandidates(this.codeUiParserService, data.rootDir, data.project);
     const stats = annotateRenderedDocument(rendered, code.byUiId, code.candidates);
-    annotateVisualConfidence(rendered);
+    attachBlockIdentity(annotateVisualConfidence(rendered));
     return {
       rendered,
       componentCount: code.components,

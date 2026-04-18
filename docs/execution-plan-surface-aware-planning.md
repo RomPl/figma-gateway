@@ -8,7 +8,7 @@ It should be updated when a major implementation chunk is completed.
 
 ## Current phase
 
-Phase C: introduce a first-class block identity scaffold above raw node identity while preserving `uiId` compatibility and current mapping-registry behavior.
+Phase D: strengthen registry/search/reconcile usage around the new identity aliases without breaking current `uiId`-based reverse sync.
 
 ## Completed phase
 
@@ -130,3 +130,22 @@ Phase B completed:
 - root Figma plan now carries planning plugin-data for surface mode and breakpoint metadata
 - reconcile reasons are now surface-aware and breakpoint-aware
 - `desktop` / `tablet` / `mobile` are preserved as first-class breakpoint families while execution remains single-breakpoint per run
+
+
+## Working target for current implementation loop
+
+Phase C implementation focus:
+
+- add explicit block identity metadata above raw node identity
+- keep `uiId` as the primary compatibility key
+- expose aliases and semantic fallback names for future selector/intent resolution
+- avoid forcing a database migration until the contract is stable
+
+## Completed phase
+
+Phase C completed:
+
+- added explicit `blockIdentity` metadata above raw node identity
+- preserved `uiId` as the primary compatibility key
+- attached identity aliases and semantic fallback names to extracted/rendered/planned nodes
+- avoided schema/database migration while the block identity contract is still stabilizing

@@ -9,6 +9,7 @@ import type { RenderedToCodeMapperService } from './rendered-to-code-mapper';
 import type { UiMappingService, UiMappingRecord } from './ui-mapping-registry';
 import type { UiModelDocument, UiNode } from './ui-model';
 import { attachPlanningContext, createPlanningContextFromNode } from './planning-context';
+import { attachBlockIdentity } from './block-identity';
 import { annotateVisualConfidence } from './visual-confidence';
 
 export const figmaToCodePipelineSchema = z.object({
@@ -150,10 +151,10 @@ export class FigmaToCodePipelineService {
   public async run(input: z.input<typeof figmaToCodePipelineSchema>): Promise<FigmaToCodePipelineResult> {
     const data = figmaToCodePipelineSchema.parse(input);
     const mappings = getMappingsForFile(this.uiMappingService, data.project, data.fileKey);
-    const figmaDocument = overlayMappedUiIds(await this.figmaUiExtractorService.extract({ fileKey: data.fileKey, project: data.project, nodeId: data.nodeId }), mappings);
+    const figmaDocument = attachBlockIdentity(overlayMappedUiIds(await this.figmaUiExtractorService.extract({ fileKey: data.fileKey, project: data.project, nodeId: data.nodeId }), mappings));
     const renderedResult = data.render ? await this.renderedToCodeMapperService.map({ project: data.project, rootDir: data.rootDir, render: data.render as unknown as Record<string, unknown> }) : null;
     const renderedDocument = renderedResult?.rendered;
-    annotateVisualConfidence(figmaDocument);
+    attachBlockIdentity(annotateVisualConfidence(figmaDocument));
     if (renderedDocument) attachPlanningContext(annotateVisualConfidence(renderedDocument));
     const figmaMap = byUiId(figmaDocument);
     const renderedMap = renderedDocument ? byUiId(renderedDocument) : new Map<string, UiNode>();
