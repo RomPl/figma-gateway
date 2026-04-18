@@ -12,6 +12,7 @@ import type { RenderedToCodeMapperService } from './rendered-to-code-mapper';
 import type { RenderedUiExtractorService } from './rendered-ui-extractor';
 import type { UiMappingService } from './ui-mapping-registry';
 import type { UiModelDocument, UiNode } from './ui-model';
+import { materializeBreakpointVariantNodeRefs } from './breakpoint-variant-materializer';
 
 export const intentCommandSchema = z.enum([
   'reconstruct_design_from_code',
@@ -104,6 +105,47 @@ export class IntentApiService {
     return resolved.matches.map((item: { uiId: string }) => item.uiId);
   }
 
+
+  private getBreakpointRequests(payload: Record<string, unknown>): Array<'mobile' | 'tablet' | 'desktop'> {
+    if (!Array.isArray(payload.breakpoints)) return [];
+    const normalized = payload.breakpoints.map(String).filter((item) => ['mobile', 'tablet', 'desktop'].includes(item)) as Array<'mobile' | 'tablet' | 'desktop'>;
+    return Array.from(new Set(normalized));
+  }
+
+  private async executeCodeToFigmaBreakpointsIntent(intent: z.infer<typeof intentCommandSchema>, payload: Record<string, unknown>): Promise<{ phases: string[]; artifacts: Record<string, unknown>; result: unknown; }> {
+    const render = this.requireRender(payload, intent);
+    const breakpoints = this.getBreakpointRequests(payload);
+    const session = !payload.dryRun
+      ? this.pluginBridgeService.assertSingleActiveSessionForFile({ sessionId: payload.sessionId as string | undefined, fileKey: payload.fileKey as string | undefined, clientName: payload.clientName as string | undefined })
+      : undefined;
+    const resultsByBreakpoint: Record<string, unknown> = {};
+    const combinedCommands: Array<Record<string, unknown>> = [];
+    for (const breakpoint of breakpoints) {
+      const result = await this.codeToFigmaPipelineService.run({ ...(payload as any), dryRun: true, render: { ...render, breakpoint, breakpointName: breakpoint } });
+      const family = ((((result.plan.model.root.meta as any)?.planningContext?.breakpointFamily) ?? breakpoint) as 'mobile' | 'tablet' | 'desktop');
+      const variantModel = materializeBreakpointVariantNodeRefs(result.plan.model, family);
+      result.plan.model = variantModel;
+      result.model = variantModel;
+      result.plan.commands = result.plan.commands.map((command: any) => {
+        const payload = command?.payload && typeof command.payload === 'object' ? { ...command.payload } : command?.payload;
+        if (payload?.nodeRef && typeof payload.nodeRef === 'string') payload.nodeRef = `${payload.nodeRef}--${family}`;
+        return { ...command, payload };
+      });
+      resultsByBreakpoint[breakpoint] = result;
+      combinedCommands.push(...(result.plan.commands as Array<Record<string, unknown>>));
+    }
+    let queued: { sessionId: string; commandId: string; status: string } | undefined;
+    if (!payload.dryRun && session) {
+      const command = this.pluginBridgeService.queueExecutePluginBatch({ sessionId: session.sessionId, fileKey: (payload.fileKey as string | undefined) ?? session.fileKey, commands: combinedCommands as any, actorId: `intent.${intent}.breakpoints` });
+      queued = { sessionId: session.sessionId, commandId: command.commandId, status: command.status };
+    }
+    return {
+      phases: [...VISUAL_INTENT_PHASES],
+      artifacts: { visualSource: 'rendered_ui_snapshot', breakpointCount: breakpoints.length, breakpoints },
+      result: { breakpoints, resultsByBreakpoint, queued, notes: ['Intent used breakpoint-aware orchestration across multiple rendered/code-backed planning runs.', 'Variant node refs were materialized per breakpoint family before aggregate queueing.', 'Multi-breakpoint mapping persistence remains deferred until reverse-sync variant bindings are finalized.'] }
+    };
+  }
+
   private async snapshotVisualChain(payload: Record<string, unknown>): Promise<{ codeComponentCount: number; renderedNodeCount: number; tokenBoundNodeCount: number; rendered: UiModelDocument; }> {
     const project = payload.project as string | undefined;
     const rootDir = payload.rootDir as string | undefined;
@@ -133,6 +175,11 @@ export class IntentApiService {
     const data = executeIntentSchema.parse(input);
     switch (data.intent) {
       case 'reconstruct_design_from_code': {
+        const breakpoints = this.getBreakpointRequests(data.payload as any);
+        if (breakpoints.length) {
+          const multi = await this.executeCodeToFigmaBreakpointsIntent(data.intent, data.payload as any);
+          return { intent: data.intent, phases: multi.phases, artifacts: multi.artifacts, result: multi.result };
+        }
         const render = this.requireRender(data.payload, data.intent);
         const visual = await this.snapshotVisualChain(data.payload);
         const result = await this.codeToFigmaPipelineService.run({ ...(data.payload as any), render });
@@ -158,6 +205,11 @@ export class IntentApiService {
         return { intent: data.intent, phases: [...VISUAL_INTENT_PHASES], artifacts: { codeComponentCount: visual.codeComponentCount, renderedNodeCount: visual.renderedNodeCount, tokenBoundNodeCount: visual.tokenBoundNodeCount, visualSource: 'rendered_ui_snapshot' }, result };
       }
       case 'sync_page_to_figma': {
+        const breakpoints = this.getBreakpointRequests(data.payload as any);
+        if (breakpoints.length) {
+          const multi = await this.executeCodeToFigmaBreakpointsIntent(data.intent, data.payload as any);
+          return { intent: data.intent, phases: multi.phases, artifacts: multi.artifacts, result: multi.result };
+        }
         const render = this.requireRender(data.payload, data.intent);
         const visual = await this.snapshotVisualChain(data.payload);
         const result = await this.codeToFigmaPipelineService.run({ ...(data.payload as any), render });

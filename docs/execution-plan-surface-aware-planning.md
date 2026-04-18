@@ -8,7 +8,7 @@ It should be updated when a major implementation chunk is completed.
 
 ## Current phase
 
-Phase G: add code-backed multi-breakpoint orchestration while continuing to keep reverse-sync bindings conservative for variant groups.
+Phase H: expose breakpoint-aware orchestration at the intent layer so agents can request multi-breakpoint planning without dropping to low-level routes.
 
 ## Completed phase
 
@@ -194,3 +194,12 @@ Phase G completed:
 - reused the stable single-breakpoint pipeline per breakpoint instead of rewriting the planner core
 - materialized variant node refs per breakpoint before aggregate queueing
 - kept multi-breakpoint mapping persistence conservative until reverse-sync bindings are finalized
+
+## Completed phase
+
+Phase H completed:
+
+- exposed breakpoint-aware orchestration at the intent layer
+- enabled multi-breakpoint `reconstruct_design_from_code` / `sync_page_to_figma` execution without dropping to low-level routes
+- reused the stable single-breakpoint pipeline internally per breakpoint
+- kept mapping persistence conservative for multi-breakpoint intent execution
