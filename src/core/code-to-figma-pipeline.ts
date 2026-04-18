@@ -8,6 +8,7 @@ import type { PluginBridgeService } from './plugin-bridge';
 import type { UiModelDocument, UiNode, UiPaint } from './ui-model';
 import { createPlanningContextFromNode, formatPlanningVariantName } from './planning-context';
 import { attachBlockIdentity } from './block-identity';
+import { attachBreakpointVariantSet, createBreakpointVariantSetFromDocument } from './breakpoint-variant-set';
 import { annotateVisualConfidence } from './visual-confidence';
 import { segmentVisualBlocks } from './visual-segmentation';
 import { visualLogger, summarizeNode } from './visual-debug';
@@ -682,10 +683,13 @@ const planNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: strin
 
 const attachPlanningMetadataToPlan = (model: UiModelDocument, commands: FigmaCommandStep[], componentName: string): void => {
   const planningContext = createPlanningContextFromNode(model.root);
+  const variantSet = createBreakpointVariantSetFromDocument(model);
   const variantName = formatPlanningVariantName(planningContext, componentName);
   commands.unshift({ type: 'rename_node', payload: { nodeRef: model.root.uiId, name: variantName } });
   commands.push({ type: 'set_plugin_data', payload: { nodeRef: model.root.uiId, pluginData: { namespace: 'figma-gateway', key: 'surface-mode', value: planningContext.surfaceMode } } });
   commands.push({ type: 'set_plugin_data', payload: { nodeRef: model.root.uiId, pluginData: { namespace: 'figma-gateway', key: 'breakpoint-family', value: planningContext.breakpointFamily } } });
+  commands.push({ type: 'set_plugin_data', payload: { nodeRef: model.root.uiId, pluginData: { namespace: 'figma-gateway', key: 'variant-group-id', value: variantSet.variantGroupId } } });
+  commands.push({ type: 'set_plugin_data', payload: { nodeRef: model.root.uiId, pluginData: { namespace: 'figma-gateway', key: 'variant-set-mode', value: variantSet.mode } } });
   if (planningContext.breakpointName) commands.push({ type: 'set_plugin_data', payload: { nodeRef: model.root.uiId, pluginData: { namespace: 'figma-gateway', key: 'breakpoint-name', value: planningContext.breakpointName } } });
   if (planningContext.shellSelectionMode) commands.push({ type: 'set_plugin_data', payload: { nodeRef: model.root.uiId, pluginData: { namespace: 'figma-gateway', key: 'shell-selection-mode', value: planningContext.shellSelectionMode } } });
   if (planningContext.contentSelectionMode) commands.push({ type: 'set_plugin_data', payload: { nodeRef: model.root.uiId, pluginData: { namespace: 'figma-gateway', key: 'content-selection-mode', value: planningContext.contentSelectionMode } } });
@@ -724,7 +728,7 @@ export class CodeToFigmaPipelineService {
       renderedUsed = true;
     }
 
-    attachBlockIdentity(annotateVisualConfidence(model));
+    attachBreakpointVariantSet(attachBlockIdentity(annotateVisualConfidence(model)));
     visualLogger.info({ renderedUsed, root: summarizeNode(model.root) }, 'code-to-figma model ready');
     const planningContext = createPlanningContextFromNode(model.root);
     model.root.meta = { ...(model.root.meta ?? {}), planningContext };
@@ -746,7 +750,7 @@ export class CodeToFigmaPipelineService {
       (model.root.meta as any)?.renderProfile ? `Resolved surface mode: ${String((model.root.meta as any).renderProfile.surfaceMode)}.` : 'No render profile metadata resolved.',
       (model.root.meta as any)?.planningContext ? `Planning context: ${String((model.root.meta as any).planningContext.surfaceMode)} @ ${String((model.root.meta as any).planningContext.breakpointFamily)}.` : 'No planning context metadata resolved.',
       (model.root.meta as any)?.planningContext?.shellSelectionMode ? `Shell/content selection: ${String((model.root.meta as any).planningContext.shellSelectionMode)} -> ${String((model.root.meta as any).planningContext.contentSelectionMode)}.` : 'No shell/content selection metadata resolved.',
-      'Root Figma node now carries planning plugin-data for surface mode and breakpoint family.',
+      'Root Figma node now carries planning plugin-data for surface mode, breakpoint family and variant-set metadata.',
       'AST remained the source for mapping, semantic structure and fallback values.',
       "Execution plan translated into editable Figma-native commands.",
       ...(needsReview.length ? ["Low-confidence nodes were marked as needs review and complex Figma asset/icon creation was skipped."] : []),

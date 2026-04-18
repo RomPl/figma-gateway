@@ -101,6 +101,7 @@ test('rendered-ui import route prepends deep-first exact uiId cleanup commands b
       });
       const json = await response.json() as any;
       assert.equal(response.status, 200);
+      assert.equal(json.data.breakpointVariantSet.active, 'desktop');
       const cleanup = json.data.plan.commands.slice(0, 3);
       assert.equal(cleanup.every((command: any) => command.type === 'delete_matching_nodes'), true);
       const cleanupUiIds = cleanup.map((command: any) => command.payload.query.uiId);

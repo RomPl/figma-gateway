@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { extractRenderedUiSchema, extractRenderedUiBreakpointsSchema, diagnoseRenderedUiSchema } from '../../core/rendered-ui-extractor';
 import { buildCodeToFigmaPlan, auditFirstPassVisualAcceptance } from '../../core/code-to-figma-pipeline';
 import { segmentVisualBlocks } from '../../core/visual-segmentation';
+import { attachBreakpointVariantSet } from '../../core/breakpoint-variant-set';
 import { z } from 'zod';
 
 import { mapRenderedToCodeSchema } from '../../core/rendered-to-code-mapper';
@@ -84,7 +85,7 @@ renderedUiRouter.post(
     const mapped = data.project
       ? await req.app.locals.renderedToCodeMapperService.map({ project: data.project, rootDir: data.rootDir, render: data })
       : null;
-    const model = segmentVisualBlocks(mapped?.rendered ?? await req.app.locals.renderedUiExtractorService.extract(data));
+    const model = attachBreakpointVariantSet(segmentVisualBlocks(mapped?.rendered ?? await req.app.locals.renderedUiExtractorService.extract(data)));
     const plan = buildCodeToFigmaPlan(model, data.componentName, data.filePath);
     if (!data.dryRun) {
       const cleanupUiIds = collectUiIdsDeepFirst(plan.model.root);
@@ -136,7 +137,8 @@ renderedUiRouter.post(
       plan,
       mappingCount: mappedNodes.length,
       visualSource: 'rendered-first',
-      sourceMapping: mapped ? 'code-backed' : 'rendered-only'
+      sourceMapping: mapped ? 'code-backed' : 'rendered-only',
+      breakpointVariantSet: (plan.model.root.meta as any)?.breakpointVariantSet
     });
   })
 );

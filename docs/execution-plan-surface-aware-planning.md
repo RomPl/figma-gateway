@@ -167,3 +167,12 @@ Phase D completed:
 - selector resolution now uses block identity aliases in addition to `uiId`, role, text and tree-path matching
 - current reverse-sync still uses exact `uiId` as the authoritative key
 - alias-aware search improves intent/block targeting without forcing a DB migration
+
+## Completed phase
+
+Phase E completed:
+
+- introduced an explicit `breakpointVariantSet` contract on rendered/planned roots
+- planner now writes variant-set metadata together with surface and breakpoint plugin-data
+- rendered-first import returns variant-set metadata for future multi-breakpoint orchestration
+- current execution is still single-breakpoint per run, but the grouping contract is now explicit and identity-safe
