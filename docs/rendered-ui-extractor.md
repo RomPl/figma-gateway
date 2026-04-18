@@ -14,6 +14,30 @@ The system now has:
 
 The extractor opens a real page in a headless browser, traverses DOM nodes by `data-ui-id`, captures a controlled DOM extraction contract, and normalizes that state into Unified UI Model.
 
+## RenderProfileResolver / SurfaceModeResolver
+
+The extractor now resolves a small mode-based render profile before DOM capture instead of relying on framework-specific profiles.
+
+Resolved profile fields:
+
+- `surfaceMode` — one of `component`, `document`, `app_shell`, `auth_gated_spa`
+- `rootStrategy` — `explicit_ui_id`, `preferred_selector`, or `body_fallback`
+- `preferredRootSelectors` — selector-first root candidates for shell-like surfaces
+
+Current purpose:
+
+- keep framework names out of extraction logic
+- make app-shell and auth-gated SPA roots selectable through generic DOM surface modes
+- let extractor and downstream pipeline share the same resolved rendering intent without duplicating heuristics
+
+Root selection order is now:
+
+1. explicit `rootUiId`
+2. resolver-provided `preferredRootSelectors`
+3. `body` fallback
+
+This is the foundation for stronger root/app-shell handling on authenticated SPA surfaces.
+
 ## Main rule
 
 The module is responsible for browser-derived visual truth.

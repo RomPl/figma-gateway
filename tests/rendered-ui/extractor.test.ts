@@ -284,3 +284,34 @@ test('rendered extractor preserves small visual icon-holder wrappers with svg ch
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
 });
+
+test('rendered extractor uses resolved app-shell selectors when no explicit root uiId is provided', async () => {
+  const html = `<!doctype html><html><body>
+    <div id="__next">
+      <div class="app-shell">
+        <main>
+          <section data-ui-id="app.dashboard.root">
+            <h1 data-ui-id="app.dashboard.title">Dashboard</h1>
+          </section>
+        </main>
+      </div>
+    </div>
+  </body></html>`;
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(html);
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Failed to get server address');
+  const url = `http://127.0.0.1:${address.port}/app/dashboard`;
+  try {
+    const service = new RenderedUiExtractorService();
+    const document = await service.extract({ target: { mode: 'existing_url', url }, browserExecutablePath: '/usr/bin/google-chrome' });
+    assert.equal((document.root.meta as any)?.renderProfile?.surfaceMode, 'auth_gated_spa');
+    assert.equal(document.root.uiId.includes('main') || document.root.uiId === '__auto__/', true);
+    assert.equal(document.root.children.some((child) => child.uiId === 'app.dashboard.root'), true);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  }
+});

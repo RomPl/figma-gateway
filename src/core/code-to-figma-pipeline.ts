@@ -233,7 +233,8 @@ const mergeNode = (codeNode: UiNode, renderedNode: UiNode | null): UiNode => {
         visualSource: visual ? 'rendered-first' : 'code-fallback',
         sourceMapping: 'ast',
         semanticStructure: 'ast',
-        fallbackValues: 'ast'
+        fallbackValues: 'ast',
+        renderProfile: visual?.meta && typeof visual.meta.renderProfile === 'object' ? visual.meta.renderProfile : undefined
       }
     },
     children: mergedChildren
@@ -306,6 +307,14 @@ const normalizeBoxShadowForPlugin = (boxShadow: string | undefined): string | un
   const best = parsed.sort((a,b) => (Math.abs(b.blur)+Math.abs(b.spread)+Math.abs(b.y)) - (Math.abs(a.blur)+Math.abs(a.spread)+Math.abs(a.y)))[0];
   if (!best) return undefined;
   return `${best.x}px ${best.y}px ${best.blur}px ${best.spread}px ${best.color}`;
+};
+
+
+const shouldAddOverlayShadowHelper = (node: UiNode): boolean => {
+  const radius = Number(node.computedStyle?.borderRadius ?? node.style?.radius ?? node.declarativeStyle?.radius ?? 0);
+  const shadow = normalizeBoxShadowForPlugin(node.computedStyle?.boxShadow);
+  const hasSingleIconChild = node.children.length === 1 && node.children[0]?.kind === 'icon';
+  return (node.kind === 'frame' || node.kind === 'group') && radius >= 999 && Boolean(shadow) && hasSingleIconChild;
 };
 
 const normalizeFontFamilyForFigma = (rawFamily: unknown): string | undefined => {
@@ -592,6 +601,17 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
     commands.push({ type: 'set_fill', payload: { nodeRef: placeholderRef, fills: lowerAnyPaint('rgba(108, 117, 125, 0.75)', 1) } });
   }
 
+
+  if (shouldAddOverlayShadowHelper(node)) {
+    const overlayRef = `${ref}.overlay_shadow`;
+    commands.push({ type: 'create_frame', payload: { ref: overlayRef, parentRef: ref, uiId: `${node.uiId}.overlay_shadow`, name: 'Overlay+Shadow', width, height, x: 0, y: 0 } });
+    commands.push({ type: 'set_fill', payload: { nodeRef: overlayRef, fills: lowerAnyPaint('rgba(255, 255, 255, 0.002)', 1) } });
+    commands.push({ type: 'set_corner_radius', payload: { nodeRef: overlayRef, cornerRadius: node.computedStyle?.borderRadius ?? 9999 } });
+    commands.push({ type: 'set_alignment', payload: { nodeRef: overlayRef, alignment: { layoutPositioning: 'ABSOLUTE' } } });
+    commands.push({ type: 'set_position', payload: { nodeRef: overlayRef, x: 0, y: 0 } });
+    commands.push({ type: 'set_size', payload: { nodeRef: overlayRef, width, height } });
+  }
+
   if (node.asset?.layer) {
     const figmaStrategy = (needsReview || renderAsPlaceholder) ? 'placeholder' : (node.asset.figmaStrategy ?? (node.asset.sourceUrl || node.asset.resolvedAssetPath ? 'image_fill' : 'placeholder'));
     commands.push({ type: 'set_asset_reference', payload: { nodeRef: ref, layer: node.asset.layer, sourceUrl: node.asset.sourceUrl, resolvedAssetPath: node.asset.resolvedAssetPath, alt: node.asset.alt, placeholder: figmaStrategy === 'placeholder', figmaStrategy } });
@@ -706,6 +726,7 @@ export class CodeToFigmaPipelineService {
 
     const notes: string[] = [
       renderedUsed ? 'Planner used rendered snapshot as primary visual source.' : 'Planner used code model only; AST values served as visual fallback.',
+      (model.root.meta as any)?.renderProfile ? `Resolved surface mode: ${String((model.root.meta as any).renderProfile.surfaceMode)}.` : 'No render profile metadata resolved.',
       'AST remained the source for mapping, semantic structure and fallback values.',
       "Execution plan translated into editable Figma-native commands.",
       ...(needsReview.length ? ["Low-confidence nodes were marked as needs review and complex Figma asset/icon creation was skipped."] : []),

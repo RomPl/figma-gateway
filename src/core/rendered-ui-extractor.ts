@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { DesignTokenService } from './design-token-registry';
 import { annotateDocumentWithTokens } from './design-token-helpers';
 import { browserRenderOpenSchema, BrowserRendererService } from './browser-renderer';
+import { createRenderProfileResolver, renderProfileHintsSchema, type RenderProfile } from './render-profile-resolver';
 import { uiModelDocumentSchema, type UiKind, type UiModelDocument, type UiNode } from './ui-model';
 import { inferAssetHash, inferAssetId, inferFigmaAssetStrategy, type AssetRegistryRecord } from './asset-registry';
 import { classifyNodeGuardrails } from './visual-guardrails';
@@ -31,20 +32,23 @@ export const extractRenderedUiSchema = browserRenderOpenSchema.extend({
   project: z.string().trim().min(1).max(128).optional(),
   rootUiId: z.string().trim().min(1).optional(),
   breakpoint: renderedBreakpointPresetSchema.optional(),
-  breakpointName: z.string().trim().min(1).max(128).optional()
+  breakpointName: z.string().trim().min(1).max(128).optional(),
+  profile: renderProfileHintsSchema.optional()
 });
 
 export const extractRenderedUiBreakpointsSchema = browserRenderOpenSchema.extend({
   project: z.string().trim().min(1).max(128).optional(),
   rootUiId: z.string().trim().min(1).optional(),
-  breakpoints: z.array(renderedBreakpointPresetSchema).min(1).max(3).default(['desktop'])
+  breakpoints: z.array(renderedBreakpointPresetSchema).min(1).max(3).default(['desktop']),
+  profile: renderProfileHintsSchema.optional()
 });
 
 export const diagnoseRenderedUiSchema = browserRenderOpenSchema.extend({
   project: z.string().trim().min(1).max(128).optional(),
   rootUiId: z.string().trim().min(1).optional(),
   breakpoint: renderedBreakpointPresetSchema.optional(),
-  breakpointName: z.string().trim().min(1).max(128).optional()
+  breakpointName: z.string().trim().min(1).max(128).optional(),
+  profile: renderProfileHintsSchema.optional()
 });
 
 export type RenderedUiDiagnostics = {
@@ -176,7 +180,7 @@ export const renderedNodeSnapshotSchema: z.ZodType<any> = z.lazy(() => z.object(
 export type RenderedNodeSnapshot = z.infer<typeof renderedNodeSnapshotSchema>;
 export type RenderedUiRuntime = { capture(input: z.infer<typeof extractRenderedUiSchema>): Promise<RenderedNodeSnapshot>; };
 
-const normalizeRenderedExtractInput = (input: z.infer<typeof extractRenderedUiSchema>): z.infer<typeof extractRenderedUiSchema> => {
+export const normalizeRenderedExtractInput = (input: z.infer<typeof extractRenderedUiSchema>): z.infer<typeof extractRenderedUiSchema> => {
   const preset = input.breakpoint;
   if (!preset) {
     return { ...input, breakpointName: input.breakpointName ?? undefined };
@@ -325,7 +329,7 @@ const buildUiNode = (snapshot: RenderedNodeSnapshot, sourceUrl: string): UiNode 
   };
 };
 
-const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: string; contractVersion: string; syncRelevantFields: string[]; allowPrivateDataCapture: boolean; allowRuntimeDataAsBaseline: boolean; pageRiskyRegions: string[]; mode: 'snapshot' | 'diagnose'; }): string => {
+const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: string; contractVersion: string; syncRelevantFields: string[]; allowPrivateDataCapture: boolean; allowRuntimeDataAsBaseline: boolean; pageRiskyRegions: string[]; mode: 'snapshot' | 'diagnose'; renderProfile: RenderProfile; }): string => {
   const json = JSON.stringify(payload);
   return `(() => {
     const args = ${json};
@@ -390,6 +394,17 @@ const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: 
     function selectRoot() {
       const explicit = args.rootUiId ? document.querySelector('[data-ui-id="' + String(args.rootUiId).replace(/"/g, '\\"') + '"]') : null;
       if (explicit instanceof HTMLElement) return { root: explicit, resolvedByUiId: true, selectionMode: 'explicit-ui-id' };
+      if (Array.isArray(args.renderProfile && args.renderProfile.preferredRootSelectors)) {
+        for (const selector of args.renderProfile.preferredRootSelectors) {
+          try {
+            const matches = Array.from(document.querySelectorAll(selector)).filter((node) => node instanceof HTMLElement || node instanceof SVGElement);
+            if (matches.length) {
+              const best = matches.sort((left, right) => scoreRoot(right) - scoreRoot(left))[0];
+              if (best) return { root: best, resolvedByUiId: false, selectionMode: 'preferred-selector:' + selector };
+            }
+          } catch {}
+        }
+      }
       if (document.body instanceof HTMLElement) return { root: document.body, resolvedByUiId: false, selectionMode: 'body-default' };
       if (document.documentElement instanceof HTMLElement) return { root: document.documentElement, resolvedByUiId: false, selectionMode: 'document-default' };
       return { root: document.body, resolvedByUiId: false, selectionMode: 'body-fallback' };
@@ -525,8 +540,8 @@ const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: 
   })()`;
 };
 
-const buildRenderedSnapshotScript = (payload: { rootUiId?: string; breakpointName?: string; contractVersion: string; syncRelevantFields: string[]; allowPrivateDataCapture: boolean; allowRuntimeDataAsBaseline: boolean; pageRiskyRegions: string[]; }): string => buildHeuristicDomScript({ ...payload, mode: 'snapshot' });
-const buildRenderedDiagnosticsScript = (payload: { rootUiId?: string; breakpointName?: string; contractVersion: string; syncRelevantFields: string[]; allowPrivateDataCapture: boolean; allowRuntimeDataAsBaseline: boolean; pageRiskyRegions: string[]; }): string => buildHeuristicDomScript({ ...payload, mode: 'diagnose' });
+const buildRenderedSnapshotScript = (payload: { rootUiId?: string; breakpointName?: string; contractVersion: string; syncRelevantFields: string[]; allowPrivateDataCapture: boolean; allowRuntimeDataAsBaseline: boolean; pageRiskyRegions: string[]; renderProfile: RenderProfile; }): string => buildHeuristicDomScript({ ...payload, mode: 'snapshot' });
+const buildRenderedDiagnosticsScript = (payload: { rootUiId?: string; breakpointName?: string; contractVersion: string; syncRelevantFields: string[]; allowPrivateDataCapture: boolean; allowRuntimeDataAsBaseline: boolean; pageRiskyRegions: string[]; renderProfile: RenderProfile; }): string => buildHeuristicDomScript({ ...payload, mode: 'diagnose' });
 
 export class PlaywrightRenderedUiRuntime implements RenderedUiRuntime {
   constructor(private readonly browserRendererService: BrowserRendererService = new BrowserRendererService()) {}
@@ -536,7 +551,8 @@ export class PlaywrightRenderedUiRuntime implements RenderedUiRuntime {
     const normalized = normalizeRenderedExtractInput(input as z.infer<typeof extractRenderedUiSchema>);
     return this.browserRendererService.withPage(normalized, async ({ page, pageAudit, resolvedUrl, targetMode }) => {
       visualLogger.info({ rootUiId: normalized.rootUiId, breakpointName: normalized.breakpointName, pageAudit }, 'playwright rendered diagnostics start');
-      const script = buildRenderedDiagnosticsScript({ rootUiId: normalized.rootUiId, breakpointName: normalized.breakpointName, contractVersion: RENDERED_UI_CONTRACT_VERSION, syncRelevantFields: [...RENDERED_UI_MVP_SYNC_RELEVANT_FIELDS], allowPrivateDataCapture: normalized.guardrails.allowPrivateDataCapture, allowRuntimeDataAsBaseline: normalized.guardrails.allowRuntimeDataAsBaseline, pageRiskyRegions: pageAudit.riskyRegions });
+      const renderProfile = createRenderProfileResolver().resolve(normalized);
+      const script = buildRenderedDiagnosticsScript({ rootUiId: normalized.rootUiId, breakpointName: normalized.breakpointName, contractVersion: RENDERED_UI_CONTRACT_VERSION, syncRelevantFields: [...RENDERED_UI_MVP_SYNC_RELEVANT_FIELDS], allowPrivateDataCapture: normalized.guardrails.allowPrivateDataCapture, allowRuntimeDataAsBaseline: normalized.guardrails.allowRuntimeDataAsBaseline, pageRiskyRegions: pageAudit.riskyRegions, renderProfile });
       const result = await page.evaluate(script) as Record<string, unknown>;
       const diagnostics = ({ targetMode, resolvedUrl, pageAudit, ...result } as unknown) as RenderedUiDiagnostics;
       visualLogger.info({ diagnostics }, 'playwright rendered diagnostics done');
@@ -548,7 +564,8 @@ export class PlaywrightRenderedUiRuntime implements RenderedUiRuntime {
     const normalized = normalizeRenderedExtractInput(input);
     return this.browserRendererService.withPage(normalized, async ({ page, pageAudit }) => {
       visualLogger.info({ rootUiId: normalized.rootUiId, breakpointName: normalized.breakpointName, pageAudit }, 'playwright rendered capture start');
-      const script = buildRenderedSnapshotScript({ rootUiId: normalized.rootUiId, breakpointName: normalized.breakpointName, contractVersion: RENDERED_UI_CONTRACT_VERSION, syncRelevantFields: [...RENDERED_UI_MVP_SYNC_RELEVANT_FIELDS], allowPrivateDataCapture: normalized.guardrails.allowPrivateDataCapture, allowRuntimeDataAsBaseline: normalized.guardrails.allowRuntimeDataAsBaseline, pageRiskyRegions: pageAudit.riskyRegions });
+      const renderProfile = createRenderProfileResolver().resolve(normalized);
+      const script = buildRenderedSnapshotScript({ rootUiId: normalized.rootUiId, breakpointName: normalized.breakpointName, contractVersion: RENDERED_UI_CONTRACT_VERSION, syncRelevantFields: [...RENDERED_UI_MVP_SYNC_RELEVANT_FIELDS], allowPrivateDataCapture: normalized.guardrails.allowPrivateDataCapture, allowRuntimeDataAsBaseline: normalized.guardrails.allowRuntimeDataAsBaseline, pageRiskyRegions: pageAudit.riskyRegions, renderProfile });
       const raw = await page.evaluate(script);
       const snapshot = renderedNodeSnapshotSchema.parse(raw);
       visualLogger.info({ root: summarizeNode(snapshot), pageAudit }, 'playwright rendered capture done');
@@ -602,10 +619,12 @@ export class RenderedUiExtractorService {
     const snapshot = await this.runtime.capture(data);
     visualLogger.info({ snapshot: summarizeNode(snapshot), breakpoint: data.breakpointName }, 'rendered runtime snapshot captured');
     const sourceUrl = data.target.mode === 'existing_url' ? data.target.url : data.target.mode === 'preview_build' ? (data.target.readyUrl ?? `http://127.0.0.1:${data.target.port}${data.target.path.startsWith('/') ? data.target.path : `/${data.target.path}`}`) : (data.target.readyUrl ?? `http://127.0.0.1:${data.target.port}${data.target.path.startsWith('/') ? data.target.path : `/${data.target.path}`}`);
+    const renderProfile = createRenderProfileResolver().resolve(data);
     const document = annotateDocumentWithTokens(uiModelDocumentSchema.parse({ version: "ui-model.v1", root: buildUiNode(snapshot, sourceUrl) }), this.designTokenService, data.project);
+    document.root.meta = { ...(document.root.meta ?? {}), renderProfile };
     this.registerAssets(document, data.project);
     const annotated = annotateVisualConfidence(document);
-    visualLogger.info({ root: summarizeNode(annotated.root), sourceUrl }, 'rendered document extract done');
+    visualLogger.info({ root: summarizeNode(annotated.root), sourceUrl, renderProfile }, 'rendered document extract done');
     return annotated;
   }
 
