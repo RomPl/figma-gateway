@@ -27,6 +27,7 @@ export const codeToFigmaPipelineSchema = z.object({
   parentNodeId: z.string().trim().min(1).optional(),
   uiIds: z.array(z.string().trim().min(1)).max(200).optional(),
   render: extractRenderedUiSchema.optional(),
+  referenceHierarchySummary: z.object({ nodeCount: z.number().int().nonnegative(), sectionCount: z.number().int().nonnegative(), containerCount: z.number().int().nonnegative(), textCount: z.number().int().nonnegative(), buttonCount: z.number().int().nonnegative(), iconCount: z.number().int().nonnegative(), imageAssetCount: z.number().int().nonnegative(), maxDepth: z.number().int().nonnegative() }).optional(),
   dryRun: z.coerce.boolean().default(false)
 });
 
@@ -60,6 +61,7 @@ export type CodeToFigmaPipelineResult = {
   queued?: { sessionId: string; commandId: string; status: string };
   mappingCount: number;
   hierarchySummary: { nodeCount: number; sectionCount: number; containerCount: number; textCount: number; buttonCount: number; iconCount: number; imageAssetCount: number; maxDepth: number };
+  referenceComparison?: { comparable: boolean; comparedKeys: string[]; deltas: Record<string, number>; tolerance: Record<string, number> };
   notes: string[];
 };
 
@@ -93,6 +95,19 @@ const summarizeHierarchy = (root: UiNode): CodeToFigmaPipelineResult['hierarchyS
   };
   walk(root, 0);
   return summary;
+};
+
+const compareHierarchySummary = (actual: CodeToFigmaPipelineResult['hierarchySummary'], reference: CodeToFigmaPipelineResult['hierarchySummary']): NonNullable<CodeToFigmaPipelineResult['referenceComparison']> => {
+  const comparedKeys = ['sectionCount','containerCount','textCount','buttonCount','iconCount','imageAssetCount','maxDepth'];
+  const tolerance: Record<string, number> = { sectionCount: 1, containerCount: 2, textCount: 2, buttonCount: 1, iconCount: 1, imageAssetCount: 1, maxDepth: 2 };
+  const deltas: Record<string, number> = {};
+  let comparable = true;
+  for (const key of comparedKeys) {
+    const delta = Math.abs(Number((actual as any)[key] ?? 0) - Number((reference as any)[key] ?? 0));
+    deltas[key] = delta;
+    if (delta > Number(tolerance[key] ?? 0)) comparable = false;
+  }
+  return { comparable, comparedKeys, deltas, tolerance };
 };
 
 const sanitizeFigmaNamePart = (value: string | undefined): string | undefined => {
@@ -853,7 +868,9 @@ export class CodeToFigmaPipelineService {
     }
 
     const hierarchySummary = summarizeHierarchy(plan.model.root);
-    visualLogger.info({ componentName: component.componentName, actionCount: plan.actions.length, commandCount: plan.commands.length, mappingCount: nodes.length, needsReviewCount: needsReview.length, hierarchySummary, acceptance, queued }, 'code-to-figma run done');
-    return { componentName: component.componentName, filePath: component.filePath, model, plan, queued, mappingCount: nodes.length, hierarchySummary, acceptance, needsReview, notes };
+    const referenceComparison = data.referenceHierarchySummary ? compareHierarchySummary(hierarchySummary, data.referenceHierarchySummary) : undefined;
+    if (referenceComparison) notes.push(referenceComparison.comparable ? 'Reference hierarchy comparison stayed within configured tolerance.' : 'Reference hierarchy comparison detected material structure drift beyond configured tolerance.');
+    visualLogger.info({ componentName: component.componentName, actionCount: plan.actions.length, commandCount: plan.commands.length, mappingCount: nodes.length, needsReviewCount: needsReview.length, hierarchySummary, referenceComparison, acceptance, queued }, 'code-to-figma run done');
+    return { componentName: component.componentName, filePath: component.filePath, model, plan, queued, mappingCount: nodes.length, hierarchySummary, referenceComparison, acceptance, needsReview, notes };
   }
 }

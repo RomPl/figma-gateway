@@ -194,7 +194,7 @@ Tasks:
 [x] 5. harden wrapper preservation for icon holders / flex-wrap / grid items
 [x] 6. improve SVG and effects fidelity
 [x] 7. expand reverse-sync regression coverage for normalized trees
-8. run final live comparison against reference beauty transfers
+[x] 8. run final live comparison against reference beauty transfers
 
 ## Acceptance criteria
 
@@ -206,4 +206,4 @@ Tasks:
 [x] grid and flex-wrap sections preserve item hierarchy
 [x] SVG geometry and common effects are represented with materially improved fidelity
 [x] reverse sync tests stay green after beauty-planner changes
-- reference comparison shows comparable section/container/text hierarchy quality without losing future code-sync addressability
+[x] reference comparison shows comparable section/container/text hierarchy quality without losing future code-sync addressability

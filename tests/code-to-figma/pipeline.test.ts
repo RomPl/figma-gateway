@@ -253,3 +253,41 @@ test('code-to-figma planner preserves shell/content work-surface metadata in pla
   const surfacePluginData = plan.commands.find((command: any) => command.type === 'set_plugin_data' && command.payload?.pluginData?.key === 'surface-mode');
   assert.equal(surfacePluginData?.payload?.pluginData?.value, 'auth_gated_spa');
 });
+
+
+test('code-to-figma pipeline reports comparable hierarchy against supplied reference summary', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'code-to-figma-reference-'));
+  const dbPath = join(rootDir, 'reference.sqlite');
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(rootDir, 'src', 'components', 'Hero.tsx'), `
+      import React from 'react';
+      export function Hero() {
+        return (
+          <section data-ui-id="landing.hero">
+            <h1 data-ui-id="landing.hero.title">Build faster</h1>
+            <div data-ui-id="landing.hero.panel">Metrics</div>
+            <button data-ui-id="landing.hero.cta">Start</button>
+          </section>
+        );
+      }
+    `, 'utf8');
+    const db = createSqliteDatabase(dbPath);
+    migrateDatabase(db);
+    const code = new CodeUiParserService({ rootDir });
+    const rendered = new RenderedUiExtractorService(mockRuntime);
+    const pipeline = new CodeToFigmaPipelineService(code, new RenderedToCodeMapperService(rendered, code), new PluginBridgeService(), createUiMappingService(new UiMappingRegistry(db)));
+    const result = await pipeline.run({
+      project: 'marketing-site',
+      componentName: 'Hero',
+      rootDir,
+      dryRun: true,
+      render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3000' }, rootUiId: 'landing.hero', breakpointName: 'desktop' },
+      referenceHierarchySummary: { nodeCount: 6, sectionCount: 1, containerCount: 3, textCount: 2, buttonCount: 1, iconCount: 1, imageAssetCount: 1, maxDepth: 1 }
+    });
+    assert.equal(result.referenceComparison?.comparable, true);
+    assert.equal(result.notes.some((note) => note.includes('Reference hierarchy comparison stayed within configured tolerance.')), true);
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

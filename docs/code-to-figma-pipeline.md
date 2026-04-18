@@ -313,6 +313,7 @@ Repeated card grids must preserve both layers: the outer wrapping grid container
 For shell-like surfaces (`app_shell`, `auth_gated_spa`), planner must write both `shell-selection-mode` and `content-selection-mode` plugin-data on the planned root so the chosen content work surface remains explicit during downstream review and reconcile.
 Current render-first SVG/effects fidelity now includes: preserved multi-shadow stacks, fallback `viewBox` injection, scaled `stroke-width`, nested `currentColor` rewrite, and explicit `needsReview` signaling for low-confidence effect-heavy nodes.
 `CodeToFigmaPipelineResult` now also carries a compact `hierarchySummary` (node/container/text/button/icon/image counts plus max depth). This is intended as the measurable baseline for later reference-comparison passes.
+The pipeline may optionally accept a reference `hierarchySummary` and return `referenceComparison` with toleranced deltas for section/container/text/button/icon/image/depth counts. This is the operational comparison contract for beauty-transfer parity checks.
 
 This naming layer must not change the stable `uiId`. Reverse sync and selector resolution continue to use `uiId` as the primary durable identity.
 
