@@ -59,6 +59,7 @@ export type CodeToFigmaPipelineResult = {
   plan: CodeToFigmaExecutionPlan;
   queued?: { sessionId: string; commandId: string; status: string };
   mappingCount: number;
+  hierarchySummary: { nodeCount: number; sectionCount: number; containerCount: number; textCount: number; buttonCount: number; iconCount: number; imageAssetCount: number; maxDepth: number };
   notes: string[];
 };
 
@@ -76,6 +77,23 @@ const findNodeByUiId = (node: UiNode, uiId: string): UiNode | null => {
   return null;
 };
 const inferContainerCommand = (_node: UiNode, _isRoot: boolean): 'create_frame' => 'create_frame';
+
+const summarizeHierarchy = (root: UiNode): CodeToFigmaPipelineResult['hierarchySummary'] => {
+  const summary = { nodeCount: 0, sectionCount: 0, containerCount: 0, textCount: 0, buttonCount: 0, iconCount: 0, imageAssetCount: 0, maxDepth: 0 };
+  const walk = (node: UiNode, depth: number): void => {
+    summary.nodeCount += 1;
+    summary.maxDepth = Math.max(summary.maxDepth, depth);
+    if (node.kind === 'section') summary.sectionCount += 1;
+    if (['section','frame','group','card'].includes(node.kind)) summary.containerCount += 1;
+    if (node.kind === 'text') summary.textCount += 1;
+    if (node.kind === 'button') summary.buttonCount += 1;
+    if (node.kind === 'icon') summary.iconCount += 1;
+    if (node.kind === 'image' || node.asset?.layer === 'image') summary.imageAssetCount += 1;
+    node.children.forEach((child) => walk(child, depth + 1));
+  };
+  walk(root, 0);
+  return summary;
+};
 
 const sanitizeFigmaNamePart = (value: string | undefined): string | undefined => {
   if (!value) return undefined;
@@ -834,7 +852,8 @@ export class CodeToFigmaPipelineService {
       });
     }
 
-    visualLogger.info({ componentName: component.componentName, actionCount: plan.actions.length, commandCount: plan.commands.length, mappingCount: nodes.length, needsReviewCount: needsReview.length, acceptance, queued }, 'code-to-figma run done');
-    return { componentName: component.componentName, filePath: component.filePath, model, plan, queued, mappingCount: nodes.length, acceptance, needsReview, notes };
+    const hierarchySummary = summarizeHierarchy(plan.model.root);
+    visualLogger.info({ componentName: component.componentName, actionCount: plan.actions.length, commandCount: plan.commands.length, mappingCount: nodes.length, needsReviewCount: needsReview.length, hierarchySummary, acceptance, queued }, 'code-to-figma run done');
+    return { componentName: component.componentName, filePath: component.filePath, model, plan, queued, mappingCount: nodes.length, hierarchySummary, acceptance, needsReview, notes };
   }
 }

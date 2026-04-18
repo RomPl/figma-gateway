@@ -91,6 +91,9 @@ test('code-to-figma planner builds editable Figma-native execution plan from ren
     assert.equal(result.plan.commands.some((command) => command.type === 'set_plugin_data' && command.payload?.pluginData?.key === 'breakpoint-family'), true);
     assert.equal(result.plan.commands.some((command) => command.type === 'set_plugin_data' && command.payload?.pluginData?.key === 'variant-group-id'), true);
     assert.equal(result.notes.some((note) => note.includes('planning plugin-data')), true);
+    assert.equal(result.hierarchySummary.nodeCount >= 5, true);
+    assert.equal(result.hierarchySummary.containerCount >= 2, true);
+    assert.equal(result.hierarchySummary.textCount >= 1, true);
     assert.equal(result.queued, undefined);
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
@@ -137,10 +140,12 @@ test('code-to-figma route queues plugin batch and persists mapping registry entr
         headers: { authorization: 'Bearer test-api-token', 'content-type': 'application/json' },
         body: JSON.stringify({ project: 'marketing-site', componentName: 'Hero', rootDir, fileKey: 'abc123', sessionId, dryRun: false, render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3000' }, rootUiId: 'landing.hero', breakpointName: 'desktop' } })
       });
-      const json = (await response.json()) as { data: { queued: { status: string; commandId: string }; mappingCount: number; notes: string[] } };
+      const json = (await response.json()) as { data: { queued: { status: string; commandId: string }; mappingCount: number; hierarchySummary: { nodeCount: number; containerCount: number; textCount: number }; notes: string[] } };
       assert.equal(response.status, 202);
       assert.equal(json.data.queued?.status, 'queued');
       assert.equal(json.data.mappingCount >= 3, true);
+      assert.equal(json.data.hierarchySummary.nodeCount >= 3, true);
+      assert.equal(json.data.hierarchySummary.containerCount >= 1, true);
       assert.equal(json.data.notes[0].includes('rendered snapshot'), true);
 
       const pendingResponse = await fetch(`${baseUrl}/api/plugin-bridge/sessions/${sessionId}/commands/pending`, { headers: { authorization: 'Bearer test-api-token', 'x-plugin-session-token': sessionToken } });
