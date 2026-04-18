@@ -310,6 +310,7 @@ This normalization is conservative: it only replaces clearly technical DOM/class
 Small visual icon-holder wrappers (for example `48x48` centered circular containers around SVG icons) must stay as their own frame nodes with child icon attachment and auto-layout centering. They must not collapse into a bare icon layer during render-first planning.
 When CSS `box-shadow` contains several non-zero entries, planner should preserve the normalized multi-entry stack for plugin-side effect parsing instead of collapsing everything to a single strongest shadow. Inset-specific fidelity still needs a dedicated follow-up pass.
 Repeated card grids must preserve both layers: the outer wrapping grid container and each individual card wrapper with its own internal vertical text stack. Card copy must stay attached to its own card frame instead of leaking directly into the grid parent.
+For shell-like surfaces (`app_shell`, `auth_gated_spa`), planner must write both `shell-selection-mode` and `content-selection-mode` plugin-data on the planned root so the chosen content work surface remains explicit during downstream review and reconcile.
 
 This naming layer must not change the stable `uiId`. Reverse sync and selector resolution continue to use `uiId` as the primary durable identity.
 

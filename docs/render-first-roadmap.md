@@ -200,7 +200,7 @@ Tasks:
 
 [x] live import does not create duplicate synthetic uiIds
 [x] repeated imports stay stable
-- shell-like surfaces target the correct content work surface
+[x] shell-like surfaces target the correct content work surface
 [x] headings/body/CTA labels use the correct font family/style in snapshot export
 [x] icon-holder wrappers are preserved as frames
 [x] grid and flex-wrap sections preserve item hierarchy

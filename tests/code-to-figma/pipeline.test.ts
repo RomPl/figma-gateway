@@ -8,7 +8,7 @@ import test from 'node:test';
 import { createApp } from '../../src/api/app';
 import { AuditService } from '../../src/core/audit';
 import { CodeUiParserService } from '../../src/core/code-ui-parser';
-import { CodeToFigmaPipelineService } from '../../src/core/code-to-figma-pipeline';
+import { CodeToFigmaPipelineService, buildCodeToFigmaPlan } from '../../src/core/code-to-figma-pipeline';
 import { PluginBridgeService } from '../../src/core/plugin-bridge';
 import type { FigmaReadClient } from '../../src/core/figma-client';
 import { UiMappingRegistry, createUiMappingService } from '../../src/core/ui-mapping-registry';
@@ -207,4 +207,44 @@ test('code-to-figma build-breakpoints route produces breakpoint-specific variant
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
   }
+});
+
+
+test('code-to-figma planner preserves shell/content work-surface metadata in planning notes and plugin data', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: {
+      kind: 'section',
+      uiId: 'dashboard.content',
+      visible: true,
+      responsive: { breakpointName: 'desktop', viewportWidth: 1440, viewportHeight: 900 },
+      meta: {
+        renderProfile: {
+          surfaceMode: 'auth_gated_spa',
+          authenticated: true,
+          rootStrategy: 'preferred_selector',
+          preferredRootSelectors: ['[data-authenticated-shell]'],
+          preserveOuterShell: true,
+          expectPersistentShell: true,
+          allowBodyFallback: true,
+          notes: ['render profile resolved in auth_gated_spa mode with selector-first root detection']
+        },
+        renderSurface: {
+          shellSelectionMode: 'preferred-selector:main',
+          contentSelectionMode: 'shell-content:section',
+          shellPreserved: true,
+          shellRootTag: 'main',
+          contentRootTag: 'section'
+        }
+      },
+      children: [{ kind: 'text', uiId: 'dashboard.content.title', visible: true, text: 'Overview', children: [] }]
+    }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'Dashboard', 'src/app/dashboard/page.tsx');
+  const shellPluginData = plan.commands.find((command: any) => command.type === 'set_plugin_data' && command.payload?.pluginData?.key === 'shell-selection-mode');
+  const contentPluginData = plan.commands.find((command: any) => command.type === 'set_plugin_data' && command.payload?.pluginData?.key === 'content-selection-mode');
+  assert.equal(shellPluginData?.payload?.pluginData?.value, 'preferred-selector:main');
+  assert.equal(contentPluginData?.payload?.pluginData?.value, 'shell-content:section');
+  const surfacePluginData = plan.commands.find((command: any) => command.type === 'set_plugin_data' && command.payload?.pluginData?.key === 'surface-mode');
+  assert.equal(surfacePluginData?.payload?.pluginData?.value, 'auth_gated_spa');
 });
