@@ -755,3 +755,31 @@ test('input placeholder labels inherit resolved font style and letter spacing', 
   assert.equal(style.payload.fontWeight, '500');
   assert.equal(style.payload.letterSpacing, 0.2);
 });
+
+
+test('planner preserves small centered icon-holder wrappers as frames with child icon attachment', async () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: { kind:'frame', uiId:'page.root', name:'Page', visible:true, children:[{
+      kind:'frame', uiId:'feature.iconWrap', name:'div-rounded-full.bg-slate-900', visible:true,
+      boundingBox:{x:0,y:0,width:48,height:48},
+      computedStyle:{ display:'inline-flex', width:48, height:48, justifyContent:'center', alignItems:'center', borderRadius:9999, backgroundColor:'rgb(15,23,42)' },
+      children:[{
+        kind:'icon', uiId:'feature.iconWrap.icon', name:'svg-sparkles', visible:true,
+        boundingBox:{x:12,y:12,width:24,height:24}, computedStyle:{ width:24, height:24 },
+        icon:{ sourceType:'inline-svg', textLabel:'sparkles', svgMarkup:'<svg width="24" height="24" viewBox="0 0 24 24"><path d="M1 1"/></svg>', fill:'rgb(255,255,255)', stroke:'rgb(255,255,255)', size:{width:24,height:24}, placement:'standalone' },
+        asset:{layer:'svg-icon'}, children:[]
+      }]
+    }] }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'Feature', 'src/app/page.tsx');
+  const wrapCreate = plan.commands.find((item: any) => item.type === 'create_frame' && item.payload?.uiId === 'feature.iconWrap');
+  const wrapLayout = plan.commands.find((item: any) => item.type === 'set_auto_layout' && item.payload?.nodeRef === 'feature.iconWrap');
+  const iconRef = plan.commands.find((item: any) => item.type === 'set_icon_reference' && item.payload?.nodeRef === 'feature.iconWrap.icon');
+  assert.equal(Boolean(wrapCreate), true);
+  assert.equal(wrapCreate.payload.name, 'Container - feature.iconWrap');
+  assert.equal(Boolean(wrapLayout), true);
+  assert.equal(wrapLayout.payload.layoutMode, 'HORIZONTAL');
+  assert.equal(wrapLayout.payload.counterAxisAlignItems, 'CENTER');
+  assert.equal(Boolean(iconRef), true);
+});
