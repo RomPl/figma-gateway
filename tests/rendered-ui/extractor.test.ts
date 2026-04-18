@@ -309,8 +309,47 @@ test('rendered extractor uses resolved app-shell selectors when no explicit root
     const service = new RenderedUiExtractorService();
     const document = await service.extract({ target: { mode: 'existing_url', url }, browserExecutablePath: '/usr/bin/google-chrome' });
     assert.equal((document.root.meta as any)?.renderProfile?.surfaceMode, 'auth_gated_spa');
-    assert.equal(document.root.uiId.includes('main') || document.root.uiId === '__auto__/', true);
-    assert.equal(document.root.children.some((child) => child.uiId === 'app.dashboard.root'), true);
+    assert.equal((document.root.meta as any)?.renderSurface?.shellPreserved, true);
+    assert.equal((document.root.meta as any)?.renderSurface?.shellRootTag, 'main');
+    assert.equal((document.root.meta as any)?.renderSurface?.contentRootTag, 'section');
+    assert.equal(document.root.uiId, 'app.dashboard.root');
+    assert.equal(document.root.uiId, 'app.dashboard.root');
+    assert.equal(document.root.children.some((child) => child.uiId === 'app.dashboard.title'), true);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  }
+});
+
+
+test('rendered extractor promotes route content root inside auth-gated shell when nested content root markers exist', async () => {
+  const html = `<!doctype html><html><body>
+    <div id="__next">
+      <aside>Sidebar</aside>
+      <main data-authenticated-shell="true">
+        <div class="toolbar">Toolbar</div>
+        <section data-content-root="true">
+          <section data-ui-id="workspace.page.root">
+            <h1 data-ui-id="workspace.page.title">Workspace</h1>
+          </section>
+        </section>
+      </main>
+    </div>
+  </body></html>`;
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(html);
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Failed to get server address');
+  const url = `http://127.0.0.1:${address.port}/app/workspace`;
+  try {
+    const service = new RenderedUiExtractorService();
+    const document = await service.extract({ target: { mode: 'existing_url', url }, browserExecutablePath: '/usr/bin/google-chrome' });
+    assert.equal((document.root.meta as any)?.renderProfile?.surfaceMode, 'auth_gated_spa');
+    assert.equal((document.root.meta as any)?.renderSurface?.shellPreserved, true);
+    assert.equal((document.root.meta as any)?.renderSurface?.contentRootTag, 'section');
+    assert.equal(document.root.children.some((child) => child.uiId === 'workspace.page.root'), true);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }

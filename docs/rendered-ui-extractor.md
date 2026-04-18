@@ -38,6 +38,13 @@ Root selection order is now:
 
 This is the foundation for stronger root/app-shell handling on authenticated SPA surfaces.
 
+For `app_shell` and `auth_gated_spa`, the extractor now separates:
+
+- `shellRoot` — the persistent outer application shell
+- `contentRoot` — the preferred working surface inside that shell
+
+The returned UI model uses `contentRoot` as the extracted root while preserving shell metadata in root `meta.renderSurface`.
+
 ## Main rule
 
 The module is responsible for browser-derived visual truth.

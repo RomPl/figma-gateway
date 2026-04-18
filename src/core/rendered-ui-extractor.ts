@@ -154,6 +154,15 @@ const semanticsSchema = z.object({
   hidden: z.boolean().optional()
 }).partial();
 
+const renderSurfaceSchema = z.object({
+  surfaceMode: z.string().optional(),
+  shellSelectionMode: z.string().optional(),
+  contentSelectionMode: z.string().optional(),
+  shellPreserved: z.boolean().optional(),
+  shellRootTag: z.string().optional(),
+  contentRootTag: z.string().optional()
+}).partial();
+
 export const renderedNodeSnapshotSchema: z.ZodType<any> = z.lazy(() => z.object({
   uiId: z.string().trim().min(1),
   tag: z.string().trim().min(1),
@@ -171,6 +180,7 @@ export const renderedNodeSnapshotSchema: z.ZodType<any> = z.lazy(() => z.object(
   asset: assetLayerSchema.default({}),
   icon: iconLayerSchema.default({}),
   semantics: semanticsSchema.default({}),
+  renderSurface: renderSurfaceSchema.default({}),
   guardrails: z.object({ privateDataRedacted: z.boolean().optional(), runtimeBaseline: z.enum(['trusted','untrusted']).optional(), dynamicStatefulBlock: z.boolean().optional(), unsupportedRegions: z.array(z.string()).optional() }).partial().default({}),
   breakpoint: z.object({ viewportWidth: z.number(), viewportHeight: z.number(), name: z.string().optional() }),
   syncRelevantFields: z.array(z.string()).default([]),
@@ -308,6 +318,7 @@ const buildUiNode = (snapshot: RenderedNodeSnapshot, sourceUrl: string): UiNode 
     responsive: { viewportWidth: snapshot.breakpoint.viewportWidth, viewportHeight: snapshot.breakpoint.viewportHeight, breakpointName: snapshot.breakpoint.name },
     meta: {
       guardrails,
+      renderSurface: snapshot.renderSurface,
       rendered: {
         contractVersion: RENDERED_UI_CONTRACT_VERSION,
         treePath: snapshot.treePath,
@@ -318,6 +329,7 @@ const buildUiNode = (snapshot: RenderedNodeSnapshot, sourceUrl: string): UiNode 
         asset: snapshot.asset,
         icon: snapshot.icon,
         semantics: snapshot.semantics,
+        renderSurface: snapshot.renderSurface,
         dom: { tag: snapshot.tag, id: snapshot.domId, className: snapshot.className },
         form: { placeholder: snapshot.placeholder, inputType: snapshot.inputType, checked: snapshot.checked },
         guardrails,
@@ -391,23 +403,54 @@ const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: 
       const path = domPath(element);
       return path ? '/' + path : '/';
     }
+    function resolveContentRoot(shellRoot, selectionMode) {
+      const surfaceMode = args.renderProfile && args.renderProfile.surfaceMode;
+      if (!(shellRoot instanceof HTMLElement) && !(shellRoot instanceof SVGElement)) return { contentRoot: shellRoot, selectionMode, contentSelectionMode: selectionMode, shellPreserved: false };
+      if (!(surfaceMode === 'app_shell' || surfaceMode === 'auth_gated_spa')) return { contentRoot: shellRoot, selectionMode, contentSelectionMode: selectionMode, shellPreserved: false };
+      const candidates = Array.from(shellRoot.querySelectorAll('main, [role="main"], section, article, [data-ui-root], [data-page-root], [data-route-root], [data-screen-root], [data-content-root]'))
+        .filter((node) => node instanceof HTMLElement || node instanceof SVGElement)
+        .filter((node) => isVisible(node));
+      const scored = candidates
+        .map((node) => {
+          let score = scoreRoot(node);
+          const tag = String(node.tagName || '').toLowerCase();
+          if (tag === 'main') score += 800000;
+          if (node.hasAttribute && (node.hasAttribute('data-page-root') || node.hasAttribute('data-route-root') || node.hasAttribute('data-screen-root') || node.hasAttribute('data-content-root'))) score += 1000000;
+          if (node !== shellRoot && node.querySelector && node.querySelector('[data-ui-id]')) score += 300000;
+          if (node === shellRoot) score -= 500000;
+          return { node, score };
+        })
+        .sort((left, right) => right.score - left.score);
+      const best = scored[0] && scored[0].node !== shellRoot ? scored[0].node : null;
+      if (!best) return { contentRoot: shellRoot, selectionMode, contentSelectionMode: selectionMode, shellPreserved: false };
+      return { contentRoot: best, selectionMode, contentSelectionMode: 'shell-content:' + String(best.tagName || '').toLowerCase(), shellPreserved: true };
+    }
     function selectRoot() {
       const explicit = args.rootUiId ? document.querySelector('[data-ui-id="' + String(args.rootUiId).replace(/"/g, '\\"') + '"]') : null;
-      if (explicit instanceof HTMLElement) return { root: explicit, resolvedByUiId: true, selectionMode: 'explicit-ui-id' };
+      if (explicit instanceof HTMLElement) return { shellRoot: explicit, contentRoot: explicit, resolvedByUiId: true, selectionMode: 'explicit-ui-id', contentSelectionMode: 'explicit-ui-id', shellPreserved: false };
       if (Array.isArray(args.renderProfile && args.renderProfile.preferredRootSelectors)) {
         for (const selector of args.renderProfile.preferredRootSelectors) {
           try {
             const matches = Array.from(document.querySelectorAll(selector)).filter((node) => node instanceof HTMLElement || node instanceof SVGElement);
             if (matches.length) {
               const best = matches.sort((left, right) => scoreRoot(right) - scoreRoot(left))[0];
-              if (best) return { root: best, resolvedByUiId: false, selectionMode: 'preferred-selector:' + selector };
+              if (best) {
+                const resolved = resolveContentRoot(best, 'preferred-selector:' + selector);
+                return { shellRoot: best, ...resolved, resolvedByUiId: false };
+              }
             }
           } catch {}
         }
       }
-      if (document.body instanceof HTMLElement) return { root: document.body, resolvedByUiId: false, selectionMode: 'body-default' };
-      if (document.documentElement instanceof HTMLElement) return { root: document.documentElement, resolvedByUiId: false, selectionMode: 'document-default' };
-      return { root: document.body, resolvedByUiId: false, selectionMode: 'body-fallback' };
+      if (document.body instanceof HTMLElement) {
+        const resolved = resolveContentRoot(document.body, 'body-default');
+        return { shellRoot: document.body, ...resolved, resolvedByUiId: false };
+      }
+      if (document.documentElement instanceof HTMLElement) {
+        const resolved = resolveContentRoot(document.documentElement, 'document-default');
+        return { shellRoot: document.documentElement, ...resolved, resolvedByUiId: false };
+      }
+      return { shellRoot: document.body, contentRoot: document.body, resolvedByUiId: false, selectionMode: 'body-fallback', contentSelectionMode: 'body-fallback', shellPreserved: false };
     }
 
 
@@ -529,12 +572,15 @@ const buildHeuristicDomScript = (payload: { rootUiId?: string; breakpointName?: 
       return { contractVersion: args.contractVersion, uiId, tag, domId: element.id || undefined, className: element.getAttribute('class') || undefined, text: textValue, placeholder: element.getAttribute('placeholder') || undefined, inputType: element.getAttribute('type') || undefined, checked: element instanceof HTMLInputElement ? Boolean(element.checked) : undefined, treePath, clientRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, computedStyle, visibility: { visible, display: style.display || undefined, visibility: style.visibility || undefined, opacity: Number(style.opacity || '1') }, media, asset, icon, semantics: { role, ariaLabel: element.getAttribute('aria-label') || undefined, headingLevel: /^h[1-6]$/.test(tag) ? Number(tag.slice(1)) : undefined, clickTarget: typeof element.onclick === 'function' || ['button', 'link'].includes(role || '') || tag === 'button' || tag === 'a', hidden: element.hidden }, guardrails: { privateDataRedacted: privateNode && !args.allowPrivateDataCapture, runtimeBaseline: dynamicStatefulBlock && !args.allowRuntimeDataAsBaseline ? 'untrusted' : 'trusted', dynamicStatefulBlock, unsupportedRegions }, breakpoint: { viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, name: args.breakpointName || undefined }, syncRelevantFields: args.syncRelevantFields, children: nearestChildren(element).map((child) => buildNode(child, treePath, unstable)).filter(Boolean) };
     }
     const selected = selectRoot();
-    const tree = buildNode(selected.root, '', selected.selectionMode !== 'explicit-ui-id' && !selected.root.hasAttribute('data-ui-id'));
+    const tree = buildNode(selected.contentRoot, '', selected.contentSelectionMode !== 'explicit-ui-id' && !selected.contentRoot.hasAttribute('data-ui-id'));
+    if (tree) {
+      tree.renderSurface = { surfaceMode: args.renderProfile && args.renderProfile.surfaceMode, shellSelectionMode: selected.selectionMode, contentSelectionMode: selected.contentSelectionMode, shellPreserved: Boolean(selected.shellPreserved), shellRootTag: selected.shellRoot && selected.shellRoot.tagName ? String(selected.shellRoot.tagName).toLowerCase() : undefined, contentRootTag: selected.contentRoot && selected.contentRoot.tagName ? String(selected.contentRoot.tagName).toLowerCase() : undefined };
+    }
     if (args.mode === 'diagnose') {
-      const style = window.getComputedStyle(selected.root);
-      const rect = selected.root.getBoundingClientRect();
+      const style = window.getComputedStyle(selected.contentRoot);
+      const rect = selected.contentRoot.getBoundingClientRect();
       const computedStyle = { color: style.color || undefined, backgroundColor: style.backgroundColor || undefined, backgroundImage: style.backgroundImage || undefined, borderColor: style.borderColor || undefined, borderWidth: style.borderTopWidth || undefined, borderStyle: style.borderTopStyle || undefined, borderRadius: style.borderRadius || undefined, boxShadow: style.boxShadow || undefined, opacity: style.opacity || undefined, fontFamily: style.fontFamily || undefined, fontSize: style.fontSize || undefined, fontWeight: style.fontWeight || undefined, lineHeight: style.lineHeight || undefined, letterSpacing: style.letterSpacing || undefined, textAlign: style.textAlign || undefined, display: style.display || undefined, flexDirection: style.flexDirection || undefined, alignItems: style.alignItems || undefined, justifyContent: style.justifyContent || undefined, gap: style.gap || undefined, paddingTop: style.paddingTop || undefined, paddingRight: style.paddingRight || undefined, paddingBottom: style.paddingBottom || undefined, paddingLeft: style.paddingLeft || undefined, width: style.width || undefined, height: style.height || undefined, position: style.position || undefined, overflowX: style.overflowX || undefined, overflowY: style.overflowY || undefined };
-      return { finalUrl: window.location.href, title: document.title, domUiIdCount: document.querySelectorAll('[data-ui-id]').length, rootRequestedUiId: args.rootUiId || undefined, rootResolvedByUiId: selected.resolvedByUiId, rootSelectionMode: selected.selectionMode, fallbackUsed: selected.selectionMode !== 'explicit-ui-id' && selected.selectionMode !== 'first-ui-id', rootSummary: { uiId: tree.uiId, tag: selected.root.tagName.toLowerCase(), text: normalizeText(selected.root.innerText || selected.root.textContent), childCount: tree.children.length, boundingBox: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, computedStyle }, childUiIds: tree.children.map((child) => child.uiId), computedStyleKeys: Object.keys(computedStyle).filter((key) => computedStyle[key]) };
+      return { finalUrl: window.location.href, title: document.title, domUiIdCount: document.querySelectorAll('[data-ui-id]').length, rootRequestedUiId: args.rootUiId || undefined, rootResolvedByUiId: selected.resolvedByUiId, rootSelectionMode: selected.selectionMode, fallbackUsed: selected.selectionMode !== 'explicit-ui-id' && selected.selectionMode !== 'first-ui-id', rootSummary: { uiId: tree.uiId, tag: selected.contentRoot.tagName.toLowerCase(), text: normalizeText(selected.contentRoot.innerText || selected.contentRoot.textContent), childCount: tree.children.length, boundingBox: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, computedStyle, shellSelectionMode: selected.selectionMode, contentSelectionMode: selected.contentSelectionMode, shellPreserved: Boolean(selected.shellPreserved), shellRootTag: selected.shellRoot && selected.shellRoot.tagName ? String(selected.shellRoot.tagName).toLowerCase() : undefined }, childUiIds: tree.children.map((child) => child.uiId), computedStyleKeys: Object.keys(computedStyle).filter((key) => computedStyle[key]) };
     }
     return tree;
   })()`;
