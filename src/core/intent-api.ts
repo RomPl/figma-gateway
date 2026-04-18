@@ -148,6 +148,39 @@ export class IntentApiService {
     };
   }
 
+
+  private async executeReconcileBreakpointsIntent(intent: z.infer<typeof intentCommandSchema>, payload: Record<string, unknown>): Promise<{ phases: string[]; artifacts: Record<string, unknown>; result: unknown; }> {
+    const render = this.requireRender(payload, intent);
+    const breakpoints = this.getBreakpointRequests(payload);
+    const resultsByBreakpoint: Record<string, unknown> = {};
+    const summaryByBreakpoint: Record<string, unknown> = {};
+    for (const breakpoint of breakpoints) {
+      const result = await this.reconcilePipelineService.run({ ...(payload as any), mode: 'reconcile', render: { ...render, breakpoint, breakpointName: breakpoint } });
+      resultsByBreakpoint[breakpoint] = result;
+      summaryByBreakpoint[breakpoint] = {
+        mode: (result as any).mode,
+        conflictCount: Array.isArray((result as any).conflicts) ? (result as any).conflicts.length : 0,
+        mergePlanCount: Array.isArray((result as any).mergePlan) ? (result as any).mergePlan.length : 0,
+        renderedSurface: (result as any).rendered?.root?.meta?.planningContext?.surfaceMode,
+        renderedBreakpointFamily: (result as any).rendered?.root?.meta?.planningContext?.breakpointFamily
+      };
+    }
+    return {
+      phases: [...RECONCILE_PHASES],
+      artifacts: { visualSource: 'rendered_ui_snapshot', breakpointCount: breakpoints.length, breakpoints },
+      result: {
+        breakpoints,
+        resultsByBreakpoint,
+        summaryByBreakpoint,
+        notes: [
+          'Intent used breakpoint-aware reconcile orchestration across multiple rendered/code/Figma comparisons.',
+          'Conflict classification and merge priorities remain identical to the stable single-breakpoint reconcile pipeline.',
+          'Variant-group reverse-sync bindings remain deferred; this intent is diagnostic and planning-first for multi-breakpoint mode.'
+        ]
+      }
+    };
+  }
+
   private async snapshotVisualChain(payload: Record<string, unknown>): Promise<{ codeComponentCount: number; renderedNodeCount: number; tokenBoundNodeCount: number; rendered: UiModelDocument; }> {
     const project = payload.project as string | undefined;
     const rootDir = payload.rootDir as string | undefined;
@@ -232,6 +265,11 @@ export class IntentApiService {
         return { intent: data.intent, phases: [...VISUAL_INTENT_PHASES], artifacts: { codeComponentCount: visual.codeComponentCount, renderedNodeCount: visual.renderedNodeCount, tokenBoundNodeCount: visual.tokenBoundNodeCount, visualSource: 'rendered_ui_snapshot' }, result };
       }
       case 'reconcile_design_and_code': {
+        const breakpoints = this.getBreakpointRequests(data.payload as any);
+        if (breakpoints.length) {
+          const multi = await this.executeReconcileBreakpointsIntent(data.intent, data.payload as any);
+          return { intent: data.intent, phases: multi.phases, artifacts: multi.artifacts, result: multi.result };
+        }
         const render = this.requireRender(data.payload, data.intent);
         const project = String((data.payload as any).project || '');
         const fileKey = String((data.payload as any).fileKey || '');

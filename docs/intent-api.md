@@ -139,3 +139,6 @@ Current behavior:
 - materializes variant node refs per breakpoint family
 - may queue one combined plugin batch
 - intentionally keeps multi-breakpoint mapping persistence conservative until reverse-sync bindings are finalized
+
+
+`reconcile_design_and_code` may also accept `breakpoints`, in which case the intent reuses the stable single-breakpoint reconcile pipeline per breakpoint and returns `resultsByBreakpoint` plus a compact `summaryByBreakpoint`.

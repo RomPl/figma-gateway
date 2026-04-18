@@ -186,3 +186,48 @@ test('intent API can orchestrate multi-breakpoint reconstruct requests', async (
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+
+test('intent API can orchestrate multi-breakpoint reconcile requests', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'intent-api-reconcile-breakpoints-'));
+  const dbPath = join(rootDir, 'intent-reconcile-breakpoints.sqlite');
+  const breakpointRuntime: RenderedUiRuntime = {
+    capture: async (input) => ({
+      uiId: 'landing.hero', tag: 'section', text: `Build ${String(input.breakpointName || input.breakpoint || 'desktop')}`, treePath: 'landing.hero',
+      clientRect: { x: 0, y: 0, width: input.viewport?.width ?? 1440, height: 720 },
+      computedStyle: { display: 'flex', flexDirection: 'column', gap: 24, width: input.viewport?.width ?? 1440, height: 720, backgroundColor: 'rgb(15, 23, 42)' },
+      visibility: { visible: true, display: 'flex', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: input.viewport?.width ?? 1440, viewportHeight: input.viewport?.height ?? 900, name: String(input.breakpointName || input.breakpoint || 'desktop') }, syncRelevantFields: [],
+      children: [{ uiId: 'landing.hero.title', tag: 'h1', text: 'Build faster', treePath: 'landing.hero > landing.hero.title', clientRect: { x: 0, y: 0, width: 640, height: 72 }, computedStyle: { color: 'rgb(255,255,255)', fontSize: 56, display: 'block', width: 640, height: 72 }, visibility: { visible: true, display: 'block', visibility: 'visible', opacity: 1 }, media: {}, asset: {}, icon: {}, semantics: {}, breakpoint: { viewportWidth: input.viewport?.width ?? 1440, viewportHeight: input.viewport?.height ?? 900, name: String(input.breakpointName || input.breakpoint || 'desktop') }, syncRelevantFields: [], children: [] }]
+    })
+  };
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    writeFileSync(join(rootDir, 'src', 'components', 'Hero.tsx'), `export function Hero(){return <section data-ui-id="landing.hero"><h1 data-ui-id="landing.hero.title">Build faster</h1></section>;}`, 'utf8');
+    const db = createSqliteDatabase(dbPath);
+    migrateDatabase(db);
+    const auditService = new AuditService(db);
+    const app = createApp({ figmaClient: createMockClient(), apiBearerToken: 'test-api-token', corsAllowedOrigins: ['https://chat.openai.com'], db, auditService, enableWriteActions: true, writeAllowedOperations: ['execute-plugin-batch'], codeUiParserService: new CodeUiParserService({ rootDir }), renderedUiExtractorService: new RenderedUiExtractorService(breakpointRuntime) });
+    app.locals.uiMappingService.upsertUiMapping({ uiId: 'landing.hero', project: 'marketing-site', semanticRole: 'container', code: { file: 'src/components/Hero.tsx', component: 'Hero', snapshotHash: 'base-code', snapshot: { kind: 'section', uiId: 'landing.hero', visible: true, children: [{ kind: 'text', uiId: 'landing.hero.title', visible: true, text: 'Build faster', children: [] }] } }, figma: { fileKey: 'abc123', nodeId: '12:45', snapshotHash: 'base-figma', snapshot: { kind: 'section', uiId: 'landing.hero', visible: true, children: [{ kind: 'text', uiId: 'landing.hero.title', visible: true, text: 'Build faster', children: [] }] } }, sync: { lastDirection: 'bidirectional', lastSyncedAt: '2026-04-15T12:00:00Z' } });
+    app.locals.uiMappingService.upsertUiMapping({ uiId: 'landing.hero.title', project: 'marketing-site', semanticRole: 'headline', code: { file: 'src/components/Hero.tsx', component: 'Hero', snapshotHash: 'base-title', snapshot: { kind: 'text', uiId: 'landing.hero.title', visible: true, text: 'Build faster', children: [] } }, figma: { fileKey: 'abc123', nodeId: '12:46', snapshotHash: 'base-title-figma', snapshot: { kind: 'text', uiId: 'landing.hero.title', visible: true, text: 'Build faster', children: [] } }, sync: { lastDirection: 'bidirectional', lastSyncedAt: '2026-04-15T12:00:00Z' } });
+    const server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Failed to get server address');
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    try {
+      const exec = await fetch(`${baseUrl}/api/intents/execute`, {
+        method: 'POST', headers: { authorization: 'Bearer test-api-token', 'content-type': 'application/json' },
+        body: JSON.stringify({ intent: 'reconcile_design_and_code', payload: { project: 'marketing-site', fileKey: 'abc123', rootDir, breakpoints: ['mobile', 'desktop'], render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3000' }, rootUiId: 'landing.hero' } } })
+      });
+      const json = (await exec.json()) as any;
+      assert.equal(exec.status, 200);
+      assert.equal(json.data.artifacts.breakpointCount, 2);
+      assert.equal(json.data.result.summaryByBreakpoint.mobile.renderedBreakpointFamily, 'mobile');
+      assert.equal(json.data.result.summaryByBreakpoint.desktop.renderedBreakpointFamily, 'desktop');
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    }
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

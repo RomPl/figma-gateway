@@ -138,3 +138,6 @@ Current behavior:
 
 
 The breakpoint-aware reconcile route now also returns `summaryByBreakpoint`, which gives a compact comparison of conflict counts, merge-plan counts and rendered planning context per breakpoint family.
+
+
+Intent layer support now mirrors this behavior: `reconcile_design_and_code` can orchestrate multi-breakpoint reconcile when the payload includes `breakpoints`.
