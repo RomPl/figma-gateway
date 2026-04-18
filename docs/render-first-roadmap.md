@@ -168,6 +168,7 @@ Tasks:
 
 - ensure reverse sync maps by stable `uiId` and mapping memory
 - add tests for `figma-to-code` and `reconcile` with normalized names and preserved wrappers
+- covered with regressions: reverse-sync logic stays `uiId`-driven even when Figma display names become semantic and wrapper depth changes
 - verify code patch selection still targets original source nodes
 
 ### 9. Live validation loop

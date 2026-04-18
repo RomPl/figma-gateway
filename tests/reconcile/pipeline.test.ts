@@ -190,3 +190,33 @@ test('reconcile-breakpoints route returns results by breakpoint', async () => {
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+
+test('reconcile remains uiId-driven when figma names are normalized and figma keeps preserved wrappers', () => {
+  const codeDocument = {
+    version: 'ui-model.v1' as const,
+    root: { kind: 'section' as const, uiId: 'landing.hero', name: 'Hero', visible: true, children: [{ kind: 'text' as const, uiId: 'landing.hero.title', name: 'Title', visible: true, text: 'Build faster', children: [] }] }
+  };
+  const renderedDocument = {
+    version: 'ui-model.v1' as const,
+    root: { kind: 'section' as const, uiId: 'landing.hero', name: 'Hero', visible: true, children: [{ kind: 'text' as const, uiId: 'landing.hero.title', name: 'Title', visible: true, text: 'Build faster', children: [] }] }
+  };
+  const figmaDocument = {
+    version: 'ui-model.v1' as const,
+    root: { kind: 'section' as const, uiId: 'landing.hero', name: 'Main - landing.hero', visible: true, children: [{
+      kind: 'frame' as const, uiId: 'landing.hero.wrapper', name: 'Container - landing.hero.wrapper', visible: true, children: [{
+        kind: 'text' as const, uiId: 'landing.hero.title', name: 'Text - landing.hero.title', visible: true, text: 'Build way faster', children: []
+      }]
+    }] }
+  };
+  const mappings = [{
+    uiId: 'landing.hero.title', project: 'marketing-site',
+    code: { file: 'src/components/Hero.tsx', component: 'Hero', snapshot: { kind: 'text', uiId: 'landing.hero.title', visible: true, text: 'Build faster', children: [] } },
+    figma: { fileKey: 'abc123', nodeId: '12:46', snapshot: { kind: 'text', uiId: 'landing.hero.title', visible: true, text: 'Build faster', children: [] } },
+    sync: { lastDirection: 'bidirectional' as const }, createdAt: '2026-04-15T12:00:00Z', updatedAt: '2026-04-15T12:00:00Z'
+  }];
+  const plan = buildUiReconcilePlan('reconcile', codeDocument, renderedDocument, figmaDocument, mappings, ['landing.hero.title']);
+  assert.equal(plan.changes.some((item) => item.uiId === 'landing.hero.title'), true);
+  assert.equal(plan.conflicts.every((item) => item.uiId !== 'Text - landing.hero.title'), true);
+  assert.equal(plan.mergePlan.some((item) => item.uiId === 'landing.hero.title'), true);
+});

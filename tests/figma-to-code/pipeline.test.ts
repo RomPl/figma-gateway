@@ -258,3 +258,68 @@ test('figma-to-code route reports no patches when diff exists but source mapping
     }
   } finally { rmSync(rootDir, { recursive: true, force: true }); }
 });
+
+
+test('figma-to-code keeps uiId-based patching when figma display names are semantically normalized', async () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'figma-to-code-semantic-names-'));
+  const dbPath = join(rootDir, 'pipeline.sqlite');
+  const semanticNameClient: FigmaReadClient = {
+    getFile: async () => ({
+      name: 'Landing',
+      document: {
+        id: '0:1', name: 'Page 1', type: 'CANVAS', visible: true, children: [{
+          id: '12:45', name: 'Main - landing.hero', type: 'SECTION', visible: true, layoutMode: 'VERTICAL', itemSpacing: 24, paddingTop: 64, paddingRight: 64, paddingBottom: 64, paddingLeft: 64,
+          fills: [{ type: 'SOLID', color: { r: 0.07, g: 0.13, b: 0.2 }, opacity: 1 }], cornerRadius: 24,
+          children: [
+            { id: '12:46', name: 'Text - landing.hero.title', type: 'TEXT', visible: true, characters: 'Build way faster', fills: [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 }, opacity: 1 }], fontName: { family: 'Inter', style: 'Bold' }, fontSize: 48, textAlignHorizontal: 'CENTER' },
+            { id: '12:48', name: 'Button - landing.hero.cta', type: 'FRAME', visible: true, cornerRadius: 16, fills: [{ type: 'SOLID', color: { r: 0.15, g: 0.38, b: 0.92 }, opacity: 1 }], children: [{ id: '12:49', name: 'Text - landing.hero.cta.label', type: 'TEXT', visible: true, characters: 'Start now', fills: [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 }, opacity: 1 }], fontName: { family: 'Inter', style: 'Medium' }, fontSize: 16, textAlignHorizontal: 'CENTER' }] }
+          ]
+        }]
+      }
+    }),
+    getNode: async (_fileKey, nodeId) => ({ document: { id: nodeId, name: 'Node', type: 'FRAME' } }),
+    getNodes: async () => ({}), getImages: async () => ({ images: {} }), getStyles: async () => ({ status: 200, error: false, meta: { styles: [] } }), getComponents: async () => ({ status: 200, error: false, meta: { components: [] } }), getComponentSets: async () => ({ status: 200, error: false, meta: { component_sets: [] } }), getVariables: async () => ({ status: 200, error: false, meta: { variables: {}, variableCollections: {} } })
+  };
+  try {
+    mkdirSync(join(rootDir, 'src', 'components'), { recursive: true });
+    const filePath = 'src/components/Hero.tsx';
+    writeFileSync(join(rootDir, filePath), `
+      import React from 'react';
+      export function Hero() {
+        return (
+          <section data-ui-id="landing.hero">
+            <h1 data-ui-id="landing.hero.title">Build faster</h1>
+            <button data-ui-id="landing.hero.cta" type="button">Start</button>
+          </section>
+        );
+      }
+    `, 'utf8');
+    const db = createSqliteDatabase(dbPath);
+    migrateDatabase(db);
+    const app = createApp({ figmaClient: semanticNameClient, apiBearerToken: 'test-api-token', corsAllowedOrigins: ['https://chat.openai.com'], db, auditService: new AuditService(db), renderedUiExtractorService: new RenderedUiExtractorService(mockRuntime) });
+    app.locals.uiMappingService.upsertUiMapping({ uiId: 'landing.hero', project: 'marketing-site', semanticRole: 'container', code: { file: filePath, component: 'Hero', selector: 'section[data-ui-id="landing.hero"]', sourceRange: { lineStart: 4, lineEnd: 8 }, jsxPath: 'Hero > section' }, figma: { fileKey: 'abc123', nodeId: '12:45' }, sync: { lastDirection: 'code_to_figma', lastSyncedAt: '2026-04-15T12:00:00Z' } });
+    app.locals.uiMappingService.upsertUiMapping({ uiId: 'landing.hero.title', project: 'marketing-site', semanticRole: 'headline', code: { file: filePath, component: 'Hero', selector: 'h1[data-ui-id="landing.hero.title"]', sourceRange: { lineStart: 5, lineEnd: 5 }, jsxPath: 'Hero > section > h1' }, figma: { fileKey: 'abc123', nodeId: '12:46' }, sync: { lastDirection: 'code_to_figma', lastSyncedAt: '2026-04-15T12:00:00Z' } });
+    app.locals.uiMappingService.upsertUiMapping({ uiId: 'landing.hero.cta', project: 'marketing-site', semanticRole: 'button-primary', code: { file: filePath, component: 'Hero', selector: 'button[data-ui-id="landing.hero.cta"]', sourceRange: { lineStart: 6, lineEnd: 6 }, jsxPath: 'Hero > section > button' }, figma: { fileKey: 'abc123', nodeId: '12:48' }, sync: { lastDirection: 'code_to_figma', lastSyncedAt: '2026-04-15T12:00:00Z' } });
+    const server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Failed to get server address');
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    try {
+      const response = await fetch(`${baseUrl}/api/figma-to-code/sync`, {
+        method: 'POST',
+        headers: { authorization: 'Bearer test-api-token', 'content-type': 'application/json' },
+        body: JSON.stringify({ project: 'marketing-site', fileKey: 'abc123', rootDir, apply: true, uiIds: ['landing.hero', 'landing.hero.title', 'landing.hero.cta'], render: { target: { mode: 'existing_url', url: 'http://127.0.0.1:3000' }, rootUiId: 'landing.hero', breakpointName: 'desktop' } })
+      });
+      const json = await response.json() as any;
+      assert.equal(response.status, 200);
+      assert.equal(json.data.diffs.some((d: any) => d.uiId === 'landing.hero.title'), true);
+      assert.equal(json.data.patches.some((p: any) => p.applied), true);
+      const after = readFileSync(join(rootDir, filePath), 'utf8');
+      assert.match(after, /Build way faster/);
+      assert.match(after, /Start now/);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    }
+  } finally { rmSync(rootDir, { recursive: true, force: true }); }
+});
