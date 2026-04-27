@@ -340,3 +340,18 @@ The command creates a wrapper frame and one editable button specimen per state. 
 - `figma-gateway:button-state` on each state specimen
 
 This command is used by observed design-system generation for button component patterns. It gives GPT and future code handoff a stable state vocabulary instead of inferring hover/disabled behavior from one static screenshot.
+
+## Design-system handoff and interactive pattern metadata
+
+`export_design_system_snapshot` now returns more than token specimens and bindings. It also reads:
+
+- `figma-gateway:design-system-handoff`
+- `figma-gateway:interactive-pattern`
+
+The returned snapshot includes:
+
+- `handoff`
+- `interactivePatterns[]`
+- `interactivePatternCount`
+
+Interactive pattern metadata is audit-only in MVP1.2. It is generated from rendered evidence without clicking, hovering, submitting forms or advancing carousels.

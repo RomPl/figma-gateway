@@ -222,3 +222,72 @@ These states are stored with plugin data:
 - `figma-gateway:button-state`
 
 They are not treated as final application behavior by themselves. They are design-system evidence and handoff material for a later code patch via `mcp.vazovski.art`.
+
+## MVP1.1: quality and code-handoff contract
+
+The observed design-system document now includes:
+
+```text
+designSystem.quality
+designSystem.handoff
+```
+
+`quality` contains:
+
+- numeric score
+- grade: `excellent`, `good`, `needs_curation`, `risky`
+- issues
+- recommended next steps
+
+`handoff` contains a machine-readable `design-system-handoff.v1` contract for GPT orchestration and `mcp.vazovski.art`.
+
+Important handoff flags:
+
+- `safeForGeneration`
+- `safeForCodePatch`
+- `requiresCuration`
+
+The rule is conservative: observed design systems can guide generation earlier than they can safely drive code patches. Code patches should wait until high-risk audit/interaction items are reviewed.
+
+The Figma sidecar also stores:
+
+```text
+figma-gateway:design-system-handoff
+```
+
+on the `Quality / Handoff Contract` section so the handoff contract can be read back from Figma.
+
+## MVP1.2: interactive audit only
+
+MVP1.2 intentionally does not click, hover, submit forms, move carousels or mutate the live site.
+
+It performs read-only detection of behavior risks from already captured rendered metadata:
+
+- `overflow-x/overflow-y`
+- children exceeding container bounds
+- carousel/swiper/slick class and guardrail signals
+- animated-region guardrails
+- dropdown/menu/expanded signals
+- tabs/accordion class and role signals
+- sticky/fixed positioning
+- canvas/video/runtime-owned regions
+
+Detected behavior patterns are stored as observed tokens with kind:
+
+```text
+interaction
+```
+
+and source nodes receive:
+
+```text
+figma-gateway:interactive-pattern
+```
+
+The sidecar section is:
+
+```text
+11 Interactive / Behavior Audit
+```
+
+This gives GPT and future code handoff enough context to avoid claiming full behavior fidelity while still preserving important product behavior signals.

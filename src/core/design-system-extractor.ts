@@ -11,8 +11,11 @@ export const designSystemExtractSchema = z.object({
   sourceUrl: z.string().trim().min(1).optional()
 });
 
-export type DesignSystemTokenKind = 'color' | 'typography' | 'spacing' | 'radius' | 'shadow' | 'border' | 'asset' | 'icon' | 'layout' | 'state' | 'component' | 'audit';
+export type DesignSystemTokenKind = 'color' | 'typography' | 'spacing' | 'radius' | 'shadow' | 'border' | 'asset' | 'icon' | 'layout' | 'state' | 'component' | 'interaction' | 'audit';
 export type DesignSystemEvidence = { uiId: string; nodeName?: string; kind?: string; usage?: string };
+export type DesignSystemQuality = { score: number; grade: 'excellent' | 'good' | 'needs_curation' | 'risky'; issues: string[]; recommendedNextSteps: string[] };
+export type DesignSystemHandoffContract = { version: 'design-system-handoff.v1'; sourceUrl?: string; title: string; tokenCount: number; bindingCount: number; interactionCount: number; acceptance: { safeForGeneration: boolean; safeForCodePatch: boolean; requiresCuration: boolean }; recommendedMcpTarget: 'mcp.vazovski.art'; notes: string[] };
+export type InteractivePatternValue = { pattern: 'horizontal-scroll' | 'carousel-like' | 'animated-region' | 'hover-or-transition' | 'dropdown-like' | 'tabs-like' | 'accordion-like' | 'sticky-or-fixed' | 'runtime-owned' | 'unknown-dynamic'; confidence: number; evidence: string[]; recommendedHandling: string; axis?: 'x' | 'y'; risk: 'low' | 'medium' | 'high' }; 
 export type DesignSystemToken<TValue = unknown> = {
   id: string;
   name: string;
@@ -27,7 +30,9 @@ export type DesignSystemDocument = {
   title: string;
   sourceUrl?: string;
   generatedAt: string;
-  summary: { colors: number; typography: number; spacing: number; radius: number; shadows: number; borders: number; assets: number; icons: number; layouts: number; states: number; components: number; audit: number };
+  summary: { colors: number; typography: number; spacing: number; radius: number; shadows: number; borders: number; assets: number; icons: number; layouts: number; states: number; components: number; interactions: number; audit: number };
+  quality: DesignSystemQuality;
+  handoff: DesignSystemHandoffContract;
   colors: Array<DesignSystemToken<{ hex: string; rgb: { r: number; g: number; b: number; a: number }; usage: string[] }>>;
   typography: Array<DesignSystemToken<{ fontFamily: string; fontSize: number; lineHeight?: number; fontWeight?: string; letterSpacing?: number; textAlign?: string; role: string }>>;
   spacing: Array<DesignSystemToken<{ value: number; usage: string[] }>>;
@@ -39,6 +44,7 @@ export type DesignSystemDocument = {
   layouts: Array<DesignSystemToken<{ display?: string; direction?: string; wrap?: string; gap?: number; rowGap?: number; columnGap?: number; alignItems?: string; justifyContent?: string; childCount: number }>>;
   states: Array<DesignSystemToken<{ state: string; disabled?: boolean; interactive?: boolean; selected?: boolean; expanded?: boolean }>>;
   components: Array<DesignSystemToken<{ role: string; width?: number; height?: number; fill?: string; color?: string; radius?: number; typographyRef?: string }>>;
+  interactions: Array<DesignSystemToken<InteractivePatternValue>>;
   audit: Array<DesignSystemToken<{ issue: string; severity: 'info' | 'warning' | 'error'; details?: string }>>;
 };
 
@@ -110,7 +116,74 @@ const inferTypographyRole = (node: UiNode): string => {
   return 'body';
 };
 
-const createEvidenceMeta = (token: DesignSystemToken): string => JSON.stringify({ tokenId: token.id, tokenName: token.name, kind: token.kind, evidence: token.evidence, confidence: token.confidence });
+const createEvidenceMeta = (token: DesignSystemToken): string => JSON.stringify({ tokenId: token.id, tokenName: token.name, kind: token.kind, value: token.value, evidence: token.evidence, confidence: token.confidence });
+
+
+const getRenderedMeta = (node: UiNode): any => (node.meta as any)?.rendered ?? {};
+const getDomClassName = (node: UiNode): string => String(getRenderedMeta(node)?.dom?.className || node.name || node.uiId || '').toLowerCase();
+const getGuardrailRegions = (node: UiNode): string[] => Array.isArray((node.meta as any)?.guardrails?.unsupportedRegions)
+  ? (node.meta as any).guardrails.unsupportedRegions.map(String)
+  : Array.isArray(getRenderedMeta(node)?.guardrails?.unsupportedRegions)
+    ? getRenderedMeta(node).guardrails.unsupportedRegions.map(String)
+    : [];
+const nodeVisualRight = (node: UiNode): number => Number(node.boundingBox?.x ?? 0) + Number(node.boundingBox?.width ?? node.size?.width ?? 0);
+const nodeVisualBottom = (node: UiNode): number => Number(node.boundingBox?.y ?? 0) + Number(node.boundingBox?.height ?? node.size?.height ?? 0);
+const hasOverflowingChildren = (node: UiNode, axis: 'x' | 'y'): boolean => {
+  if (!node.children.length || !node.boundingBox) return false;
+  if (axis === 'x') return Math.max(...node.children.map(nodeVisualRight)) > Number(node.boundingBox.x ?? 0) + Number(node.boundingBox.width ?? 0) + 4;
+  return Math.max(...node.children.map(nodeVisualBottom)) > Number(node.boundingBox.y ?? 0) + Number(node.boundingBox.height ?? 0) + 4;
+};
+const detectInteractivePatterns = (node: UiNode): InteractivePatternValue[] => {
+  const style = node.computedStyle ?? {};
+  const className = getDomClassName(node);
+  const regions = getGuardrailRegions(node);
+  const evidenceBase: string[] = [];
+  const patterns: InteractivePatternValue[] = [];
+  const add = (pattern: InteractivePatternValue['pattern'], confidence: number, evidence: string[], recommendedHandling: string, risk: InteractivePatternValue['risk'], axis?: 'x' | 'y'): void => {
+    const uniqueEvidence = Array.from(new Set([...evidenceBase, ...evidence].filter(Boolean))).slice(0, 10);
+    patterns.push({ pattern, confidence: round(clamp(confidence), 3), evidence: uniqueEvidence, recommendedHandling, axis, risk });
+  };
+  if (style.overflowX && ['auto', 'scroll'].includes(String(style.overflowX)) && hasOverflowingChildren(node, 'x')) add('horizontal-scroll', 0.84, [`overflow-x:${style.overflowX}`, 'children exceed viewport width'], 'preserve viewport frame + content track; document scroll state before code handoff', 'medium', 'x');
+  if (style.overflowY && ['auto', 'scroll'].includes(String(style.overflowY)) && hasOverflowingChildren(node, 'y')) add('unknown-dynamic', 0.62, [`overflow-y:${style.overflowY}`, 'children exceed viewport height'], 'mark as scrollable vertical container; avoid flattening hidden content', 'medium', 'y');
+  if (regions.includes('carousel') || /carousel|swiper|slick|splide|owl-carousel/.test(className)) add('carousel-like', 0.86, ['carousel marker/class/guardrail detected'], 'create behavior sidecar before code changes; capture next/prev state only in later MVP', 'high', 'x');
+  if (regions.includes('animated_regions')) add('animated-region', 0.74, ['animation/transition guardrail detected'], 'document as motion candidate; do not claim full behavior fidelity', 'medium');
+  if (/dropdown|menu|popover/.test(className) || node.state?.expanded) add('dropdown-like', node.state?.expanded ? 0.82 : 0.66, ['expanded/menu/dropdown signal detected'], 'document closed/open states as behavior contract before code handoff', 'medium');
+  if (/tablist|\btabs?\b/.test(className) || String(getRenderedMeta(node)?.semantics?.role || '').toLowerCase() === 'tablist') add('tabs-like', 0.78, ['tablist/tabs signal detected'], 'document active tab and panels; avoid flattening hidden panels', 'medium');
+  if (/accordion|collapse/.test(className)) add('accordion-like', 0.74, ['accordion/collapse class signal detected'], 'document expanded/collapsed states as behavior metadata', 'medium');
+  if (style.position === 'sticky' || style.position === 'fixed') add('sticky-or-fixed', 0.8, [`position:${style.position}`], 'preserve as layout behavior note for responsive/code handoff', 'low');
+  if (regions.includes('canvas') || ['canvas','video'].includes(String(getRenderedMeta(node)?.dom?.tag || '').toLowerCase())) add('runtime-owned', 0.9, ['canvas/video/runtime-owned region'], 'use placeholder/screenshot and keep implementation code-owned', 'high');
+  if ((node.state?.interactive || node.kind === 'button') && (style.overflowX || style.overflowY || regions.length)) add('hover-or-transition', 0.55, ['interactive node with dynamic/overflow signals'], 'document possible hover/focus behavior; do not auto-click', 'low');
+  return patterns;
+};
+const buildQuality = (document: Omit<DesignSystemDocument, 'quality' | 'handoff'>): DesignSystemQuality => {
+  const issues: string[] = [];
+  if (document.colors.length < 3) issues.push('low color coverage');
+  if (document.typography.length < 3) issues.push('low typography coverage');
+  if (document.components.length < 2) issues.push('low component pattern coverage');
+  if (document.audit.length > 0) issues.push('needs-review audit items present');
+  if (document.interactions.some((item) => item.value.risk === 'high')) issues.push('high-risk interactive patterns present');
+  const base = 0.52 + Math.min(0.18, document.colors.length / 80) + Math.min(0.16, document.typography.length / 100) + Math.min(0.12, document.components.length / 80) - Math.min(0.22, document.audit.length / 40) - Math.min(0.18, document.interactions.filter((item) => item.value.risk === 'high').length / 20);
+  const score = round(clamp(base), 3);
+  const grade: DesignSystemQuality['grade'] = score >= 0.84 ? 'excellent' : score >= 0.7 ? 'good' : score >= 0.5 ? 'needs_curation' : 'risky';
+  const recommendedNextSteps = [
+    'review and merge observed token duplicates before promoting to permanent variables',
+    'confirm brand colors and primary typography names',
+    'use mcp.vazovski.art only after handoff.safeForCodePatch=true'
+  ];
+  if (document.interactions.length) recommendedNextSteps.push('review Interactive / Behavior Audit before claiming behavior fidelity');
+  return { score, grade, issues, recommendedNextSteps };
+};
+const buildHandoff = (document: Omit<DesignSystemDocument, 'quality' | 'handoff'>, bindingCount: number, quality: DesignSystemQuality): DesignSystemHandoffContract => ({
+  version: 'design-system-handoff.v1',
+  sourceUrl: document.sourceUrl,
+  title: document.title,
+  tokenCount: document.colors.length + document.typography.length + document.spacing.length + document.radius.length + document.shadows.length + document.borders.length + document.assets.length + document.icons.length + document.layouts.length + document.states.length + document.components.length,
+  bindingCount,
+  interactionCount: document.interactions.length,
+  acceptance: { safeForGeneration: quality.score >= 0.55, safeForCodePatch: quality.score >= 0.72 && document.audit.length === 0 && !document.interactions.some((item) => item.value.risk === 'high'), requiresCuration: quality.grade === 'needs_curation' || quality.grade === 'risky' || document.audit.length > 0 || document.interactions.length > 0 },
+  recommendedMcpTarget: 'mcp.vazovski.art',
+  notes: ['Observed tokens are suggestions until curated.', 'Bindings identify source Figma nodes for future code handoff.', 'Interactive patterns are audit-only and were detected without clicking or mutating the site.']
+});
 
 export const extractDesignSystemFromUiModel = (model: UiModelDocument, options: { title?: string; sourceUrl?: string; maxItemsPerSection?: number } = {}): DesignSystemDocument => {
   const maxItems = options.maxItemsPerSection ?? 24;
@@ -126,6 +199,7 @@ export const extractDesignSystemFromUiModel = (model: UiModelDocument, options: 
   const layoutMap = new Map<string, DesignSystemToken<{ display?: string; direction?: string; wrap?: string; gap?: number; rowGap?: number; columnGap?: number; alignItems?: string; justifyContent?: string; childCount: number }>>();
   const stateMap = new Map<string, DesignSystemToken<{ state: string; disabled?: boolean; interactive?: boolean; selected?: boolean; expanded?: boolean }>>();
   const auditMap = new Map<string, DesignSystemToken<{ issue: string; severity: 'info' | 'warning' | 'error'; details?: string }>>();
+  const interactionMap = new Map<string, DesignSystemToken<InteractivePatternValue>>();
 
   const bumpColor = (raw: unknown, usage: string, node: UiNode): void => {
     const parsed = parseColor(raw);
@@ -233,6 +307,21 @@ export const extractDesignSystemFromUiModel = (model: UiModelDocument, options: 
       auditMap.set(key, existing);
     }
 
+    for (const patternValue of detectInteractivePatterns(node)) {
+      const key = JSON.stringify({ pattern: patternValue.pattern, axis: patternValue.axis, risk: patternValue.risk, evidence: patternValue.evidence });
+      const existing = interactionMap.get(key) ?? { id: `interaction.${patternValue.pattern}.${hash(key)}`, name: `interaction.${patternValue.pattern}.${interactionMap.size + 1}`, kind: 'interaction' as const, value: patternValue, count: 0, confidence: patternValue.confidence, evidence: [] };
+      existing.count += 1;
+      existing.confidence = Math.max(existing.confidence, patternValue.confidence);
+      addEvidence(existing.evidence, node, patternValue.pattern);
+      interactionMap.set(key, existing);
+      const auditValue = { issue: `interactive pattern: ${patternValue.pattern}`, severity: patternValue.risk === 'high' ? 'warning' as const : 'info' as const, details: patternValue.evidence.join('; ') };
+      const auditKey = JSON.stringify(auditValue);
+      const auditExisting = auditMap.get(auditKey) ?? { id: `audit.${hash(auditKey)}`, name: `audit.interaction.${auditMap.size + 1}`, kind: 'audit' as const, value: auditValue, count: 0, confidence: 1, evidence: [] };
+      auditExisting.count += 1;
+      addEvidence(auditExisting.evidence, node, patternValue.pattern);
+      auditMap.set(auditKey, auditExisting);
+    }
+
     if (['button', 'input', 'card'].includes(node.kind) || /card|button|input/i.test(String(node.name || node.uiId))) {
       const role = node.kind === 'button' ? 'button' : node.kind === 'input' ? 'input' : 'card';
       const fill = parseColor(s.backgroundColor)?.hex;
@@ -268,14 +357,15 @@ export const extractDesignSystemFromUiModel = (model: UiModelDocument, options: 
   const layouts = finish(Array.from(layoutMap.values()));
   const states = finish(Array.from(stateMap.values()));
   const components = finish(Array.from(componentMap.values()));
+  const interactions = finish(Array.from(interactionMap.values()));
   const audit = finish(Array.from(auditMap.values()));
 
-  return {
-    version: 'observed-design-system.v1',
+  const baseDocument = {
+    version: 'observed-design-system.v1' as const,
     title: options.title ?? 'Observed Site Design System',
     sourceUrl: options.sourceUrl,
     generatedAt: new Date().toISOString(),
-    summary: { colors: colors.length, typography: typography.length, spacing: spacing.length, radius: radius.length, shadows: shadows.length, borders: borders.length, assets: assets.length, icons: icons.length, layouts: layouts.length, states: states.length, components: components.length, audit: audit.length },
+    summary: { colors: colors.length, typography: typography.length, spacing: spacing.length, radius: radius.length, shadows: shadows.length, borders: borders.length, assets: assets.length, icons: icons.length, layouts: layouts.length, states: states.length, components: components.length, interactions: interactions.length, audit: audit.length },
     colors,
     typography,
     spacing,
@@ -287,8 +377,13 @@ export const extractDesignSystemFromUiModel = (model: UiModelDocument, options: 
     layouts,
     states,
     components,
+    interactions,
     audit
   };
+  const bindingCount = new Set([...colors, ...typography, ...spacing, ...radius, ...shadows, ...borders, ...assets, ...icons, ...layouts, ...states, ...components, ...interactions].flatMap((token) => token.evidence.map((item) => item.uiId))).size;
+  const quality = buildQuality(baseDocument);
+  const handoff = buildHandoff(baseDocument, bindingCount, quality);
+  return { ...baseDocument, quality, handoff };
 };
 
 const text = (ref: string, parentRef: string, value: string, x: number, y: number, width: number, size = 14, weight = '400'): FigmaCommandStep[] => [
@@ -398,7 +493,9 @@ const genericTokenCommands = (dsRef: string, section: keyof DesignSystemDocument
             ? `${String(token.value.value).slice(0, 96)} · ${token.count} uses`
             : token.kind === 'state'
               ? `${token.value.state} · ${token.count} uses`
-              : token.kind === 'audit'
+              : token.kind === 'interaction'
+                ? `${token.value.pattern} · risk:${token.value.risk} · confidence:${token.value.confidence} · ${token.count} nodes`
+                : token.kind === 'audit'
                 ? `${token.value.severity}: ${token.value.issue} · ${token.count} nodes`
                 : `${token.name} · ${token.count} uses`;
   return [
@@ -416,11 +513,11 @@ export const buildDesignSystemFigmaCommands = (document: DesignSystemDocument, o
   const width = 980;
   const commands: FigmaCommandStep[] = [
     { type: 'delete_matching_nodes', payload: { query: { uiId: dsRef } } },
-    { type: 'create_frame', payload: { ref: dsRef, uiId: dsRef, name: `Site Design System · ${document.title}`, x: options.x ?? 1520, y: options.y ?? 0, width, height: 5200 } },
+    { type: 'create_frame', payload: { ref: dsRef, uiId: dsRef, name: `Site Design System · ${document.title}`, x: options.x ?? 1520, y: options.y ?? 0, width, height: 6360 } },
     { type: 'set_fill', payload: { nodeRef: dsRef, fills: paintForHex('#FFFFFF') } },
     { type: 'set_plugin_data', payload: { nodeRef: dsRef, pluginData: { namespace: 'figma-gateway', key: 'design-system-document', value: JSON.stringify(document) } } },
     ...text(`${dsRef}/title`, dsRef, `Observed Design System · ${document.title}`, 24, 24, 860, 28, '700'),
-    ...text(`${dsRef}/summary`, dsRef, `${document.summary.colors} colors · ${document.summary.typography} type styles · ${document.summary.components} components · ${document.summary.assets} assets · ${document.summary.icons} icons · generated from ${document.sourceUrl ?? 'rendered UI'}`, 24, 62, 860, 12, '400')
+    ...text(`${dsRef}/summary`, dsRef, `${document.summary.colors} colors · ${document.summary.typography} type styles · ${document.summary.components} components · ${document.summary.assets} assets · ${document.summary.icons} icons · ${document.summary.interactions} interactions · ${document.quality.grade} · generated from ${document.sourceUrl ?? 'rendered UI'}`, 24, 62, 860, 12, '400')
   ];
   const sections: Array<{ key: string; title: string; y: number; height: number }> = [
     { key: 'colors', title: '01 Colors', y: 120, height: 760 },
@@ -433,7 +530,9 @@ export const buildDesignSystemFigmaCommands = (document: DesignSystemDocument, o
     { key: 'radius', title: '08 Radius', y: 4160, height: 300 },
     { key: 'shadows', title: '09 Shadows', y: 4500, height: 300 },
     { key: 'borders', title: '10 Borders', y: 4840, height: 260 },
-    { key: 'audit', title: '11 Audit / Needs Review', y: 5140, height: 360 }
+    { key: 'interactions', title: '11 Interactive / Behavior Audit', y: 5140, height: 420 },
+    { key: 'quality', title: '12 Quality / Handoff Contract', y: 5600, height: 300 },
+    { key: 'audit', title: '13 Audit / Needs Review', y: 5940, height: 360 }
   ];
   for (const section of sections) {
     const ref = `${dsRef}/${section.key}`;
@@ -450,6 +549,12 @@ export const buildDesignSystemFigmaCommands = (document: DesignSystemDocument, o
   document.layouts.forEach((token, index) => commands.push(...genericTokenCommands(dsRef, 'layouts', token, index)));
   document.shadows.forEach((token, index) => commands.push(...genericTokenCommands(dsRef, 'shadows', token, index)));
   document.borders.forEach((token, index) => commands.push(...genericTokenCommands(dsRef, 'borders', token, index)));
+  document.interactions.forEach((token, index) => commands.push(...genericTokenCommands(dsRef, 'interactions', token, index)));
+  commands.push(
+    ...text(`${dsRef}/quality/grade`, `${dsRef}/quality`, `Quality: ${document.quality.grade} (${document.quality.score})`, 24, 96, 860, 18, '700'),
+    ...text(`${dsRef}/quality/handoff`, `${dsRef}/quality`, `Handoff: generation=${document.handoff.acceptance.safeForGeneration} · codePatch=${document.handoff.acceptance.safeForCodePatch} · curation=${document.handoff.acceptance.requiresCuration} · target=${document.handoff.recommendedMcpTarget}`, 24, 128, 860, 12, '400'),
+    { type: 'set_plugin_data', payload: { nodeRef: `${dsRef}/quality`, pluginData: { namespace: 'figma-gateway', key: 'design-system-handoff', value: JSON.stringify(document.handoff) } } }
+  );
   document.audit.forEach((token, index) => commands.push(...genericTokenCommands(dsRef, 'audit', token, index)));
   document.spacing.forEach((token, index) => commands.push(...metricCommands(dsRef, 'spacing', token, index)));
   document.radius.forEach((token, index) => commands.push(...metricCommands(dsRef, 'radius', token, index)));
@@ -480,6 +585,7 @@ export const buildDesignSystemNodeBindingCommands = (document: DesignSystemDocum
   for (const token of document.layouts) add(token);
   for (const token of document.states) add(token);
   for (const token of document.components) add(token);
+  for (const token of document.interactions) add(token);
   const commands: FigmaCommandStep[] = [];
   for (const [uiId, list] of bindings.entries()) {
     commands.push({
@@ -493,6 +599,22 @@ export const buildDesignSystemNodeBindingCommands = (document: DesignSystemDocum
         }
       }
     });
+  }
+  for (const token of document.interactions) {
+    for (const evidence of token.evidence || []) {
+      if (!evidence.uiId) continue;
+      commands.push({
+        type: 'set_plugin_data',
+        payload: {
+          nodeRef: evidence.uiId,
+          pluginData: {
+            namespace: 'figma-gateway',
+            key: 'interactive-pattern',
+            value: JSON.stringify({ version: 'interactive-pattern.v1', uiId: evidence.uiId, pattern: token.value.pattern, confidence: token.value.confidence, evidence: token.value.evidence, recommendedHandling: token.value.recommendedHandling, risk: token.value.risk, axis: token.value.axis })
+          }
+        }
+      });
+    }
   }
   return commands;
 };

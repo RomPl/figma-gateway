@@ -344,17 +344,24 @@ function collectDesignSystemSnapshot(payload) {
   }
   if (!root) throw appError('NODE_NOT_FOUND', 'Unable to find design-system sidecar root');
   const document = readJsonPluginData(root, 'design-system-document');
+  const handoff = readJsonPluginData(root, 'design-system-handoff');
   const tokens = [];
   const bindings = [];
-  const scanRoot = ('findAll' in root) ? root : figma.currentPage;
-  const nodes = scanRoot && 'findAll' in scanRoot ? scanRoot.findAll(function (node) { return !!(readJsonPluginData(node, 'design-system-token') || readJsonPluginData(node, 'design-system-bindings')); }) : [];
-  for (const node of nodes) {
+  const interactivePatterns = [];
+  const tokenRoot = ('findAll' in root) ? root : figma.currentPage;
+  const tokenNodes = tokenRoot && 'findAll' in tokenRoot ? tokenRoot.findAll(function (node) { return !!readJsonPluginData(node, 'design-system-token'); }) : [];
+  const pageNodes = figma.currentPage && 'findAll' in figma.currentPage ? figma.currentPage.findAll(function (node) { return !!(readJsonPluginData(node, 'design-system-bindings') || readJsonPluginData(node, 'interactive-pattern')); }) : [];
+  for (const node of tokenNodes) {
     const token = readJsonPluginData(node, 'design-system-token');
     if (token) tokens.push({ nodeId: node.id, name: node.name, uiId: getUiIdFromNode(node) || null, token, snapshot: payload && payload.includeNodeSnapshots ? serializeNodeSnapshot(node, { includeChildren: false }, 0) : undefined });
+  }
+  for (const node of pageNodes) {
     const binding = readJsonPluginData(node, 'design-system-bindings');
     if (binding) bindings.push({ nodeId: node.id, name: node.name, uiId: getUiIdFromNode(node) || null, binding });
+    const pattern = readJsonPluginData(node, 'interactive-pattern');
+    if (pattern) interactivePatterns.push({ nodeId: node.id, name: node.name, uiId: getUiIdFromNode(node) || null, pattern });
   }
-  return { root: { id: root.id, name: root.name, uiId: getUiIdFromNode(root) || null }, document, tokenCount: tokens.length, bindingCount: bindings.length, tokens, bindings };
+  return { root: { id: root.id, name: root.name, uiId: getUiIdFromNode(root) || null }, document, handoff, tokenCount: tokens.length, bindingCount: bindings.length, interactivePatternCount: interactivePatterns.length, tokens, bindings, interactivePatterns };
 }
 
 async function exportNodeSnapshot(payload, refMap) {
