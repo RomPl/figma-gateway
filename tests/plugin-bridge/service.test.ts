@@ -251,3 +251,13 @@ test('plugin runtime exposes standard button state set command and compact no-sc
   assert.match(ui, /overflow: hidden/);
   assert.match(ui, /grid-template-columns: 1fr 1fr/);
 });
+
+test('plugin runtime chunks large plugin data and treats optional metadata node misses as non-fatal', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /PLUGIN_DATA_CHUNK_SIZE = 90000/);
+  assert.match(source, /function setPluginDataCompat/);
+  assert.match(source, /function getPluginDataCompat/);
+  assert.match(source, /plugin-data-chunks\.v1/);
+  assert.match(source, /optionalMissingOk/);
+  assert.match(source, /skipped: true/);
+});

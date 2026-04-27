@@ -321,9 +321,41 @@ function serializeNodeSnapshot(node, options, depth) {
   return snapshot;
 }
 
+
+const PLUGIN_DATA_CHUNK_SIZE = 90000;
+function setPluginDataCompat(node, compositeKey, value) {
+  const stringValue = String(value || '');
+  if (stringValue.length <= PLUGIN_DATA_CHUNK_SIZE) {
+    node.setPluginData(compositeKey, stringValue);
+    node.setPluginData(compositeKey + ':chunks', '');
+    return { chunked: false, length: stringValue.length, chunks: 0 };
+  }
+  const chunks = [];
+  for (let i = 0; i < stringValue.length; i += PLUGIN_DATA_CHUNK_SIZE) chunks.push(stringValue.slice(i, i + PLUGIN_DATA_CHUNK_SIZE));
+  for (let i = 0; i < chunks.length; i += 1) node.setPluginData(compositeKey + ':chunk:' + i, chunks[i]);
+  node.setPluginData(compositeKey, '');
+  node.setPluginData(compositeKey + ':chunks', JSON.stringify({ version: 'plugin-data-chunks.v1', chunks: chunks.length, length: stringValue.length }));
+  return { chunked: true, length: stringValue.length, chunks: chunks.length };
+}
+function getPluginDataCompat(node, compositeKey) {
+  const manifestRaw = node.getPluginData(compositeKey + ':chunks') || '';
+  if (manifestRaw) {
+    try {
+      const manifest = JSON.parse(manifestRaw);
+      const count = Number(manifest.chunks || 0);
+      if (count > 0) {
+        let out = '';
+        for (let i = 0; i < count; i += 1) out += node.getPluginData(compositeKey + ':chunk:' + i) || '';
+        return out;
+      }
+    } catch (error) {}
+  }
+  return node.getPluginData(compositeKey) || '';
+}
+
 function readJsonPluginData(node, key) {
   if (!node || !('getPluginData' in node)) return null;
-  const raw = node.getPluginData('figma-gateway:' + key) || '';
+  const raw = getPluginDataCompat(node, 'figma-gateway:' + key) || '';
   if (!raw) return null;
   try { return JSON.parse(raw); } catch (error) { return { parseError: String(error && error.message ? error.message : error), raw: raw.slice(0, 2000) }; }
 }
@@ -1062,7 +1094,13 @@ async function executeLowLevelCommand(step, refMap) {
     return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, iconNodeId: iconNode.id } });
   }
   if (commandType === 'set_plugin_data') {
-    const node = await getNodeFromPayload(payload, commandType, refMap);
+    let node = null;
+    try {
+      node = await getNodeFromPayload(payload, commandType, refMap);
+    } catch (error) {
+      if (payload && payload.optionalMissingOk) return normalizeCommandResult(commandType, 'ok', { nodeId: null, data: { skipped: true, reason: 'node_not_found', nodeRef: payload.nodeRef || payload.nodeId || null } });
+      throw error;
+    }
     if (!node.setPluginData) throw appError('UNSUPPORTED_OPERATION', 'Target node does not support plugin data: ' + node.id);
     if (payload.uiId !== undefined) {
       setUiIdOnNode(node, payload.uiId);
@@ -1070,8 +1108,8 @@ async function executeLowLevelCommand(step, refMap) {
     }
     if (!payload.pluginData || !payload.pluginData.namespace || !payload.pluginData.key) throw appError('INVALID_COMMAND_PAYLOAD', 'set_plugin_data requires pluginData.namespace and pluginData.key');
     const compositeKey = String(payload.pluginData.namespace) + ':' + String(payload.pluginData.key);
-    node.setPluginData(compositeKey, String(payload.pluginData.value || ''));
-    return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, namespace: payload.pluginData.namespace, key: payload.pluginData.key } });
+    const writeInfo = setPluginDataCompat(node, compositeKey, String(payload.pluginData.value || ''));
+    return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, namespace: payload.pluginData.namespace, key: payload.pluginData.key, chunked: writeInfo.chunked, length: writeInfo.length, chunks: writeInfo.chunks } });
   }
   if (commandType === 'get_plugin_data') {
     const node = await getNodeFromPayload(payload, commandType, refMap);
@@ -1082,7 +1120,7 @@ async function executeLowLevelCommand(step, refMap) {
     }
     if (!payload.pluginData || !payload.pluginData.namespace || !payload.pluginData.key) throw appError('INVALID_COMMAND_PAYLOAD', 'get_plugin_data requires pluginData.namespace and pluginData.key');
     const compositeKey = String(payload.pluginData.namespace) + ':' + String(payload.pluginData.key);
-    const value = node.getPluginData(compositeKey);
+    const value = getPluginDataCompat(node, compositeKey);
     return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, namespace: payload.pluginData.namespace, key: payload.pluginData.key, value: value } });
   }
 

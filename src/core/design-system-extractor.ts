@@ -386,6 +386,41 @@ export const extractDesignSystemFromUiModel = (model: UiModelDocument, options: 
   return { ...baseDocument, quality, handoff };
 };
 
+
+const compactTokenForPluginData = (token: DesignSystemToken<any>): Record<string, unknown> => ({
+  id: token.id,
+  name: token.name,
+  kind: token.kind,
+  value: token.value,
+  count: token.count,
+  confidence: token.confidence,
+  evidence: token.evidence.slice(0, 3)
+});
+const compactDesignSystemDocumentForPluginData = (document: DesignSystemDocument): Record<string, unknown> => ({
+  version: document.version,
+  title: document.title,
+  sourceUrl: document.sourceUrl,
+  generatedAt: document.generatedAt,
+  summary: document.summary,
+  quality: document.quality,
+  handoff: document.handoff,
+  colors: document.colors.slice(0, 12).map(compactTokenForPluginData),
+  typography: document.typography.slice(0, 12).map(compactTokenForPluginData),
+  spacing: document.spacing.slice(0, 12).map(compactTokenForPluginData),
+  radius: document.radius.slice(0, 8).map(compactTokenForPluginData),
+  shadows: document.shadows.slice(0, 8).map(compactTokenForPluginData),
+  borders: document.borders.slice(0, 8).map(compactTokenForPluginData),
+  assets: document.assets.slice(0, 8).map(compactTokenForPluginData),
+  icons: document.icons.slice(0, 8).map(compactTokenForPluginData),
+  layouts: document.layouts.slice(0, 8).map(compactTokenForPluginData),
+  states: document.states.slice(0, 8).map(compactTokenForPluginData),
+  components: document.components.slice(0, 8).map(compactTokenForPluginData),
+  interactions: document.interactions.slice(0, 8).map(compactTokenForPluginData),
+  audit: document.audit.slice(0, 8).map(compactTokenForPluginData),
+  compact: true,
+  compactReason: 'Figma pluginData single-entry limit compatibility; full document is returned by API response.'
+});
+
 const text = (ref: string, parentRef: string, value: string, x: number, y: number, width: number, size = 14, weight = '400'): FigmaCommandStep[] => [
   { type: 'create_text', payload: { ref, parentRef, uiId: ref, name: `Text - ${ref}`, text: value, x, y, width, fontFamily: 'Inter', fontSize: size, fontWeight: weight, lineHeight: Math.round(size * 1.3), fills: paintForHex('#1A1A1A'), textAutoResize: 'HEIGHT' } },
   { type: 'set_plugin_data', payload: { nodeRef: ref, pluginData: { namespace: 'figma-gateway', key: 'design-system-role', value: 'label' } } }
@@ -515,7 +550,7 @@ export const buildDesignSystemFigmaCommands = (document: DesignSystemDocument, o
     { type: 'delete_matching_nodes', payload: { query: { uiId: dsRef } } },
     { type: 'create_frame', payload: { ref: dsRef, uiId: dsRef, name: `Site Design System · ${document.title}`, x: options.x ?? 1520, y: options.y ?? 0, width, height: 6360 } },
     { type: 'set_fill', payload: { nodeRef: dsRef, fills: paintForHex('#FFFFFF') } },
-    { type: 'set_plugin_data', payload: { nodeRef: dsRef, pluginData: { namespace: 'figma-gateway', key: 'design-system-document', value: JSON.stringify(document) } } },
+    { type: 'set_plugin_data', payload: { nodeRef: dsRef, pluginData: { namespace: 'figma-gateway', key: 'design-system-document', value: JSON.stringify(compactDesignSystemDocumentForPluginData(document)) } } },
     ...text(`${dsRef}/title`, dsRef, `Observed Design System · ${document.title}`, 24, 24, 860, 28, '700'),
     ...text(`${dsRef}/summary`, dsRef, `${document.summary.colors} colors · ${document.summary.typography} type styles · ${document.summary.components} components · ${document.summary.assets} assets · ${document.summary.icons} icons · ${document.summary.interactions} interactions · ${document.quality.grade} · generated from ${document.sourceUrl ?? 'rendered UI'}`, 24, 62, 860, 12, '400')
   ];
@@ -592,6 +627,7 @@ export const buildDesignSystemNodeBindingCommands = (document: DesignSystemDocum
       type: 'set_plugin_data',
       payload: {
         nodeRef: uiId,
+        optionalMissingOk: true,
         pluginData: {
           namespace: 'figma-gateway',
           key: 'design-system-bindings',
@@ -607,6 +643,7 @@ export const buildDesignSystemNodeBindingCommands = (document: DesignSystemDocum
         type: 'set_plugin_data',
         payload: {
           nodeRef: evidence.uiId,
+          optionalMissingOk: true,
           pluginData: {
             namespace: 'figma-gateway',
             key: 'interactive-pattern',

@@ -94,6 +94,7 @@ test('observed design system emits source-node token bindings for bidirectional 
   const observed = createObservedDesignSystem(model, { title: 'fixture', ref: 'design-system/fixture' });
   const binding = observed.commands.find((command: any) => command.type === 'set_plugin_data' && command.payload?.nodeRef === 'page.cta' && command.payload?.pluginData?.key === 'design-system-bindings') as any;
   assert.equal(Boolean(binding), true);
+  assert.equal(binding.payload.optionalMissingOk, true);
   const parsed = JSON.parse(binding.payload.pluginData.value);
   assert.equal(parsed.version, 'design-system-bindings.v1');
   assert.equal(parsed.uiId, 'page.cta');
@@ -119,6 +120,7 @@ test('observed design system emits interactive audit metadata without running br
   assert.equal(observed.document.handoff.acceptance.requiresCuration, true);
   const patternCommand = observed.commands.find((command: any) => command.type === 'set_plugin_data' && command.payload?.nodeRef === 'page.track' && command.payload?.pluginData?.key === 'interactive-pattern') as any;
   assert.equal(Boolean(patternCommand), true);
+  assert.equal(patternCommand.payload.optionalMissingOk, true);
   const parsed = JSON.parse(patternCommand.payload.pluginData.value);
   assert.equal(parsed.version, 'interactive-pattern.v1');
   assert.equal(typeof parsed.recommendedHandling, 'string');

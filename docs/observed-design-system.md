@@ -291,3 +291,17 @@ The sidecar section is:
 ```
 
 This gives GPT and future code handoff enough context to avoid claiming full behavior fidelity while still preserving important product behavior signals.
+
+## Figma plugin-data size compatibility
+
+Figma limits a single plugin-data entry size. The gateway therefore stores a compact sidecar root document in:
+
+```text
+figma-gateway:design-system-document
+```
+
+The compact document preserves summary, quality, handoff, top token samples and evidence needed for Figma -> GPT orchestration. The full observed design-system document remains available from the API response during extraction/import.
+
+Newer plugin runtimes also support chunked plugin data, but the backend keeps the root document compact so live imports remain compatible with already-open plugin sessions that have not yet been reloaded.
+
+Source-node metadata writes such as `design-system-bindings` and `interactive-pattern` are filtered to Figma nodes that are actually created by the plan. This avoids treating metadata for collapsed/skipped DOM wrappers as a batch failure.

@@ -129,6 +129,20 @@ const buildFallbackDiagnosticsFromDocument = (document: any, data: any, breakpoi
   };
 };
 
+
+const FIGMA_CREATE_COMMANDS = new Set(['create_frame', 'create_text', 'create_frame_rich', 'create_text_rich', 'create_button_state_set']);
+const filterDesignSystemCommandsForCreatedNodes = (commands: any[], designSystemCommands: any[]): any[] => {
+  const createdRefs = new Set<string>();
+  for (const command of commands) {
+    if (FIGMA_CREATE_COMMANDS.has(String(command.type)) && command.payload?.ref) createdRefs.add(String(command.payload.ref));
+  }
+  return designSystemCommands.filter((command) => {
+    if (command.type !== 'set_plugin_data' || !command.payload?.optionalMissingOk) return true;
+    const ref = String(command.payload.nodeRef || command.payload.nodeId || '');
+    return createdRefs.has(ref);
+  });
+};
+
 const importToFigmaRenderedUiSchema = extractRenderedUiSchema.extend({
   rootDir: z.string().trim().min(1).optional(),
   fileKey: z.string().trim().min(1).optional(),
@@ -238,7 +252,8 @@ renderedUiRouter.post(
           y: 0
         })
       : undefined;
-    if (designSystem) plan.commands = [...plan.commands, ...designSystem.commands];
+    const designSystemCommands = designSystem ? filterDesignSystemCommandsForCreatedNodes(plan.commands, designSystem.commands) : [];
+    if (designSystem) plan.commands = [...plan.commands, ...designSystemCommands];
     const uiIdStats = collectUiIdStats(plan.model.root);
     if (!data.dryRun) {
       assertNoDuplicateUiIdsForLiveImport(uiIdStats, 'Rendered-first import');
@@ -295,7 +310,7 @@ renderedUiRouter.post(
       sourceMapping: mapped ? 'code-backed' : 'rendered-only',
       breakpointVariantSet: (plan.model.root.meta as any)?.breakpointVariantSet,
       designSystem: designSystem?.document,
-      designSystemCommandCount: designSystem?.commands.length ?? 0
+      designSystemCommandCount: designSystemCommands.length
     });
   })
 );
