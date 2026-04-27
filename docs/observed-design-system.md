@@ -132,3 +132,67 @@ When working toward Claude Design-like behavior, use the observed design system 
 - ask for clarification when token confidence is low
 - use evidence links to explain why a token exists
 - do not overwrite code tokens from one-off observed values without review
+
+## Wider universal coverage
+
+Observed design-system extraction now covers more than basic brand primitives:
+
+- borders
+- assets
+- icons
+- layout patterns
+- interactive states
+- audit / needs-review clusters
+
+This keeps the sidecar useful for real production sites where design language is distributed across imagery, SVG/icon systems, repeated layout structures, card grids, form controls and low-confidence import fallbacks.
+
+## Source-node token bindings
+
+When the sidecar is generated as part of a Figma import, the planner also writes token bindings back onto the original mockup nodes.
+
+Each source node with token evidence receives:
+
+```text
+figma-gateway:design-system-bindings
+```
+
+The value is JSON:
+
+```json
+{
+  "version": "design-system-bindings.v1",
+  "uiId": "...",
+  "bindings": [
+    {
+      "tokenId": "color...",
+      "tokenName": "color...",
+      "kind": "color",
+      "usage": "background",
+      "confidence": 0.86
+    }
+  ]
+}
+```
+
+This is the missing link for bidirectional usage: a later Figma -> Code handoff can inspect a changed node and understand which observed tokens it was originally associated with.
+
+## Figma snapshot command
+
+The plugin runtime exposes:
+
+```text
+export_design_system_snapshot
+```
+
+It finds the design-system sidecar by `nodeId`, exact `uiId`, `uiIdPrefix` or `Site Design System` name prefix and returns:
+
+- root sidecar identity
+- full observed `design-system-document`
+- token specimen records from `figma-gateway:design-system-token`
+- source node binding records from `figma-gateway:design-system-bindings`
+
+This command is intended for GPT orchestration and future `mcp.vazovski.art` handoff. It gives the code side a machine-readable contract instead of relying on visual inspection of the Figma page.
+
+## Current curation boundary
+
+The system still treats observed tokens as suggestions. It does not yet promote them to permanent Figma Variables or repository design tokens automatically. The next product step is a curated design-system pass that can accept, rename, merge or reject observed tokens before code changes are generated.

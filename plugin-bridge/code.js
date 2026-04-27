@@ -36,6 +36,7 @@ const SUPPORTED_GENERIC_COMMANDS = new Set([
   'delete_matching_nodes',
   'export_ui_snapshot',
   'export_node_snapshot',
+  'export_design_system_snapshot',
   'export_node_as_image',
   'set_effects',
   'set_asset_reference',
@@ -318,6 +319,43 @@ function serializeNodeSnapshot(node, options, depth) {
   if (includeChildren && 'children' in node && depth < maxDepth) snapshot.children = node.children.map(function (child) { return serializeNodeSnapshot(child, options, depth + 1); });
   return snapshot;
 }
+
+function readJsonPluginData(node, key) {
+  if (!node || !('getPluginData' in node)) return null;
+  const raw = node.getPluginData('figma-gateway:' + key) || '';
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (error) { return { parseError: String(error && error.message ? error.message : error), raw: raw.slice(0, 2000) }; }
+}
+function collectDesignSystemSnapshot(payload) {
+  let root = null;
+  if (payload && payload.nodeId) root = figma.getNodeById(String(payload.nodeId));
+  if (!root && payload && payload.uiId) {
+    const matches = findNodesByQuery({ uiId: String(payload.uiId) });
+    root = matches[0] || null;
+  }
+  if (!root) {
+    const matches = findNodesByQuery({ uiIdPrefix: payload && payload.uiIdPrefix ? String(payload.uiIdPrefix) : 'design-system/' });
+    root = matches.find(function (node) { return !!readJsonPluginData(node, 'design-system-document'); }) || null;
+  }
+  if (!root) {
+    const matches = findNodesByQuery({ namePrefix: payload && payload.namePrefix ? String(payload.namePrefix) : 'Site Design System' });
+    root = matches[0] || null;
+  }
+  if (!root) throw appError('NODE_NOT_FOUND', 'Unable to find design-system sidecar root');
+  const document = readJsonPluginData(root, 'design-system-document');
+  const tokens = [];
+  const bindings = [];
+  const scanRoot = ('findAll' in root) ? root : figma.currentPage;
+  const nodes = scanRoot && 'findAll' in scanRoot ? scanRoot.findAll(function (node) { return !!(readJsonPluginData(node, 'design-system-token') || readJsonPluginData(node, 'design-system-bindings')); }) : [];
+  for (const node of nodes) {
+    const token = readJsonPluginData(node, 'design-system-token');
+    if (token) tokens.push({ nodeId: node.id, name: node.name, uiId: getUiIdFromNode(node) || null, token, snapshot: payload && payload.includeNodeSnapshots ? serializeNodeSnapshot(node, { includeChildren: false }, 0) : undefined });
+    const binding = readJsonPluginData(node, 'design-system-bindings');
+    if (binding) bindings.push({ nodeId: node.id, name: node.name, uiId: getUiIdFromNode(node) || null, binding });
+  }
+  return { root: { id: root.id, name: root.name, uiId: getUiIdFromNode(root) || null }, document, tokenCount: tokens.length, bindingCount: bindings.length, tokens, bindings };
+}
+
 async function exportNodeSnapshot(payload, refMap) {
   const nodeId = getNodeIdFromPayload(payload || {}, refMap || {});
   const node = await getNodeByIdRequired(nodeId, 'export_node_snapshot');
@@ -814,6 +852,10 @@ async function executeLowLevelCommand(step, refMap) {
     return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, visible: node.visible } });
   }
 
+  if (commandType === 'export_design_system_snapshot') {
+    const data = collectDesignSystemSnapshot(payload || {});
+    return normalizeCommandResult(commandType, 'ok', { nodeId: data.root.id, data });
+  }
   if (commandType === 'export_node_snapshot') {
     const data = await exportNodeSnapshot(payload, refMap);
     return normalizeCommandResult(commandType, 'ok', { nodeId: data.snapshot.id, data });

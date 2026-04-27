@@ -42,6 +42,7 @@ export const FIGMA_LOW_LEVEL_COMMAND_TYPES = [
   'delete_matching_nodes',
   'export_ui_snapshot',
   'export_node_snapshot',
+  'export_design_system_snapshot',
   'export_node_as_image',
   'set_effects',
   'set_asset_reference',

@@ -33,6 +33,7 @@ const SUPPORTED_MVP_COMMANDS = new Set<FigmaLowLevelCommandType>([
   'delete_matching_nodes',
   'export_ui_snapshot',
   'export_node_snapshot',
+  'export_design_system_snapshot',
   'export_node_as_image',
   'debug_runtime_info'
 ]);

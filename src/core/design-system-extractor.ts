@@ -11,7 +11,7 @@ export const designSystemExtractSchema = z.object({
   sourceUrl: z.string().trim().min(1).optional()
 });
 
-export type DesignSystemTokenKind = 'color' | 'typography' | 'spacing' | 'radius' | 'shadow' | 'component';
+export type DesignSystemTokenKind = 'color' | 'typography' | 'spacing' | 'radius' | 'shadow' | 'border' | 'asset' | 'icon' | 'layout' | 'state' | 'component' | 'audit';
 export type DesignSystemEvidence = { uiId: string; nodeName?: string; kind?: string; usage?: string };
 export type DesignSystemToken<TValue = unknown> = {
   id: string;
@@ -27,13 +27,19 @@ export type DesignSystemDocument = {
   title: string;
   sourceUrl?: string;
   generatedAt: string;
-  summary: { colors: number; typography: number; spacing: number; radius: number; shadows: number; components: number };
+  summary: { colors: number; typography: number; spacing: number; radius: number; shadows: number; borders: number; assets: number; icons: number; layouts: number; states: number; components: number; audit: number };
   colors: Array<DesignSystemToken<{ hex: string; rgb: { r: number; g: number; b: number; a: number }; usage: string[] }>>;
   typography: Array<DesignSystemToken<{ fontFamily: string; fontSize: number; lineHeight?: number; fontWeight?: string; letterSpacing?: number; textAlign?: string; role: string }>>;
   spacing: Array<DesignSystemToken<{ value: number; usage: string[] }>>;
   radius: Array<DesignSystemToken<{ value: number; usage: string[] }>>;
   shadows: Array<DesignSystemToken<{ value: string; usage: string[] }>>;
+  borders: Array<DesignSystemToken<{ color?: string; width?: number; style?: string; usage: string[] }>>;
+  assets: Array<DesignSystemToken<{ kind: string; source?: string; strategy?: string; width?: number; height?: number }>>;
+  icons: Array<DesignSystemToken<{ sourceType?: string; fill?: string; stroke?: string; width?: number; height?: number; strategy?: string }>>;
+  layouts: Array<DesignSystemToken<{ display?: string; direction?: string; wrap?: string; gap?: number; rowGap?: number; columnGap?: number; alignItems?: string; justifyContent?: string; childCount: number }>>;
+  states: Array<DesignSystemToken<{ state: string; disabled?: boolean; interactive?: boolean; selected?: boolean; expanded?: boolean }>>;
   components: Array<DesignSystemToken<{ role: string; width?: number; height?: number; fill?: string; color?: string; radius?: number; typographyRef?: string }>>;
+  audit: Array<DesignSystemToken<{ issue: string; severity: 'info' | 'warning' | 'error'; details?: string }>>;
 };
 
 const clamp = (value: number, min = 0, max = 1): number => Math.max(min, Math.min(max, value));
@@ -114,6 +120,12 @@ export const extractDesignSystemFromUiModel = (model: UiModelDocument, options: 
   const radiusMap = new Map<number, DesignSystemToken<{ value: number; usage: string[] }>>();
   const shadowMap = new Map<string, DesignSystemToken<{ value: string; usage: string[] }>>();
   const componentMap = new Map<string, DesignSystemToken<{ role: string; width?: number; height?: number; fill?: string; color?: string; radius?: number; typographyRef?: string }>>();
+  const borderMap = new Map<string, DesignSystemToken<{ color?: string; width?: number; style?: string; usage: string[] }>>();
+  const assetMap = new Map<string, DesignSystemToken<{ kind: string; source?: string; strategy?: string; width?: number; height?: number }>>();
+  const iconMap = new Map<string, DesignSystemToken<{ sourceType?: string; fill?: string; stroke?: string; width?: number; height?: number; strategy?: string }>>();
+  const layoutMap = new Map<string, DesignSystemToken<{ display?: string; direction?: string; wrap?: string; gap?: number; rowGap?: number; columnGap?: number; alignItems?: string; justifyContent?: string; childCount: number }>>();
+  const stateMap = new Map<string, DesignSystemToken<{ state: string; disabled?: boolean; interactive?: boolean; selected?: boolean; expanded?: boolean }>>();
+  const auditMap = new Map<string, DesignSystemToken<{ issue: string; severity: 'info' | 'warning' | 'error'; details?: string }>>();
 
   const bumpColor = (raw: unknown, usage: string, node: UiNode): void => {
     const parsed = parseColor(raw);
@@ -142,6 +154,15 @@ export const extractDesignSystemFromUiModel = (model: UiModelDocument, options: 
     bumpColor(s.color, node.kind === 'icon' ? 'icon' : 'text', node);
     bumpColor(s.backgroundColor, 'background', node);
     if ((s.borderWidth ?? 0) > 0) bumpColor(s.borderColor, 'border', node);
+    if ((s.borderWidth ?? 0) > 0 || s.borderStyle || s.borderColor) {
+      const color = parseColor(s.borderColor)?.hex;
+      const value = { color, width: s.borderWidth, style: s.borderStyle, usage: ['border'] };
+      const key = JSON.stringify(value);
+      const existing = borderMap.get(key) ?? { id: `border.${hash(key)}`, name: `border.observed.${borderMap.size + 1}`, kind: 'border' as const, value, count: 0, confidence: 0, evidence: [] };
+      existing.count += 1;
+      addEvidence(existing.evidence, node, 'border');
+      borderMap.set(key, existing);
+    }
     if (node.icon?.fill) bumpColor(node.icon.fill, 'icon', node);
     if (node.icon?.stroke) bumpColor(node.icon.stroke, 'icon', node);
 
@@ -166,6 +187,50 @@ export const extractDesignSystemFromUiModel = (model: UiModelDocument, options: 
       if (!existing.value.usage.includes('box-shadow')) existing.value.usage.push('box-shadow');
       addEvidence(existing.evidence, node, 'box-shadow');
       shadowMap.set(shadow, existing);
+    }
+
+    if (node.asset?.sourceUrl || node.asset?.resolvedAssetPath || node.kind === 'image') {
+      const source = node.asset?.resolvedAssetPath ?? node.asset?.sourceUrl;
+      const value = { kind: node.asset?.layer ?? node.kind, source, strategy: node.asset?.figmaStrategy, width: node.boundingBox?.width ?? node.size?.width, height: node.boundingBox?.height ?? node.size?.height };
+      const key = JSON.stringify({ kind: value.kind, source, strategy: value.strategy });
+      const existing = assetMap.get(key) ?? { id: `asset.${hash(key)}`, name: `asset.${assetMap.size + 1}`, kind: 'asset' as const, value, count: 0, confidence: 0, evidence: [] };
+      existing.count += 1;
+      addEvidence(existing.evidence, node, 'asset');
+      assetMap.set(key, existing);
+    }
+    if (node.icon || node.kind === 'icon') {
+      const value = { sourceType: node.icon?.sourceType, fill: parseColor(node.icon?.fill)?.hex, stroke: parseColor(node.icon?.stroke)?.hex, width: node.icon?.size?.width ?? node.boundingBox?.width, height: node.icon?.size?.height ?? node.boundingBox?.height, strategy: node.icon?.figmaStrategy };
+      const key = JSON.stringify({ sourceType: value.sourceType, fill: value.fill, stroke: value.stroke, w: value.width, h: value.height, strategy: value.strategy });
+      const existing = iconMap.get(key) ?? { id: `icon.${hash(key)}`, name: `icon.${iconMap.size + 1}`, kind: 'icon' as const, value, count: 0, confidence: 0, evidence: [] };
+      existing.count += 1;
+      addEvidence(existing.evidence, node, 'icon');
+      iconMap.set(key, existing);
+    }
+    if (s.display || node.layout?.type || node.children.length > 1) {
+      const value = { display: s.display ?? node.layout?.type, direction: s.flexDirection, wrap: s.flexWrap, gap: s.gap ?? node.layout?.gap, rowGap: s.rowGap, columnGap: s.columnGap, alignItems: s.alignItems, justifyContent: s.justifyContent, childCount: node.children.length };
+      const key = JSON.stringify(value);
+      const existing = layoutMap.get(key) ?? { id: `layout.${hash(key)}`, name: `layout.${layoutMap.size + 1}`, kind: 'layout' as const, value, count: 0, confidence: 0, evidence: [] };
+      existing.count += 1;
+      addEvidence(existing.evidence, node, 'layout');
+      layoutMap.set(key, existing);
+    }
+    if (node.state?.interactive || node.state?.disabled || node.state?.selected || node.state?.expanded || node.state?.focused || node.state?.hovered || node.state?.active) {
+      const state = node.state?.disabled ? 'disabled' : node.state?.selected ? 'selected' : node.state?.expanded ? 'expanded' : node.state?.focused ? 'focused' : node.state?.hovered ? 'hovered' : node.state?.active ? 'active' : 'interactive';
+      const value = { state, disabled: node.state?.disabled, interactive: node.state?.interactive, selected: node.state?.selected, expanded: node.state?.expanded };
+      const key = JSON.stringify(value);
+      const existing = stateMap.get(key) ?? { id: `state.${slug(state)}.${hash(key)}`, name: `state.${state}`, kind: 'state' as const, value, count: 0, confidence: 0, evidence: [] };
+      existing.count += 1;
+      addEvidence(existing.evidence, node, state);
+      stateMap.set(key, existing);
+    }
+    if (node.confidence?.needsReview || node.meta?.fallbackReason || (node.asset && !node.asset.sourceUrl && !node.asset.resolvedAssetPath && node.asset.figmaStrategy === 'placeholder')) {
+      const issue = node.meta?.fallbackReason ? String(node.meta.fallbackReason) : node.confidence?.needsReview ? 'low visual confidence' : 'asset placeholder';
+      const value = { issue, severity: 'warning' as const, details: node.confidence?.reasons?.join('; ') };
+      const key = JSON.stringify(value);
+      const existing = auditMap.get(key) ?? { id: `audit.${hash(key)}`, name: `audit.${auditMap.size + 1}`, kind: 'audit' as const, value, count: 0, confidence: 1, evidence: [] };
+      existing.count += 1;
+      addEvidence(existing.evidence, node, issue);
+      auditMap.set(key, existing);
     }
 
     if (['button', 'input', 'card'].includes(node.kind) || /card|button|input/i.test(String(node.name || node.uiId))) {
@@ -197,20 +262,32 @@ export const extractDesignSystemFromUiModel = (model: UiModelDocument, options: 
   const spacing = finish(Array.from(spacingMap.values()).sort((a, b) => a.value.value - b.value.value));
   const radius = finish(Array.from(radiusMap.values()).sort((a, b) => a.value.value - b.value.value));
   const shadows = finish(Array.from(shadowMap.values()));
+  const borders = finish(Array.from(borderMap.values()));
+  const assets = finish(Array.from(assetMap.values()));
+  const icons = finish(Array.from(iconMap.values()));
+  const layouts = finish(Array.from(layoutMap.values()));
+  const states = finish(Array.from(stateMap.values()));
   const components = finish(Array.from(componentMap.values()));
+  const audit = finish(Array.from(auditMap.values()));
 
   return {
     version: 'observed-design-system.v1',
     title: options.title ?? 'Observed Site Design System',
     sourceUrl: options.sourceUrl,
     generatedAt: new Date().toISOString(),
-    summary: { colors: colors.length, typography: typography.length, spacing: spacing.length, radius: radius.length, shadows: shadows.length, components: components.length },
+    summary: { colors: colors.length, typography: typography.length, spacing: spacing.length, radius: radius.length, shadows: shadows.length, borders: borders.length, assets: assets.length, icons: icons.length, layouts: layouts.length, states: states.length, components: components.length, audit: audit.length },
     colors,
     typography,
     spacing,
     radius,
     shadows,
-    components
+    borders,
+    assets,
+    icons,
+    layouts,
+    states,
+    components,
+    audit
   };
 };
 
@@ -279,23 +356,58 @@ const componentCommands = (dsRef: string, token: DesignSystemDocument['component
   ];
 };
 
+
+const genericTokenCommands = (dsRef: string, section: keyof DesignSystemDocument, token: DesignSystemToken<any>, index: number): FigmaCommandStep[] => {
+  const ref = `${dsRef}/${String(section)}/${index + 1}`;
+  const y = 96 + index * 72;
+  const summary = token.kind === 'asset'
+    ? `${token.value.kind || 'asset'} · ${token.value.strategy || 'source'} · ${token.count} uses`
+    : token.kind === 'icon'
+      ? `${token.value.sourceType || 'icon'} · ${token.value.width || '?'}×${token.value.height || '?'} · ${token.count} uses`
+      : token.kind === 'layout'
+        ? `${token.value.display || 'layout'} ${token.value.direction || ''} gap:${token.value.gap ?? '-'} children:${token.value.childCount}`
+        : token.kind === 'border'
+          ? `${token.value.width ?? 0}px ${token.value.style || 'solid'} ${token.value.color || ''} · ${token.count} uses`
+          : token.kind === 'shadow'
+            ? `${String(token.value.value).slice(0, 96)} · ${token.count} uses`
+            : token.kind === 'state'
+              ? `${token.value.state} · ${token.count} uses`
+              : token.kind === 'audit'
+                ? `${token.value.severity}: ${token.value.issue} · ${token.count} nodes`
+                : `${token.name} · ${token.count} uses`;
+  return [
+    { type: 'create_frame', payload: { ref, parentRef: `${dsRef}/${String(section)}`, uiId: ref, name: `${token.kind} - ${token.name}`, x: 24, y, width: 880, height: 56 } },
+    { type: 'set_fill', payload: { nodeRef: ref, fills: paintForHex(token.kind === 'audit' ? '#FFF7ED' : '#F8FAFC') } },
+    { type: 'set_stroke', payload: { nodeRef: ref, strokes: paintForHex(token.kind === 'audit' ? '#FDBA74' : '#E5E7EB'), strokeWeight: 1 } },
+    { type: 'set_plugin_data', payload: { nodeRef: ref, pluginData: { namespace: 'figma-gateway', key: 'design-system-token', value: createEvidenceMeta(token) } } },
+    ...text(`${ref}/name`, ref, token.name, 14, 10, 260, 12, '600'),
+    ...text(`${ref}/summary`, ref, summary, 300, 10, 550, 11, '400')
+  ];
+};
+
 export const buildDesignSystemFigmaCommands = (document: DesignSystemDocument, options: { ref?: string; x?: number; y?: number } = {}): FigmaCommandStep[] => {
   const dsRef = options.ref ?? `design-system/${slug(document.title)}`;
   const width = 980;
   const commands: FigmaCommandStep[] = [
     { type: 'delete_matching_nodes', payload: { query: { uiId: dsRef } } },
-    { type: 'create_frame', payload: { ref: dsRef, uiId: dsRef, name: `Site Design System · ${document.title}`, x: options.x ?? 1520, y: options.y ?? 0, width, height: 3200 } },
+    { type: 'create_frame', payload: { ref: dsRef, uiId: dsRef, name: `Site Design System · ${document.title}`, x: options.x ?? 1520, y: options.y ?? 0, width, height: 5200 } },
     { type: 'set_fill', payload: { nodeRef: dsRef, fills: paintForHex('#FFFFFF') } },
     { type: 'set_plugin_data', payload: { nodeRef: dsRef, pluginData: { namespace: 'figma-gateway', key: 'design-system-document', value: JSON.stringify(document) } } },
     ...text(`${dsRef}/title`, dsRef, `Observed Design System · ${document.title}`, 24, 24, 860, 28, '700'),
-    ...text(`${dsRef}/summary`, dsRef, `${document.summary.colors} colors · ${document.summary.typography} type styles · ${document.summary.components} component patterns · generated from ${document.sourceUrl ?? 'rendered UI'}`, 24, 62, 860, 12, '400')
+    ...text(`${dsRef}/summary`, dsRef, `${document.summary.colors} colors · ${document.summary.typography} type styles · ${document.summary.components} components · ${document.summary.assets} assets · ${document.summary.icons} icons · generated from ${document.sourceUrl ?? 'rendered UI'}`, 24, 62, 860, 12, '400')
   ];
   const sections: Array<{ key: string; title: string; y: number; height: number }> = [
     { key: 'colors', title: '01 Colors', y: 120, height: 760 },
     { key: 'typography', title: '02 Typography', y: 920, height: 780 },
-    { key: 'components', title: '03 Components / Buttons / Inputs', y: 1740, height: 560 },
-    { key: 'spacing', title: '04 Spacing', y: 2340, height: 300 },
-    { key: 'radius', title: '05 Radius', y: 2680, height: 300 }
+    { key: 'components', title: '03 Components / Buttons / Inputs / Cards', y: 1740, height: 560 },
+    { key: 'assets', title: '04 Assets', y: 2340, height: 420 },
+    { key: 'icons', title: '05 Icons', y: 2800, height: 420 },
+    { key: 'layouts', title: '06 Layout Patterns', y: 3260, height: 520 },
+    { key: 'spacing', title: '07 Spacing', y: 3820, height: 300 },
+    { key: 'radius', title: '08 Radius', y: 4160, height: 300 },
+    { key: 'shadows', title: '09 Shadows', y: 4500, height: 300 },
+    { key: 'borders', title: '10 Borders', y: 4840, height: 260 },
+    { key: 'audit', title: '11 Audit / Needs Review', y: 5140, height: 360 }
   ];
   for (const section of sections) {
     const ref = `${dsRef}/${section.key}`;
@@ -307,12 +419,59 @@ export const buildDesignSystemFigmaCommands = (document: DesignSystemDocument, o
   document.colors.forEach((token, index) => commands.push(...swatchCommands(dsRef, token, index)));
   document.typography.forEach((token, index) => commands.push(...typographyCommands(dsRef, token, index)));
   document.components.forEach((token, index) => commands.push(...componentCommands(dsRef, token, index)));
+  document.assets.forEach((token, index) => commands.push(...genericTokenCommands(dsRef, 'assets', token, index)));
+  document.icons.forEach((token, index) => commands.push(...genericTokenCommands(dsRef, 'icons', token, index)));
+  document.layouts.forEach((token, index) => commands.push(...genericTokenCommands(dsRef, 'layouts', token, index)));
+  document.shadows.forEach((token, index) => commands.push(...genericTokenCommands(dsRef, 'shadows', token, index)));
+  document.borders.forEach((token, index) => commands.push(...genericTokenCommands(dsRef, 'borders', token, index)));
+  document.audit.forEach((token, index) => commands.push(...genericTokenCommands(dsRef, 'audit', token, index)));
   document.spacing.forEach((token, index) => commands.push(...metricCommands(dsRef, 'spacing', token, index)));
   document.radius.forEach((token, index) => commands.push(...metricCommands(dsRef, 'radius', token, index)));
   return commands;
 };
 
+
+export const buildDesignSystemNodeBindingCommands = (document: DesignSystemDocument): FigmaCommandStep[] => {
+  const bindings = new Map<string, Array<{ tokenId: string; tokenName: string; kind: DesignSystemTokenKind; usage?: string; confidence: number }>>();
+  const add = (token: DesignSystemToken<any>): void => {
+    for (const evidence of token.evidence || []) {
+      if (!evidence.uiId) continue;
+      const list = bindings.get(evidence.uiId) ?? [];
+      if (!list.some((item) => item.tokenId === token.id && item.usage === evidence.usage)) {
+        list.push({ tokenId: token.id, tokenName: token.name, kind: token.kind, usage: evidence.usage, confidence: token.confidence });
+      }
+      bindings.set(evidence.uiId, list);
+    }
+  };
+  for (const token of document.colors) add(token);
+  for (const token of document.typography) add(token);
+  for (const token of document.spacing) add(token);
+  for (const token of document.radius) add(token);
+  for (const token of document.shadows) add(token);
+  for (const token of document.borders) add(token);
+  for (const token of document.assets) add(token);
+  for (const token of document.icons) add(token);
+  for (const token of document.layouts) add(token);
+  for (const token of document.states) add(token);
+  for (const token of document.components) add(token);
+  const commands: FigmaCommandStep[] = [];
+  for (const [uiId, list] of bindings.entries()) {
+    commands.push({
+      type: 'set_plugin_data',
+      payload: {
+        nodeRef: uiId,
+        pluginData: {
+          namespace: 'figma-gateway',
+          key: 'design-system-bindings',
+          value: JSON.stringify({ version: 'design-system-bindings.v1', uiId, bindings: list.slice(0, 32) })
+        }
+      }
+    });
+  }
+  return commands;
+};
+
 export const createObservedDesignSystem = (model: UiModelDocument, options: { title?: string; sourceUrl?: string; maxItemsPerSection?: number; ref?: string; x?: number; y?: number } = {}): { document: DesignSystemDocument; commands: FigmaCommandStep[] } => {
   const document = extractDesignSystemFromUiModel(model, options);
-  return { document, commands: buildDesignSystemFigmaCommands(document, options) };
+  return { document, commands: [...buildDesignSystemFigmaCommands(document, options), ...buildDesignSystemNodeBindingCommands(document)] };
 };

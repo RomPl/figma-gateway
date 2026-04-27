@@ -292,3 +292,31 @@ When payload includes `sourceKind="svg"`, `figmaStrategy="vector_icon"`, a `.svg
 5. return an actual snapshot for bidirectional reconcile
 
 SVG import failures are non-fatal. The target node remains in Figma as a placeholder with plugin data containing the source and error. This avoids breaking large live imports because of one unsupported SVG while still giving reverse-sync enough evidence to produce an asset-level issue.
+
+## Design-system snapshot command
+
+`export_design_system_snapshot` reads an observed design-system sidecar and returns a machine-readable snapshot for reverse sync.
+
+Payload examples:
+
+```json
+{ "uiId": "design-system/parts-avtopribor-ru" }
+```
+
+```json
+{ "uiIdPrefix": "design-system/", "includeNodeSnapshots": true }
+```
+
+Returned data includes:
+
+- `root`
+- `document`
+- `tokens[]`
+- `bindings[]`
+- `tokenCount`
+- `bindingCount`
+
+`tokens[]` are read from `figma-gateway:design-system-token` plugin data on sidecar specimens.
+`bindings[]` are read from `figma-gateway:design-system-bindings` plugin data on original mockup nodes.
+
+This keeps observed design systems bidirectional: the sidecar can be generated from code/rendered truth and later read back from Figma for code handoff or reconcile.
