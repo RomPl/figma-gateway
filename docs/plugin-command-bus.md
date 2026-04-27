@@ -278,3 +278,17 @@ The plugin runtime now validates common Figma Auto Layout constraints before app
 - `SPACE_BETWEEN` may make explicit `itemSpacing` visually irrelevant, so the runtime returns a warning
 
 Validation errors are surfaced as normalized plugin command errors. Non-fatal fidelity risks are returned in the command `data.warnings` array.
+
+## SVG asset command semantics
+
+`set_asset_reference` supports SVG file assets in addition to raster images.
+
+When payload includes `sourceKind="svg"`, `figmaStrategy="vector_icon"`, a `.svg` URL, a `data:image/svg+xml` URI, or a gateway asset proxy URL whose original `src`/`sourceKind` identifies SVG, the plugin runtime should:
+
+1. fetch SVG markup through the gateway-aware fetch path
+2. import it with `figma.createNodeFromSvg(...)`
+3. append the imported vector node to the target frame
+4. store asset metadata in plugin data
+5. return an actual snapshot for bidirectional reconcile
+
+SVG import failures are non-fatal. The target node remains in Figma as a placeholder with plugin data containing the source and error. This avoids breaking large live imports because of one unsupported SVG while still giving reverse-sync enough evidence to produce an asset-level issue.

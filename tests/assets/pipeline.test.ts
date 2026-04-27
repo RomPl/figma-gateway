@@ -258,3 +258,36 @@ test('code-to-figma planner rewrites nested currentColor fill and stroke attribu
   assert.equal(String(cmd.payload.svgMarkup).includes('stroke="rgb(36, 99, 235)"'), true);
   assert.equal(String(cmd.payload.svgMarkup).includes('fill="rgb(255, 255, 255)"'), true);
 });
+
+
+test('remote svg file assets stay on vector path for universal bidirectional import', () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: {
+      kind: 'frame', uiId: 'page.root', visible: true, children: [
+        { kind: 'image', uiId: 'brand.logo', visible: true, boundingBox: { x: 0, y: 0, width: 120, height: 40 }, computedStyle: { width: 120, height: 40 }, asset: { layer: 'image', sourceUrl: 'https://cdn.example/logo.svg', resolvedAssetPath: 'https://cdn.example/logo.svg', figmaStrategy: 'image_fill' }, children: [] }
+      ]
+    }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'SvgAssetFixture', '[rendered-ui]');
+  const cmd = plan.commands.find((item: any) => item.type === 'set_asset_reference' && item.payload?.nodeRef === 'brand.logo') as any;
+  assert.equal(cmd.payload.figmaStrategy, 'vector_icon');
+  assert.equal(cmd.payload.sourceKind, 'svg');
+  assert.equal(cmd.payload.placeholder, false);
+});
+
+test('proxied svg file assets stay on vector path after gateway normalization', () => {
+  const proxied = 'https://figma-gateway.vazovski.art/api/assets/proxy?src=' + encodeURIComponent('https://assets.example/icons/logo.svg') + '&sourceKind=svg';
+  const model: any = {
+    version: 'ui-model.v1',
+    root: {
+      kind: 'frame', uiId: 'page.root', visible: true, children: [
+        { kind: 'image', uiId: 'brand.logo.proxy', visible: true, boundingBox: { x: 0, y: 0, width: 120, height: 40 }, computedStyle: { width: 120, height: 40 }, asset: { layer: 'image', sourceUrl: proxied, resolvedAssetPath: proxied, figmaStrategy: 'image_fill' }, children: [] }
+      ]
+    }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'SvgProxyFixture', '[rendered-ui]');
+  const cmd = plan.commands.find((item: any) => item.type === 'set_asset_reference' && item.payload?.nodeRef === 'brand.logo.proxy') as any;
+  assert.equal(cmd.payload.figmaStrategy, 'vector_icon');
+  assert.equal(cmd.payload.sourceKind, 'svg');
+});

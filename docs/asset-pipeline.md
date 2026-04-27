@@ -82,3 +82,23 @@ Benefits:
 - asset fetch diagnostics stay centralized on the gateway
 - unsupported raster formats can be converted server-side before Figma image import
 - new customer/site domains do not require manifest changes
+
+## SVG file assets are vector-first
+
+Rendered `<img src="*.svg">` and proxied SVG assets are treated as vector assets, not raster image fills.
+
+Planner behavior:
+
+- detects raw `.svg`, `data:image/svg+xml`, and gateway proxy URLs with `sourceKind=svg`
+- emits `set_asset_reference` with `figmaStrategy=vector_icon` and `sourceKind=svg`
+- keeps the original/proxied asset source in the command payload for reverse sync
+
+Plugin behavior:
+
+- attempts native `figma.createNodeFromSvg(...)` import first
+- attaches the imported SVG as an editable child of the asset frame
+- stores asset source, layer, strategy, source kind, imported-as state and errors in plugin data
+- returns an observed snapshot that includes this asset metadata
+- if native SVG import fails, keeps the parent node as an observed placeholder instead of failing the whole batch
+
+This is required for universal and bidirectional operation: a Figma -> Code pass must be able to distinguish a true vector SVG import, a raster image fill, and a placeholder fallback while preserving the original asset reference.

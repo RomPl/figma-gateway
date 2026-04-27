@@ -289,6 +289,21 @@ const isSwitchLikeInputNode = (node: UiNode): boolean => {
   const semanticsRole = String((renderedMeta as any)?.semantics?.role || '').toLowerCase();
   return inputType === 'checkbox' || inputType === 'radio' || semanticsRole === 'switch';
 };
+const isSvgAssetSourceForFigma = (value: string | undefined): boolean => {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  if (/^data:image\/svg\+xml/i.test(raw)) return true;
+  if (/\.svg(?:[?#].*)?$/i.test(raw)) return true;
+  try {
+    const url = new URL(raw);
+    const sourceKind = url.searchParams.get('sourceKind') || url.searchParams.get('sourcekind');
+    const original = url.searchParams.get('src') || '';
+    return String(sourceKind || '').toLowerCase() === 'svg' || /\.svg(?:[?#].*)?$/i.test(original);
+  } catch {
+    return false;
+  }
+};
+
 const isDecorativeBackgroundImageSource = (value: string | undefined): boolean => {
   const raw = String(value || '').trim().toLowerCase();
   if (!raw) return false;
@@ -573,7 +588,7 @@ export const normalizeRenderableAssetSourcesForTarget = (document: UiModelDocume
       try {
         const assetUrl = new URL(raw);
         if (!/^https?:$/.test(assetUrl.protocol)) return value;
-        const sourceKind = /\.svg$/i.test(assetUrl.pathname) ? 'svg' : 'raster';
+        const sourceKind = /\.svg(?:[?#].*)?$/i.test(assetUrl.pathname) ? 'svg' : 'raster';
         return `${gatewayBase}/api/assets/proxy?src=${encodeURIComponent(assetUrl.toString())}&sourceKind=${sourceKind}`;
       } catch {
         return value;
@@ -921,10 +936,13 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
 
   if (node.asset?.layer && !shouldSkipAssetReference(node)) {
     const preserveRenderableAsset = shouldPreserveRenderableAssetReference(node);
-    const figmaStrategy = preserveRenderableAsset
-      ? 'image_fill'
-      : ((needsReview || renderAsPlaceholder) ? 'placeholder' : (node.asset.figmaStrategy ?? (node.asset.sourceUrl || node.asset.resolvedAssetPath ? 'image_fill' : 'placeholder')));
-    commands.push({ type: 'set_asset_reference', payload: { nodeRef: ref, layer: node.asset.layer, sourceUrl: node.asset.sourceUrl, resolvedAssetPath: node.asset.resolvedAssetPath, alt: node.asset.alt, placeholder: figmaStrategy === 'placeholder', figmaStrategy } });
+    const svgAssetSource = isSvgAssetSourceForFigma(node.asset.resolvedAssetPath) || isSvgAssetSourceForFigma(node.asset.sourceUrl);
+    const figmaStrategy = svgAssetSource
+      ? 'vector_icon'
+      : (preserveRenderableAsset
+        ? 'image_fill'
+        : ((needsReview || renderAsPlaceholder) ? 'placeholder' : (node.asset.figmaStrategy ?? (node.asset.sourceUrl || node.asset.resolvedAssetPath ? 'image_fill' : 'placeholder'))));
+    commands.push({ type: 'set_asset_reference', payload: { nodeRef: ref, layer: node.asset.layer, sourceUrl: node.asset.sourceUrl, resolvedAssetPath: node.asset.resolvedAssetPath, alt: node.asset.alt, placeholder: figmaStrategy === 'placeholder', figmaStrategy, sourceKind: svgAssetSource ? 'svg' : undefined } });
   }
 
   if (node.icon?.sourceType) {

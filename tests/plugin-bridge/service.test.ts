@@ -218,3 +218,20 @@ test('plugin runtime validates auto-layout constraints before applying visual mu
   assert.match(source, /FILL sizing is only valid for children of auto-layout frames/);
   assert.match(source, /counterAxisSpacing requires layoutWrap=WRAP/);
 });
+
+
+test('plugin runtime treats svg asset import failures as observed placeholders for bidirectional sync', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /function setAssetPluginData/);
+  assert.match(source, /figma-gateway:asset-source-kind/);
+  assert.match(source, /figma-gateway:asset-imported-as/);
+  assert.match(source, /sourceKind: 'svg'/);
+  assert.match(source, /importedAs: 'placeholder'/);
+  assert.doesNotMatch(source, /ASSET_IMPORT_FAILED/);
+});
+
+test('plugin runtime includes asset plugin data in exported snapshots', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /function getAssetPluginData/);
+  assert.equal(source.includes('asset: getAssetPluginData(node)'), true);
+});

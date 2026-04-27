@@ -296,6 +296,7 @@ function serializeNodeSnapshot(node, options, depth) {
     name: node.name,
     type: node.type,
     uiId: getUiIdFromNode(node) || null,
+    asset: getAssetPluginData(node),
     geometry: extractNodeGeometry(node),
     visible: 'visible' in node ? Boolean(node.visible) : undefined,
     opacity: 'opacity' in node ? Number(node.opacity) : undefined,
@@ -449,6 +450,33 @@ function applyShadowCompatibility(node, effects) {
   if ('clipsContent' in node) {
     try { node.clipsContent = true; } catch (error) {}
   }
+}
+
+function setAssetPluginData(node, payload, state) {
+  if (!node || !('setPluginData' in node)) return;
+  const imageSource = String((payload && (payload.resolvedAssetPath || payload.sourceUrl)) || '');
+  node.setPluginData('figma-gateway:asset-source', imageSource);
+  node.setPluginData('figma-gateway:asset-layer', String((payload && payload.layer) || ''));
+  node.setPluginData('figma-gateway:asset-strategy', String((payload && payload.figmaStrategy) || ''));
+  node.setPluginData('figma-gateway:asset-source-kind', String((payload && payload.sourceKind) || (isSvgSource(imageSource) ? 'svg' : 'raster')));
+  if (state && state.importedAs) node.setPluginData('figma-gateway:asset-imported-as', String(state.importedAs));
+  if (state && state.error) node.setPluginData('figma-gateway:asset-error', String(state.error));
+  else node.setPluginData('figma-gateway:asset-error', '');
+  if (state && state.placeholder) node.setPluginData('figma-gateway:asset-placeholder', String((payload && (payload.alt || payload.sourceUrl || payload.resolvedAssetPath)) || 'asset'));
+  else node.setPluginData('figma-gateway:asset-placeholder', '');
+}
+function getAssetPluginData(node) {
+  if (!node || !('getPluginData' in node)) return undefined;
+  const data = {
+    source: node.getPluginData('figma-gateway:asset-source') || undefined,
+    layer: node.getPluginData('figma-gateway:asset-layer') || undefined,
+    strategy: node.getPluginData('figma-gateway:asset-strategy') || undefined,
+    sourceKind: node.getPluginData('figma-gateway:asset-source-kind') || undefined,
+    importedAs: node.getPluginData('figma-gateway:asset-imported-as') || undefined,
+    error: node.getPluginData('figma-gateway:asset-error') || undefined,
+    placeholder: node.getPluginData('figma-gateway:asset-placeholder') || undefined
+  };
+  return Object.keys(data).some(function (key) { return data[key] !== undefined; }) ? data : undefined;
 }
 
 function centerImportedNodeInContainer(container, child, size) {
@@ -804,10 +832,7 @@ async function executeLowLevelCommand(step, refMap) {
   }
   if (commandType === 'set_asset_reference') {
     const node = await getNodeFromPayload(payload, commandType, refMap);
-    if ('setPluginData' in node) {
-      node.setPluginData('figma-gateway:asset-error', '');
-      node.setPluginData('figma-gateway:asset-placeholder', payload.placeholder ? String(payload.alt || payload.sourceUrl || payload.resolvedAssetPath || 'asset') : '');
-    }
+    setAssetPluginData(node, payload, { placeholder: Boolean(payload.placeholder) });
     const imageSource = payload.resolvedAssetPath || payload.sourceUrl;
     if (!payload.placeholder && typeof imageSource === 'string' && imageSource.trim()) {
       if (isSvgSource(imageSource) && 'appendChild' in node) {
@@ -816,14 +841,17 @@ async function executeLowLevelCommand(step, refMap) {
           if (!svgMarkup) throw new Error('Empty SVG markup');
           const imported = figma.createNodeFromSvg(svgMarkup);
           imported.name = 'asset-svg';
+          if ('setPluginData' in imported) { imported.setPluginData('figma-gateway:asset-source', String(imageSource)); imported.setPluginData('figma-gateway:asset-imported-as', 'svg-child'); }
           node.appendChild(imported);
           centerImportedNodeInContainer(node, imported, { width: typeof node.width === 'number' ? node.width : undefined, height: typeof node.height === 'number' ? node.height : undefined });
           const hasImportedSvg = Array.isArray(node.children) && node.children.some(function (child) { return child && child.name === 'asset-svg'; });
           if (!hasImportedSvg) throw new Error('SVG import did not attach to node');
-          return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: false, layer: payload.layer || null, importedAs: 'svg' } });
+          setAssetPluginData(node, payload, { importedAs: 'svg', placeholder: false });
+          return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: false, layer: payload.layer || null, importedAs: 'svg', sourceKind: 'svg', snapshot: serializeNodeSnapshot(node, { includeChildren: true, maxDepth: 1 }, 0) } });
         } catch (error) {
-          if ('setPluginData' in node) node.setPluginData('figma-gateway:asset-error', String(error && error.message ? error.message : error));
-          return normalizeCommandResult(commandType, 'error', { nodeId: node.id, error: { code: 'ASSET_IMPORT_FAILED', message: String(error && error.message ? error.message : error) } });
+          const message = String(error && error.message ? error.message : error);
+          setAssetPluginData(node, payload, { importedAs: 'placeholder', placeholder: true, error: message });
+          return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: true, layer: payload.layer || null, importedAs: 'placeholder', sourceKind: 'svg', warning: message, snapshot: serializeNodeSnapshot(node, { includeChildren: false }, 0) } });
         }
       }
       if (canReceiveImageFill(node)) {
@@ -834,15 +862,16 @@ async function executeLowLevelCommand(step, refMap) {
           node.fills = [{ type: 'IMAGE', scaleMode: 'FILL', imageHash: image.hash }];
           const hasImageFill = Array.isArray(node.fills) && node.fills.some(function (fill) { return fill && fill.type === 'IMAGE' && fill.imageHash; });
           if (!hasImageFill) throw new Error('Image fill was not applied');
-          return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: false, layer: payload.layer || null, importedAs: 'image_fill' } });
+          setAssetPluginData(node, payload, { importedAs: 'image_fill', placeholder: false });
+          return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: false, layer: payload.layer || null, importedAs: 'image_fill', snapshot: serializeNodeSnapshot(node, { includeChildren: false }, 0) } });
         } catch (error) {
           const message = String(error && error.message ? error.message : error);
-          if ('setPluginData' in node) { node.setPluginData('figma-gateway:asset-error', message); node.setPluginData('figma-gateway:asset-placeholder', String(payload.alt || payload.sourceUrl || payload.resolvedAssetPath || 'asset')); }
-          return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: true, layer: payload.layer || null, importedAs: 'placeholder', warning: message } });
+          setAssetPluginData(node, payload, { importedAs: 'placeholder', placeholder: true, error: message });
+          return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: true, layer: payload.layer || null, importedAs: 'placeholder', warning: message, snapshot: serializeNodeSnapshot(node, { includeChildren: false }, 0) } });
         }
       }
-      if ('setPluginData' in node) node.setPluginData('figma-gateway:asset-placeholder', String(payload.alt || payload.sourceUrl || payload.resolvedAssetPath || 'asset'));
-      return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: true, layer: payload.layer || null, importedAs: 'placeholder', warning: 'Target node cannot receive raster image fill' } });
+      setAssetPluginData(node, payload, { importedAs: 'placeholder', placeholder: true, error: 'Target node cannot receive raster image fill' });
+      return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: true, layer: payload.layer || null, importedAs: 'placeholder', warning: 'Target node cannot receive raster image fill', snapshot: serializeNodeSnapshot(node, { includeChildren: false }, 0) } });
     }
     return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: Boolean(payload.placeholder), layer: payload.layer || null } });
   }
