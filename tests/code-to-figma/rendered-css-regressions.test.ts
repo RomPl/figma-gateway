@@ -853,3 +853,61 @@ test('planner preserves multi-shadow and inset effect stacks for plugin effect p
   assert.equal(Boolean(cmd), true);
   assert.equal(cmd.payload.boxShadow, '0px 1px 0px 0px rgba(255, 255, 255, 0.08), 0px 12px 24px -8px rgba(15, 23, 42, 0.24)');
 });
+
+test('planner uses axis-specific grid gaps and top-aligns wrapped rows', () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: {
+      kind: 'frame', uiId: 'footer.grid', visible: true,
+      boundingBox: { x: 0, y: 0, width: 1045, height: 500 },
+      computedStyle: { display: 'grid', width: 1045, height: 500, gap: 36, rowGap: 36, columnGap: 20, alignItems: 'normal' },
+      layout: { type: 'stack', gap: 36, padding: { top: 0, right: 0, bottom: 0, left: 0 }, alignment: { primary: 'start', cross: 'start' }, wrap: false },
+      children: [
+        { kind: 'frame', uiId: 'footer.grid.one', visible: true, boundingBox: { x: 0, y: 0, width: 334.984375, height: 421 }, computedStyle: { display: 'block', width: 334.984375, height: 421 }, children: [] },
+        { kind: 'frame', uiId: 'footer.grid.two', visible: true, boundingBox: { x: 354.984375, y: 0, width: 334.984375, height: 421 }, computedStyle: { display: 'block', width: 334.984375, height: 421 }, children: [] },
+        { kind: 'frame', uiId: 'footer.grid.three', visible: true, boundingBox: { x: 709.96875, y: 0, width: 334.984375, height: 421 }, computedStyle: { display: 'block', width: 334.984375, height: 421 }, children: [] },
+        { kind: 'frame', uiId: 'footer.grid.four', visible: true, boundingBox: { x: 0, y: 457, width: 334.984375, height: 40 }, computedStyle: { display: 'block', width: 334.984375, height: 40 }, children: [] }
+      ]
+    }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'FooterGrid', '[rendered-ui]');
+  const auto = plan.commands.find((item: any) => item.type === 'set_auto_layout' && item.payload?.nodeRef === 'footer.grid') as any;
+  const spacing = plan.commands.find((item: any) => item.type === 'set_spacing' && item.payload?.nodeRef === 'footer.grid') as any;
+  assert.equal(auto.payload.layoutMode, 'HORIZONTAL');
+  assert.equal(auto.payload.layoutWrap, 'WRAP');
+  assert.equal(auto.payload.itemSpacing, 20);
+  assert.equal(auto.payload.counterAxisSpacing, 36);
+  assert.equal(auto.payload.counterAxisAlignItems, 'MIN');
+  assert.equal(spacing.payload.itemSpacing, 20);
+  assert.equal(spacing.payload.counterAxisSpacing, 36);
+});
+
+test('planner does not duplicate button labels and descends into empty icon wrappers', () => {
+  const model: any = {
+    version: 'ui-model.v1',
+    root: {
+      kind: 'button', uiId: 'header.menu', visible: true, text: 'Меню',
+      boundingBox: { x: 0, y: 0, width: 90, height: 32 },
+      computedStyle: { display: 'flex', flexDirection: 'row', width: 90, height: 32, gap: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgb(130, 230, 0)', color: 'rgb(26, 26, 26)', paddingLeft: 8, paddingRight: 8 },
+      layout: { type: 'horizontal', gap: 8, padding: { top: 0, right: 8, bottom: 0, left: 8 }, alignment: { primary: 'center', cross: 'center' }, wrap: false },
+      children: [
+        { kind: 'text', uiId: 'header.menu.label', visible: true, text: 'Меню', boundingBox: { x: 8, y: 9, width: 50, height: 13 }, computedStyle: { display: 'flex', color: 'rgb(26, 26, 26)', fontSize: 12, lineHeight: 13.2 }, children: [] },
+        { kind: 'text', uiId: 'header.menu.iconwrap', visible: true, boundingBox: { x: 66, y: 8, width: 16, height: 16 }, computedStyle: { display: 'flex', width: 16, height: 16, alignItems: 'center', justifyContent: 'center' }, children: [
+          { kind: 'icon', uiId: 'header.menu.iconwrap.line1', visible: true, boundingBox: { x: 66, y: 11, width: 10, height: 1 }, computedStyle: { display: 'block', position: 'absolute', width: 10, height: 1, backgroundColor: 'rgb(26, 26, 26)' }, asset: { layer: 'svg-icon' }, icon: { sourceType: 'font-icon', textLabel: 'i', fill: 'rgb(26, 26, 26)', size: { width: 10, height: 1 }, placement: 'standalone' }, children: [] },
+          { kind: 'icon', uiId: 'header.menu.iconwrap.line2', visible: true, boundingBox: { x: 66, y: 15, width: 10, height: 1 }, computedStyle: { display: 'block', position: 'absolute', width: 10, height: 1, backgroundColor: 'rgb(26, 26, 26)' }, asset: { layer: 'svg-icon' }, icon: { sourceType: 'font-icon', textLabel: 'i', fill: 'rgb(26, 26, 26)', size: { width: 10, height: 1 }, placement: 'standalone' }, children: [] }
+        ] }
+      ]
+    }
+  };
+  const plan = buildCodeToFigmaPlan(model, 'HeaderButton', '[rendered-ui]');
+  const duplicateSyntheticLabels = plan.commands.filter((item: any) => item.type === 'create_text' && item.payload?.parentRef === 'header.menu' && item.payload?.name === 'text-button-label');
+  assert.equal(duplicateSyntheticLabels.length, 0);
+  const iconWrapperCreate = plan.commands.find((item: any) => item.type === 'create_frame' && item.payload?.ref === 'header.menu.iconwrap');
+  assert.equal(Boolean(iconWrapperCreate), true);
+  const lineCreate = plan.commands.find((item: any) => item.type === 'create_frame' && item.payload?.ref === 'header.menu.iconwrap.line1');
+  assert.equal(Boolean(lineCreate), true);
+  const lineFill = plan.commands.find((item: any) => item.type === 'set_fill' && item.payload?.nodeRef === 'header.menu.iconwrap.line1');
+  assert.equal(Boolean(lineFill), true);
+  const wrongIconReference = plan.commands.find((item: any) => item.type === 'set_icon_reference' && item.payload?.nodeRef === 'header.menu.iconwrap.line1');
+  assert.equal(Boolean(wrongIconReference), false);
+});

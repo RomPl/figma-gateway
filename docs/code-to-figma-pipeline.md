@@ -398,3 +398,29 @@ Operational rule for agents:
 - when visual fidelity is uncertain, export the target node as an image and compare it against rendered UI output before handing work to code-side MCP
 
 This keeps the tool explicitly bidirectional: Code/Rendered -> Figma writes produce observed Figma truth, and later Figma -> Code or reconcile operations compare against that observed truth.
+
+## Grid and wrapped-row fidelity
+
+Rendered-first planning must preserve CSS grid/flex row intent through Figma Auto Layout without relying on one generic `gap` value.
+
+Rules:
+
+- horizontal Figma Auto Layout spacing should use the rendered horizontal axis gap (`column-gap`) when available
+- wrapped row spacing should use rendered vertical axis gap (`row-gap`) as `counterAxisSpacing`
+- wrapped rows should be top-aligned with `counterAxisAlignItems=MIN`; cross-axis centering can shift tall first-row children upward and make rows appear broken
+- if the rendered first row clearly contains N children and the generic gap would barely overflow the parent, planner may fit `itemSpacing` down to the row's actual available width instead of forcing an unintended wrap
+
+This preserves layouts such as three-column footer grids where CSS uses `column-gap: 20px` and `row-gap: 36px`, while a generic `gap` value alone would make Figma fit only two columns per row.
+
+## Button text and icon wrappers
+
+Rendered-first buttons must not synthesize duplicate labels when the browser snapshot already contains a rendered text child.
+
+Rules:
+
+- if a button has visible rendered text children, use those children as the label source
+- synthesize `text-button-label` only for button-like containers where visible text exists on the parent but no rendered text child exists
+- empty text-like wrappers that contain visual/icon children must be treated as containers so descendants are not dropped
+- CSS-drawn icon fragments, such as hamburger lines represented by small `<i>` elements with background fills, should be reconstructed as fill-backed frames rather than generic font-icon placeholders
+
+These rules keep the Figma tree editable while preventing duplicated text layers and preserving non-SVG icon constructions for reverse sync.
