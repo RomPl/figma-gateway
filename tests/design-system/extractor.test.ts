@@ -60,6 +60,7 @@ test('observed design system figma commands create editable sidecar with reverse
   assert.equal(commands.some((command: any) => command.type === 'create_frame' && command.payload?.ref === 'design-system/test'), true);
   assert.equal(commands.some((command: any) => command.type === 'set_plugin_data' && command.payload?.nodeRef === 'design-system/test' && command.payload?.pluginData?.key === 'design-system-document'), true);
   assert.equal(commands.some((command: any) => command.type === 'set_plugin_data' && command.payload?.pluginData?.key === 'design-system-token'), true);
+  assert.equal(commands.some((command: any) => command.type === 'create_button_state_set'), true);
   assert.equal(commands.some((command: any) => command.type === 'create_text' && String(command.payload?.text || '').includes('Observed Design System')), true);
   for (const section of ['assets', 'icons', 'layouts', 'shadows', 'borders', 'audit']) {
     assert.equal(commands.some((command: any) => command.type === 'create_frame' && command.payload?.ref === `design-system/test/${section}`), true);

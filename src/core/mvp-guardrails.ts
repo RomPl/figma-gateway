@@ -7,6 +7,7 @@ const SUPPORTED_MVP_COMMANDS = new Set<FigmaLowLevelCommandType>([
   'create_section',
   'create_text',
   'create_text_rich',
+  'create_button_state_set',
   'create_group',
   'move_node',
   'delete_node',

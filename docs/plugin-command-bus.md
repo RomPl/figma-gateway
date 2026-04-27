@@ -320,3 +320,23 @@ Returned data includes:
 `bindings[]` are read from `figma-gateway:design-system-bindings` plugin data on original mockup nodes.
 
 This keeps observed design systems bidirectional: the sidecar can be generated from code/rendered truth and later read back from Figma for code handoff or reconcile.
+
+## Button state set command
+
+`create_button_state_set` creates an editable Figma state set for button-like components.
+
+Default states:
+
+- `default`
+- `hover`
+- `active`
+- `focus`
+- `disabled`
+- `visited`
+
+The command creates a wrapper frame and one editable button specimen per state. The runtime stores state metadata in plugin data:
+
+- `figma-gateway:button-state-set` on the wrapper
+- `figma-gateway:button-state` on each state specimen
+
+This command is used by observed design-system generation for button component patterns. It gives GPT and future code handoff a stable state vocabulary instead of inferring hover/disabled behavior from one static screenshot.

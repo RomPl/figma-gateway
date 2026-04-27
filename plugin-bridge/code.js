@@ -2,7 +2,7 @@ const GATEWAY_URL = 'https://figma-gateway.vazovski.art';
 const API_BEARER_TOKEN = '8f6c2d4e7a0b1c9d3e5f7a8b2c4d6e8f9a1b3c5d7e9f0a2b4c6d8e0f1a3b5c7d';
 const CLIENT_NAME = 'figma-plugin-bridge';
 const POLL_INTERVAL_MS = 3000;
-const RUNTIME_BUILD = '2026-04-27-fidelity-snapshot-1';
+const RUNTIME_BUILD = '2026-04-27-button-states-1';
 const SESSION_STORAGE_KEY = 'figma-gateway-plugin-session-v1';
 let pollInFlight = false;
 const SUPPORTED_GENERIC_COMMANDS = new Set([
@@ -11,6 +11,7 @@ const SUPPORTED_GENERIC_COMMANDS = new Set([
   'create_section',
   'create_text',
   'create_text_rich',
+  'create_button_state_set',
   'create_group',
   'move_node',
   'delete_node',
@@ -411,6 +412,94 @@ async function exportNodeAsImage(payload, refMap) {
   }
   return { nodeId: node.id, format, scale, byteLength: bytes.length, imageData: payload && payload.returnImageData === false ? undefined : base64, snapshot: serializeNodeSnapshot(node, { includeChildren: false }, 0) };
 }
+
+const STANDARD_BUTTON_STATES = ['default', 'hover', 'active', 'focus', 'disabled', 'visited'];
+function clonePaintsForButtonStates(value) { const cloned = safeClone(value); return Array.isArray(cloned) ? cloned : cloned ? [cloned] : []; }
+function shiftSolidPaints(paints, delta, opacityMultiplier) {
+  const list = clonePaintsForButtonStates(paints);
+  return list.map(function (paint) {
+    if (!paint || paint.type !== 'SOLID' || !paint.color) return paint;
+    const next = Object.assign({}, paint, { color: Object.assign({}, paint.color) });
+    next.color.r = Math.max(0, Math.min(1, Number(next.color.r || 0) + delta));
+    next.color.g = Math.max(0, Math.min(1, Number(next.color.g || 0) + delta));
+    next.color.b = Math.max(0, Math.min(1, Number(next.color.b || 0) + delta));
+    if (opacityMultiplier !== undefined) next.opacity = Math.max(0, Math.min(1, Number(next.opacity === undefined ? 1 : next.opacity) * opacityMultiplier));
+    return next;
+  });
+}
+function deriveButtonStateStyle(base, stateName) {
+  const fills = clonePaintsForButtonStates(base.fills || base.fill || [{ type: 'SOLID', color: { r: 0.15, g: 0.39, b: 0.92 } }]);
+  const strokes = clonePaintsForButtonStates(base.strokes || base.stroke || []);
+  const textFills = clonePaintsForButtonStates(base.textFills || base.textFill || [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }]);
+  const style = { fills: fills, strokes: strokes, textFills: textFills, opacity: base.opacity !== undefined ? Number(base.opacity) : 1, labelSuffix: '', description: 'default button state' };
+  if (stateName === 'hover') { style.fills = shiftSolidPaints(fills, 0.06); style.description = 'hover: slightly lighter fill'; }
+  else if (stateName === 'active') { style.fills = shiftSolidPaints(fills, -0.08); style.description = 'active/pressed: slightly darker fill'; }
+  else if (stateName === 'focus') { style.strokes = clonePaintsForButtonStates(base.focusStrokes || [{ type: 'SOLID', color: { r: 0.23, g: 0.51, b: 0.96 } }]); style.strokeWeight = Math.max(2, Number(base.strokeWeight || 1)); style.description = 'focus: visible keyboard focus ring'; }
+  else if (stateName === 'disabled') { style.fills = shiftSolidPaints(fills, 0.18, 0.5); style.textFills = shiftSolidPaints(textFills, 0.18, 0.55); style.opacity = 0.56; style.description = 'disabled: muted and non-interactive'; }
+  else if (stateName === 'visited') { style.fills = clonePaintsForButtonStates(base.visitedFills || fills); style.textFills = clonePaintsForButtonStates(base.visitedTextFills || textFills); style.description = 'visited: retained for link-like buttons'; }
+  return style;
+}
+async function createButtonStateSet(payload, refMap) {
+  const parent = await getParentNodeResolved(payload || {}, refMap || {});
+  const states = Array.isArray(payload.states) && payload.states.length ? payload.states.map(function (item) { return String(item); }) : STANDARD_BUTTON_STATES;
+  const width = Number(payload.width || 160);
+  const height = Number(payload.height || 44);
+  const gap = Number(payload.gap || 20);
+  const label = String(payload.label || payload.text || 'Button');
+  const ref = String(payload.ref || payload.uiId || ('button-states-' + Date.now()));
+  const wrapper = figma.createFrame();
+  wrapper.name = String(payload.name || 'Button states');
+  wrapper.resizeWithoutConstraints(Math.max(width, states.length * (width + gap) - gap), height + 74);
+  parent.appendChild(wrapper);
+  setUiIdOnNode(wrapper, payload.uiId || ref);
+  setXY(wrapper, payload.x, payload.y);
+  wrapper.fills = [];
+  wrapper.layoutMode = 'HORIZONTAL';
+  wrapper.itemSpacing = gap;
+  wrapper.paddingTop = 34;
+  wrapper.paddingRight = 0;
+  wrapper.paddingBottom = 0;
+  wrapper.paddingLeft = 0;
+  wrapper.counterAxisAlignItems = 'MIN';
+  wrapper.primaryAxisAlignItems = 'MIN';
+  if (wrapper.setPluginData) {
+    wrapper.setPluginData('figma-gateway:button-state-set', JSON.stringify({ version: 'button-state-set.v1', states: states, sourceUiId: payload.sourceUiId || payload.uiId || null, role: payload.role || 'button' }));
+  }
+  const created = [];
+  for (let i = 0; i < states.length; i += 1) {
+    const stateName = states[i];
+    const stateStyle = deriveButtonStateStyle(payload || {}, stateName);
+    const button = figma.createFrame();
+    button.name = 'Button / state=' + stateName;
+    button.resizeWithoutConstraints(width, height);
+    button.layoutMode = 'HORIZONTAL';
+    button.primaryAxisAlignItems = 'CENTER';
+    button.counterAxisAlignItems = 'CENTER';
+    button.paddingLeft = Number(payload.paddingLeft !== undefined ? payload.paddingLeft : 16);
+    button.paddingRight = Number(payload.paddingRight !== undefined ? payload.paddingRight : 16);
+    button.itemSpacing = Number(payload.itemSpacing !== undefined ? payload.itemSpacing : 8);
+    button.cornerRadius = Number(payload.cornerRadius !== undefined ? payload.cornerRadius : payload.radius !== undefined ? payload.radius : 6);
+    button.fills = stateStyle.fills;
+    if (stateStyle.strokes.length) button.strokes = stateStyle.strokes;
+    if (stateStyle.strokeWeight !== undefined) button.strokeWeight = stateStyle.strokeWeight;
+    button.opacity = stateStyle.opacity;
+    wrapper.appendChild(button);
+    const textNode = figma.createText();
+    const font = await loadRequestedFont({ fontFamily: payload.fontFamily || 'Inter', fontWeight: payload.fontWeight || '500' });
+    if (font) textNode.fontName = font;
+    else await figma.loadFontAsync(textNode.fontName);
+    textNode.name = 'Label / state=' + stateName;
+    textNode.characters = label;
+    textNode.fontSize = Number(payload.fontSize || 14);
+    textNode.fills = stateStyle.textFills;
+    button.appendChild(textNode);
+    if (button.setPluginData) button.setPluginData('figma-gateway:button-state', JSON.stringify({ version: 'button-state.v1', state: stateName, behavior: stateStyle.description, sourceUiId: payload.sourceUiId || payload.uiId || null }));
+    created.push({ state: stateName, nodeId: button.id, textNodeId: textNode.id });
+  }
+  if (payload.ref) refMap[String(payload.ref)] = wrapper.id;
+  return normalizeCommandResult('create_button_state_set', 'ok', { nodeId: wrapper.id, data: { id: wrapper.id, states: created, snapshot: serializeNodeSnapshot(wrapper, { includeChildren: true, maxDepth: 2 }, 0) } });
+}
+
 function applyTextMetrics(textNode, payload) { if (payload.lineHeight !== undefined) textNode.lineHeight = { value: Number(payload.lineHeight), unit: 'PIXELS' }; if (payload.letterSpacing !== undefined) textNode.letterSpacing = { value: Number(payload.letterSpacing), unit: 'PIXELS' }; }
 function parseCssColor(raw) { const rgb=String(raw).match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/i); if (rgb) return {r:Number(rgb[1])/255,g:Number(rgb[2])/255,b:Number(rgb[3])/255,a:rgb[4]!==undefined?Number(rgb[4]):1}; const hex=String(raw).trim().replace('#',''); if (hex.length===6||hex.length===3){ const n=hex.length===3?hex.split('').map(c=>c+c).join(''):hex; return {r:parseInt(n.slice(0,2),16)/255,g:parseInt(n.slice(2,4),16)/255,b:parseInt(n.slice(4,6),16)/255,a:1}; } return {r:0,g:0,b:0,a:0.25}; }
 function splitBoxShadowEntries(boxShadow) { const input=String(boxShadow||'').trim(); if (!input || input==='none') return []; const parts=[]; let current=''; let depth=0; for (const ch of input) { if (ch==='(') depth+=1; if (ch===')') depth=Math.max(0, depth-1); if (ch===',' && depth===0) { if (current.trim()) parts.push(current.trim()); current=''; continue; } current+=ch; } if (current.trim()) parts.push(current.trim()); return parts; }
@@ -674,6 +763,9 @@ async function executeLowLevelCommand(step, refMap) {
   if (commandType === 'export_ui_snapshot') {
     const document = await exportUiSnapshot(payload);
     return normalizeCommandResult(commandType, 'ok', { nodeId: document.root && document.root.source ? document.root.source.nodeId || null : null, data: document });
+  }
+  if (commandType === 'create_button_state_set') {
+    return await createButtonStateSet(payload, refMap);
   }
   if (commandType === 'create_frame_rich') {
     return await createFrameRich(payload, refMap);

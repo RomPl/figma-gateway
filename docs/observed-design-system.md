@@ -196,3 +196,29 @@ This command is intended for GPT orchestration and future `mcp.vazovski.art` han
 ## Current curation boundary
 
 The system still treats observed tokens as suggestions. It does not yet promote them to permanent Figma Variables or repository design tokens automatically. The next product step is a curated design-system pass that can accept, rename, merge or reject observed tokens before code changes are generated.
+
+## MVP1 completion scope
+
+MVP1 is considered complete when the system can:
+
+1. extract an observed design system from rendered browser truth
+2. create an editable Figma sidecar next to the imported mockup
+3. write token bindings back onto source mockup nodes
+4. read the sidecar and bindings back from Figma through `export_design_system_snapshot`
+5. represent standard button states as editable Figma state sets
+
+Button state sets include:
+
+- `default`
+- `hover`
+- `active`
+- `focus`
+- `disabled`
+- `visited`
+
+These states are stored with plugin data:
+
+- `figma-gateway:button-state-set`
+- `figma-gateway:button-state`
+
+They are not treated as final application behavior by themselves. They are design-system evidence and handoff material for a later code patch via `mcp.vazovski.art`.

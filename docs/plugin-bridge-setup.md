@@ -173,3 +173,7 @@ Keep only one active plugin bridge session per Figma file during live import and
 The plugin UI now also shows how many active bridge sessions exist for the current file. Clicking the active-session button keeps only the current session connected and marks sibling sessions for the same file as inactive.
 
 If multiple active sessions exist for the same file, the server now rejects live import batches with `MULTIPLE_ACTIVE_SESSIONS` instead of guessing which plugin should execute the command bus.
+
+## No-scroll compact plugin UI
+
+The plugin UI is intentionally compact and uses `overflow: hidden` for the plugin iframe. Runtime status rows are sized to fit in the fixed plugin window without vertical scrolling.

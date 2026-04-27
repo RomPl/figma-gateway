@@ -97,7 +97,7 @@ test('plugin bridge create_text applies requested font before characters assignm
 
 test('plugin runtime source exposes debug_runtime_info command for font diagnostics', async () => {
   const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
-  assert.match(source, /RUNTIME_BUILD = '2026-04-27-fidelity-snapshot-1'/);
+  assert.match(source, /RUNTIME_BUILD = '2026-04-27-button-states-1'/);
   assert.match(source, /'debug_runtime_info'/);
   assert.match(source, /listAvailableFontsAsync\(\)/);
 });
@@ -234,4 +234,20 @@ test('plugin runtime includes asset plugin data in exported snapshots', async ()
   const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
   assert.match(source, /function getAssetPluginData/);
   assert.equal(source.includes('asset: getAssetPluginData(node)'), true);
+});
+
+test('plugin runtime exposes standard button state set command and compact no-scroll UI', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  const ui = require('node:fs').readFileSync('plugin-bridge/ui.html', 'utf8');
+  const writeTypes = require('node:fs').readFileSync('src/core/figma-write-types.ts', 'utf8');
+  const guardrails = require('node:fs').readFileSync('src/core/mvp-guardrails.ts', 'utf8');
+  assert.match(source, /'create_button_state_set'/);
+  assert.match(source, /STANDARD_BUTTON_STATES = \['default', 'hover', 'active', 'focus', 'disabled', 'visited'\]/);
+  assert.match(source, /function createButtonStateSet/);
+  assert.match(source, /figma-gateway:button-state-set/);
+  assert.match(source, /figma-gateway:button-state/);
+  assert.match(writeTypes, /'create_button_state_set'/);
+  assert.match(guardrails, /'create_button_state_set'/);
+  assert.match(ui, /overflow: hidden/);
+  assert.match(ui, /grid-template-columns: 1fr 1fr/);
 });

@@ -344,16 +344,42 @@ const componentCommands = (dsRef: string, token: DesignSystemDocument['component
   const y = 96 + index * 86;
   const w = Math.max(120, Math.min(260, token.value.width ?? 160));
   const h = Math.max(36, Math.min(72, token.value.height ?? 44));
-  return [
-    { type: 'create_frame', payload: { ref, parentRef: `${dsRef}/components`, uiId: ref, name: `Component specimen - ${token.name}`, x: 24, y, width: 880, height: 70 } },
+  const commands: FigmaCommandStep[] = [
+    { type: 'create_frame', payload: { ref, parentRef: `${dsRef}/components`, uiId: ref, name: `Component specimen - ${token.name}`, x: 24, y, width: 880, height: token.value.role === 'button' ? 132 : 70 } },
     { type: 'set_fill', payload: { nodeRef: ref, fills: [] } },
     { type: 'set_plugin_data', payload: { nodeRef: ref, pluginData: { namespace: 'figma-gateway', key: 'design-system-token', value: createEvidenceMeta(token) } } },
-    { type: 'create_frame', payload: { ref: `${ref}/sample`, parentRef: ref, uiId: `${ref}/sample`, name: token.name, x: 0, y: 8, width: w, height: h } },
-    { type: 'set_fill', payload: { nodeRef: `${ref}/sample`, fills: paintForHex(token.value.fill ?? '#F8FAFC') } },
-    { type: 'set_corner_radius', payload: { nodeRef: `${ref}/sample`, radius: token.value.radius ?? 4 } },
-    ...text(`${ref}/sample/text`, `${ref}/sample`, token.value.role === 'button' ? 'Button' : token.value.role, 16, Math.max(8, h / 2 - 9), Math.max(80, w - 32), 14, '500'),
     ...text(`${ref}/meta`, ref, `${token.name} · ${token.count} uses`, 300, 20, 400, 12, '400')
   ];
+  if (token.value.role === 'button') {
+    commands.push({
+      type: 'create_button_state_set',
+      payload: {
+        ref: `${ref}/states`,
+        parentRef: ref,
+        uiId: `${ref}/states`,
+        sourceUiId: token.evidence[0]?.uiId,
+        name: `${token.name} states`,
+        x: 0,
+        y: 8,
+        width: w,
+        height: h,
+        label: 'Button',
+        fills: paintForHex(token.value.fill ?? '#82E600'),
+        textFills: paintForHex(token.value.color ?? '#1A1A1A'),
+        cornerRadius: token.value.radius ?? 4,
+        fontSize: 14,
+        fontWeight: '500'
+      }
+    });
+  } else {
+    commands.push(
+      { type: 'create_frame', payload: { ref: `${ref}/sample`, parentRef: ref, uiId: `${ref}/sample`, name: token.name, x: 0, y: 8, width: w, height: h } },
+      { type: 'set_fill', payload: { nodeRef: `${ref}/sample`, fills: paintForHex(token.value.fill ?? '#F8FAFC') } },
+      { type: 'set_corner_radius', payload: { nodeRef: `${ref}/sample`, radius: token.value.radius ?? 4 } },
+      ...text(`${ref}/sample/text`, `${ref}/sample`, token.value.role, 16, Math.max(8, h / 2 - 9), Math.max(80, w - 32), 14, '500')
+    );
+  }
+  return commands;
 };
 
 
