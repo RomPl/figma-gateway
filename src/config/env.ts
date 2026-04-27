@@ -31,7 +31,8 @@ const envSchema = z.object({
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().min(1).max(10000).default(60),
   SQLITE_DB_PATH: z.string().trim().min(1).default('/home/figma-gateway.vazovski.art/data/figma-gateway.sqlite'),
   ALIAS_REGISTRY_SEED_ON_STARTUP: z.coerce.boolean().default(false),
-  CODE_UI_ROOT_DIR: z.string().trim().min(1).default('/home/figma-gateway.vazovski.art')
+  CODE_UI_ROOT_DIR: z.string().trim().min(1).default('/home/figma-gateway.vazovski.art'),
+  GATEWAY_PUBLIC_BASE_URL: z.string().url().default('https://figma-gateway.vazovski.art')
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -71,6 +72,7 @@ export type AppConfig = {
   sqliteDbPath: string;
   aliasRegistrySeedOnStartup: boolean;
   codeUiRootDir: string;
+  gatewayPublicBaseUrl: string;
 };
 
 export const config: AppConfig = {
@@ -103,5 +105,6 @@ export const config: AppConfig = {
   rateLimitMaxRequests: parsedEnv.data.RATE_LIMIT_MAX_REQUESTS,
   sqliteDbPath: parsedEnv.data.SQLITE_DB_PATH,
   aliasRegistrySeedOnStartup: parsedEnv.data.ALIAS_REGISTRY_SEED_ON_STARTUP,
-  codeUiRootDir: parsedEnv.data.CODE_UI_ROOT_DIR
+  codeUiRootDir: parsedEnv.data.CODE_UI_ROOT_DIR,
+  gatewayPublicBaseUrl: parsedEnv.data.GATEWAY_PUBLIC_BASE_URL
 };

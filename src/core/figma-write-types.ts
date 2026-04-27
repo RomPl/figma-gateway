@@ -13,8 +13,10 @@ export const FIGMA_WRITE_OPERATIONS = [
 
 export const FIGMA_LOW_LEVEL_COMMAND_TYPES = [
   'create_frame',
+  'create_frame_rich',
   'create_section',
   'create_text',
+  'create_text_rich',
   'create_group',
   'move_node',
   'delete_node',
@@ -39,6 +41,8 @@ export const FIGMA_LOW_LEVEL_COMMAND_TYPES = [
   'find_nodes',
   'delete_matching_nodes',
   'export_ui_snapshot',
+  'export_node_snapshot',
+  'export_node_as_image',
   'set_effects',
   'set_asset_reference',
   'set_icon_reference',

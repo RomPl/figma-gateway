@@ -97,7 +97,7 @@ test('plugin bridge create_text applies requested font before characters assignm
 
 test('plugin runtime source exposes debug_runtime_info command for font diagnostics', async () => {
   const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
-  assert.match(source, /RUNTIME_BUILD = '2026-04-17-font-debug-1'/);
+  assert.match(source, /RUNTIME_BUILD = '2026-04-27-fidelity-snapshot-1'/);
   assert.match(source, /'debug_runtime_info'/);
   assert.match(source, /listAvailableFontsAsync\(\)/);
 });
@@ -194,4 +194,27 @@ test('plugin runtime UI exposes active session count and keep-current action', a
   assert.match(source, /getSessionScope\(/);
   assert.match(source, /keepOnlyCurrentSession\(/);
   assert.match(source, /keep-current-session/);
+});
+
+
+test('plugin runtime exposes fidelity snapshot and export commands for bidirectional verification', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  const writeTypes = require('node:fs').readFileSync('src/core/figma-write-types.ts', 'utf8');
+  const guardrails = require('node:fs').readFileSync('src/core/mvp-guardrails.ts', 'utf8');
+  for (const command of ['create_frame_rich', 'create_text_rich', 'export_node_snapshot', 'export_node_as_image']) {
+    assert.match(source, new RegExp("'" + command + "'"));
+    assert.match(writeTypes, new RegExp("'" + command + "'"));
+    assert.match(guardrails, new RegExp("'" + command + "'"));
+  }
+  assert.match(source, /serializeNodeSnapshot/);
+  assert.match(source, /JSON_REST_V1/);
+  assert.match(source, /returnSnapshots/);
+});
+
+test('plugin runtime validates auto-layout constraints before applying visual mutations', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /Padding can only be set on auto-layout frames/);
+  assert.match(source, /BASELINE counter axis alignment is only valid for HORIZONTAL auto layout/);
+  assert.match(source, /FILL sizing is only valid for children of auto-layout frames/);
+  assert.match(source, /counterAxisSpacing requires layoutWrap=WRAP/);
 });

@@ -3,8 +3,10 @@ import type { FigmaCommandStep, FigmaLowLevelCommandType } from './figma-write-t
 
 const SUPPORTED_MVP_COMMANDS = new Set<FigmaLowLevelCommandType>([
   'create_frame',
+  'create_frame_rich',
   'create_section',
   'create_text',
+  'create_text_rich',
   'create_group',
   'move_node',
   'delete_node',
@@ -30,6 +32,8 @@ const SUPPORTED_MVP_COMMANDS = new Set<FigmaLowLevelCommandType>([
   'set_effects',
   'delete_matching_nodes',
   'export_ui_snapshot',
+  'export_node_snapshot',
+  'export_node_as_image',
   'debug_runtime_info'
 ]);
 

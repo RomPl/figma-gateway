@@ -5,6 +5,7 @@ import { AppError } from './errors';
 import type { CodeUiParserService } from './code-ui-parser';
 import type { FigmaCommandStep } from './figma-write-types';
 import type { PluginBridgeService } from './plugin-bridge';
+import { config } from '../config/env';
 import type { UiModelDocument, UiNode, UiPaint } from './ui-model';
 import { createPlanningContextFromNode, formatPlanningVariantName } from './planning-context';
 import { attachBlockIdentity } from './block-identity';
@@ -45,6 +46,7 @@ export type PlannerActionType =
   | 'set_alignment'
   | 'set_size'
   | 'set_position'
+  | 'set_layout_sizing'
   | 'set_asset'
   | 'set_icon'
   | 'move_node';
@@ -180,8 +182,19 @@ const buildFigmaNodeName = (node: UiNode, fallbackTag?: string): string => {
 };
 
 
+const extractFirstColorToken = (raw: string): string | undefined => {
+  const value = String(raw || '').trim();
+  if (!value) return undefined;
+  const exactHex = value.match(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
+  if (exactHex) return exactHex[0];
+  const exactRgb = value.match(/^rgba?\([^)]*\)$/i);
+  if (exactRgb) return exactRgb[0];
+  const firstMatch = value.match(/rgba?\([^)]*\)|#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})/i);
+  return firstMatch ? firstMatch[0] : undefined;
+};
 const normalizeColor = (raw: string): { r: number; g: number; b: number; a?: number } | null => {
-  const hex = raw.trim().startsWith('#') ? raw.trim().slice(1) : null;
+  const token = extractFirstColorToken(raw) || String(raw || '').trim();
+  const hex = token.startsWith('#') ? token.slice(1) : null;
   if (hex && (hex.length === 6 || hex.length === 3)) {
     const normalized = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
     return {
@@ -191,7 +204,7 @@ const normalizeColor = (raw: string): { r: number; g: number; b: number; a?: num
       a: 1
     };
   }
-  const rgb = raw.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/i);
+  const rgb = token.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/i);
   if (!rgb) return null;
   return { r: Number(rgb[1]) / 255, g: Number(rgb[2]) / 255, b: Number(rgb[3]) / 255, a: rgb[4] !== undefined ? Number(rgb[4]) : 1 };
 };
@@ -263,19 +276,77 @@ const shouldSkipTransparentTextWrapper = (node: UiNode): boolean => {
 const firstColorFromGradient = (raw: string | undefined): string | undefined => { if (!raw) return undefined; const match = String(raw).match(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/); return match ? match[1] : undefined; };
 const hasRenderablePaint = (raw: string | undefined, opacity = 1): boolean => Boolean(lowerAnyPaint(raw, opacity)?.length);
 const shouldCenterWithinParent = (node: UiNode, parentNode: UiNode | undefined): boolean => { const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined; const className = String(dom?.className || '').toLowerCase(); return Boolean(parentNode && (className.includes('mx-auto') || (node.computedStyle?.marginLeftAuto && node.computedStyle?.marginRightAuto) || (((node.computedStyle?.marginLeft ?? 0) > 0) && ((node.computedStyle?.marginRight ?? 0) > 0)))); };
+
+const getRenderedFormMeta = (node: UiNode): Record<string, unknown> | undefined => {
+  const renderedMeta = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>) : undefined;
+  return renderedMeta && typeof renderedMeta.form === 'object' ? (renderedMeta.form as Record<string, unknown>) : undefined;
+};
+const isSwitchLikeInputNode = (node: UiNode): boolean => {
+  if (node.kind !== 'input') return false;
+  const renderedForm = getRenderedFormMeta(node);
+  const inputType = typeof renderedForm?.inputType === 'string' ? String(renderedForm.inputType).toLowerCase() : '';
+  const renderedMeta = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>) : undefined;
+  const semanticsRole = String((renderedMeta as any)?.semantics?.role || '').toLowerCase();
+  return inputType === 'checkbox' || inputType === 'radio' || semanticsRole === 'switch';
+};
+const isDecorativeBackgroundImageSource = (value: string | undefined): boolean => {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return false;
+  return raw.includes('gradient(') || raw.startsWith('url("data:image/svg+xml') || raw.startsWith("url('data:image/svg+xml") || raw.startsWith('data:image/svg+xml');
+};
+const shouldTreatBackgroundImageAsControlDecoration = (node: UiNode): boolean => {
+  if (!isSwitchLikeInputNode(node)) return false;
+  return isDecorativeBackgroundImageSource(String(node.computedStyle?.backgroundImage || ''));
+};
+
+const hasProxyImageChildAsset = (node: UiNode): boolean => {
+  if (node.kind !== 'image') return false;
+  return (node.children || []).some((child) => {
+    const layer = child.asset?.layer;
+    const source = String(child.asset?.resolvedAssetPath || child.asset?.sourceUrl || '').trim();
+    return child.kind === 'image' && layer === 'image' && Boolean(source);
+  });
+};
+const shouldSkipAssetReference = (node: UiNode): boolean => {
+  if (node.asset?.layer === 'svg-icon') return true;
+  if (node.asset?.layer === 'background-image') {
+    const source = String(node.asset?.resolvedAssetPath || node.asset?.sourceUrl || node.computedStyle?.backgroundImage || '');
+    if (isDecorativeBackgroundImageSource(source)) return true;
+  }
+  if (node.icon?.svgMarkup) return true;
+  return shouldTreatBackgroundImageAsControlDecoration(node);
+};
+const PLACEHOLDER_BLOCKING_GUARDRAILS = new Set(['canvas', 'webgl', 'lottie', 'background-image-unsupported', 'asset-source-missing']);
 const placeholderReasonsForNode = (node: UiNode): string[] => {
   const guardrails = node.meta && typeof node.meta.guardrails === 'object' ? (node.meta.guardrails as Record<string, unknown>) : undefined;
   const reasons: string[] = [];
   if (Array.isArray(guardrails?.unsupportedRegions)) {
-    reasons.push(...guardrails.unsupportedRegions.map((item) => String(item)).filter((item) => item && item !== 'heuristic_node'));
+    reasons.push(...guardrails.unsupportedRegions
+      .map((item) => String(item))
+      .filter((item) => item && item !== 'heuristic_node' && PLACEHOLDER_BLOCKING_GUARDRAILS.has(item)));
   }
   const bgImage = node.computedStyle?.backgroundImage;
   const hasInlineSvgSource = Boolean(node.kind === 'icon' && typeof node.icon?.svgMarkup === 'string' && node.icon.svgMarkup.trim());
-  if (isMeaningfulPaintRaw(bgImage) && !hasRenderablePaint(bgImage, node.computedStyle?.opacity ?? 1) && !String(bgImage).includes('gradient(')) reasons.push('background-image-unsupported');
-  if ((node.kind === 'image' || (Boolean(node.asset?.layer) && !hasInlineSvgSource)) && !node.asset?.sourceUrl && !node.asset?.resolvedAssetPath && node.asset?.layer !== 'decorative-asset') reasons.push('asset-source-missing');
+  if (isMeaningfulPaintRaw(bgImage) && !shouldTreatBackgroundImageAsControlDecoration(node) && !hasRenderablePaint(bgImage, node.computedStyle?.opacity ?? 1) && !String(bgImage).includes('gradient(')) reasons.push('background-image-unsupported');
+  if ((node.kind === 'image' || (Boolean(node.asset?.layer) && !hasInlineSvgSource)) && !node.asset?.sourceUrl && !node.asset?.resolvedAssetPath && node.asset?.layer !== 'decorative-asset' && !hasProxyImageChildAsset(node)) reasons.push('asset-source-missing');
   return Array.from(new Set(reasons.filter(Boolean)));
 };
 const shouldRenderAsRedPlaceholder = (node: UiNode): boolean => placeholderReasonsForNode(node).length > 0;
+
+const hasRenderableAssetSource = (node: UiNode): boolean => {
+  const layer = node.asset?.layer;
+  const source = String(node.asset?.resolvedAssetPath || node.asset?.sourceUrl || '').trim();
+  if (!source) return false;
+  if (layer !== 'image' && layer !== 'background-image') return false;
+  if (/^data:image\//i.test(source)) return true;
+  if (/^https?:\/\//i.test(source)) return true;
+  if (/^\//.test(source)) return true;
+  return false;
+};
+const shouldPreserveRenderableAssetReference = (node: UiNode): boolean => {
+  if (!hasRenderableAssetSource(node)) return false;
+  return node.asset?.layer === 'image';
+};
 const supportsLayoutBoxNode = (node: UiNode): boolean => ['frame','section','card','list','form','button','input'].includes(node.kind);
 const supportsCornerRadiusNode = (node: UiNode): boolean => ['frame','section','card','list','form','button','input','image'].includes(node.kind);
 const shouldEmitFillReset = (node: UiNode): boolean => shouldForceTransparentFill(node) && supportsLayoutBoxNode(node);
@@ -401,6 +472,9 @@ const shouldAddOverlayShadowHelper = (node: UiNode): boolean => {
   return (node.kind === 'frame' || node.kind === 'group') && radius >= 999 && Boolean(shadow) && hasSingleIconChild;
 };
 
+const FIGMA_FONT_FAMILY_ALIASES: Record<string, string> = {
+  robotoflex: 'Roboto Flex'
+};
 const normalizeFontFamilyForFigma = (rawFamily: unknown): string | undefined => {
   const parts = String(rawFamily || '').split(',').map((item) => String(item || '').replace(/["']/g, '').trim()).filter(Boolean);
   const genericFamilies = new Set(['ui-sans-serif','ui-serif','ui-monospace','system-ui','sans-serif','serif','monospace','emoji','math','fangsong']);
@@ -408,7 +482,11 @@ const normalizeFontFamilyForFigma = (rawFamily: unknown): string | undefined => 
     const normalized = item.toLowerCase();
     return !genericFamilies.has(normalized) && !normalized.includes('emoji') && !normalized.includes('symbol') && !normalized.includes('color emoji');
   });
-  return concrete[0] || 'Inter';
+  const primary = concrete[0] || 'Inter';
+  const alias = FIGMA_FONT_FAMILY_ALIASES[primary.toLowerCase()];
+  if (alias) return alias;
+  if (!primary.includes(' ') && /[a-z][A-Z]/.test(primary)) return primary.replace(/([a-z])([A-Z])/g, '$1 $2');
+  return primary;
 };
 
 const inferFigmaFontStyle = (fontWeight: unknown, explicitStyle: unknown): string | undefined => {
@@ -429,6 +507,99 @@ const lowerTextAlign = (value: string | undefined): string | undefined =>
 const walkNodes = (node: UiNode, fn: (node: UiNode) => void): void => {
   fn(node);
   node.children.forEach((child) => walkNodes(child, fn));
+};
+
+const FONT_AWESOME_FREE_VERSION = '6.0.0';
+const fontAwesomeSvgCache = new Map<string, string | null>();
+const FONT_AWESOME_STYLE_CLASS_TO_DIR: Record<string, 'solid' | 'regular' | 'brands'> = {
+  'fas': 'solid',
+  'fa-solid': 'solid',
+  'far': 'regular',
+  'fa-regular': 'regular',
+  'fab': 'brands',
+  'fa-brands': 'brands'
+};
+const FONT_AWESOME_ICON_ALIASES: Record<string, string> = {
+  'cloud-upload-alt': 'cloud-arrow-up'
+};
+const FONT_AWESOME_UTILITY_CLASSES = new Set([
+  'fa-fw','fa-spin','fa-spin-pulse','fa-spin-reverse','fa-pulse','fa-beat','fa-bounce','fa-fade','fa-shake','fa-flip','fa-border','fa-inverse','fa-xs','fa-sm','fa-lg','fa-xl','fa-2xl','fa-ul','fa-li'
+]);
+const isFontAwesomeUtilityClass = (value: string): boolean => {
+  if (FONT_AWESOME_UTILITY_CLASSES.has(value)) return true;
+  if (/^fa-(?:[1-9]|10)x$/.test(value)) return true;
+  if (/^fa-(?:rotate|flip)-/.test(value)) return true;
+  return false;
+};
+const parseFontAwesomeIconSpec = (label: string | undefined): { dir: 'solid' | 'regular' | 'brands'; iconName: string } | null => {
+  const classes = String(label || '').split(/\s+/).map((item) => item.trim()).filter(Boolean);
+  if (!classes.length) return null;
+  const dir = classes.map((item) => FONT_AWESOME_STYLE_CLASS_TO_DIR[item]).find(Boolean) ?? 'solid';
+  const iconClass = classes.find((item) => item.startsWith('fa-') && !FONT_AWESOME_STYLE_CLASS_TO_DIR[item] && !isFontAwesomeUtilityClass(item));
+  if (!iconClass) return null;
+  const rawName = iconClass.replace(/^fa-/, '');
+  const iconName = FONT_AWESOME_ICON_ALIASES[rawName] ?? rawName;
+  return iconName ? { dir, iconName } : null;
+};
+const fetchFontAwesomeSvgMarkup = async (label: string | undefined): Promise<string | undefined> => {
+  const spec = parseFontAwesomeIconSpec(label);
+  if (!spec) return undefined;
+  const cacheKey = `${spec.dir}:${spec.iconName}`;
+  if (fontAwesomeSvgCache.has(cacheKey)) return fontAwesomeSvgCache.get(cacheKey) ?? undefined;
+  const url = `https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@${FONT_AWESOME_FREE_VERSION}/svgs/${spec.dir}/${spec.iconName}.svg`;
+  try {
+    const response = await fetch(url, { redirect: 'follow' });
+    if (!response.ok) {
+      fontAwesomeSvgCache.set(cacheKey, null);
+      return undefined;
+    }
+    const svg = await response.text();
+    const normalized = svg.trim().startsWith('<svg') ? svg : undefined;
+    fontAwesomeSvgCache.set(cacheKey, normalized ?? null);
+    return normalized;
+  } catch {
+    fontAwesomeSvgCache.set(cacheKey, null);
+    return undefined;
+  }
+};
+
+export const normalizeRenderableAssetSourcesForTarget = (document: UiModelDocument): UiModelDocument => {
+  const gatewayBase = config.gatewayPublicBaseUrl.replace(/\/$/, '');
+  walkNodes(document.root, (node) => {
+    if (!node.asset) return;
+    const rewrite = (value: string | undefined): string | undefined => {
+      const raw = String(value || '').trim();
+      if (!raw || raw.startsWith('data:')) return value;
+      try {
+        const assetUrl = new URL(raw);
+        if (!/^https?:$/.test(assetUrl.protocol)) return value;
+        const sourceKind = /\.svg$/i.test(assetUrl.pathname) ? 'svg' : 'raster';
+        return `${gatewayBase}/api/assets/proxy?src=${encodeURIComponent(assetUrl.toString())}&sourceKind=${sourceKind}`;
+      } catch {
+        return value;
+      }
+    };
+    node.asset = {
+      ...node.asset,
+      sourceUrl: rewrite(node.asset.sourceUrl),
+      resolvedAssetPath: rewrite(node.asset.resolvedAssetPath)
+    };
+  });
+  return document;
+};
+
+export const hydrateFontIconSvgMarkup = async (document: UiModelDocument): Promise<UiModelDocument> => {
+  const jobs: Promise<void>[] = [];
+  walkNodes(document.root, (node) => {
+    if (node.kind !== 'icon' || node.icon?.sourceType !== 'font-icon' || node.icon?.svgMarkup) return;
+    jobs.push((async () => {
+      const svgMarkup = await fetchFontAwesomeSvgMarkup(node.icon?.textLabel);
+      if (!svgMarkup) return;
+      node.icon = { ...(node.icon ?? {}), svgMarkup, figmaStrategy: 'vector_icon' };
+    })());
+  });
+  if (jobs.length) await Promise.all(jobs);
+  return document;
 };
 
 type FirstPassAcceptance = { passed: boolean; issues: string[]; coverage: Record<string, number | boolean> };
@@ -463,17 +634,18 @@ export const auditFirstPassVisualAcceptance = (model: UiModelDocument): FirstPas
   });
 
   const rootHasBackground = hasMeaningfulBackground(model.root);
+  const simpleLandingLikeStructure = rootHasBackground && containerCount >= 12 && textCount >= 8 && buttonCount >= 1;
   const issues: string[] = [];
   if (!rootHasBackground && backgroundNodeCount <= 1) issues.push('missing root or screen-level background coverage');
-  if (largeContainerCount < 2) issues.push('insufficient large visual container coverage');
+  if (largeContainerCount < 2 && !simpleLandingLikeStructure) issues.push('insufficient large visual container coverage');
   if (textCount < 2) issues.push('insufficient text coverage for first-pass mock reconstruction');
   if (buttonCount < 1) issues.push('missing primary action/button coverage');
-  if (iconCount === 0 && assetCount === 0) issues.push('missing icon or asset coverage');
+  if (iconCount === 0 && assetCount === 0 && !simpleLandingLikeStructure) issues.push('missing icon or asset coverage');
 
   return {
     passed: issues.length === 0,
     issues,
-    coverage: { rootHasBackground, nodeCount, containerCount, textCount, buttonCount, inputCount, iconCount, assetCount, backgroundNodeCount, largeContainerCount }
+    coverage: { rootHasBackground, nodeCount, containerCount, textCount, buttonCount, inputCount, iconCount, assetCount, backgroundNodeCount, largeContainerCount, simpleLandingLikeStructure }
   };
 };
 
@@ -483,7 +655,7 @@ const mapPrimaryAlign = (value: string | undefined): string =>
   value === 'center' ? 'CENTER' : value === 'end' ? 'MAX' : value === 'space-between' ? 'SPACE_BETWEEN' : 'MIN';
 
 const mapCrossAlign = (value: string | undefined): string =>
-  value === 'center' ? 'CENTER' : value === 'end' ? 'MAX' : value === 'stretch' ? 'STRETCH' : 'MIN';
+  value === 'center' ? 'CENTER' : value === 'end' ? 'MAX' : 'MIN';
 
 const inferAutoLayoutPayload = (node: UiNode): Record<string, unknown> | null => {
   const display = node.computedStyle?.display;
@@ -518,6 +690,52 @@ const inferAutoLayoutPayload = (node: UiNode): Record<string, unknown> | null =>
     strokesIncludedInLayout: (node.computedStyle?.borderWidth ?? 0) > 0,
     padding
   };
+};
+
+
+const shouldKeepFixedAutoLayoutSizing = (node: UiNode): boolean => {
+  const autoLayout = inferAutoLayoutPayload(node);
+  if (!autoLayout) return false;
+  const dom = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>).dom as Record<string, unknown> | undefined : undefined;
+  const className = String(dom?.className || '').toLowerCase();
+  if (/(^|\s)(row|container|main-container|mx-auto|col|col-)(\s|$)/.test(className)) return true;
+  const width = Number(node.boundingBox?.width ?? node.size?.width ?? node.computedStyle?.width ?? 0);
+  const height = Number(node.boundingBox?.height ?? node.size?.height ?? node.computedStyle?.height ?? 0);
+  if (!(width > 0) || !(height > 0)) return false;
+  const childWidths = (node.children || [])
+    .map((child) => Number(child.boundingBox?.width ?? child.size?.width ?? child.computedStyle?.width ?? 0))
+    .filter((value) => value > 0);
+  const iconOnlyChildren = node.children.length > 0 && node.children.every((child) => child.kind === 'icon');
+  const squareLike = Math.abs(width - height) <= 2;
+  if ((node.kind === 'button' || squareLike) && !hasVisibleTextContent(node) && iconOnlyChildren) return true;
+  if (!childWidths.length) return false;
+  const widestChild = Math.max(...childWidths);
+  return width - widestChild >= 16;
+};
+
+
+const getRenderedSemanticsMeta = (node: UiNode): Record<string, unknown> | undefined => {
+  const renderedMeta = node.meta && typeof node.meta.rendered === 'object' ? (node.meta.rendered as Record<string, unknown>) : undefined;
+  return renderedMeta && typeof renderedMeta.semantics === 'object' ? (renderedMeta.semantics as Record<string, unknown>) : undefined;
+};
+const getAccessibleNodeLabel = (node: UiNode): string | undefined => {
+  const semantics = getRenderedSemanticsMeta(node);
+  const ariaLabel = typeof semantics?.ariaLabel === 'string' ? semantics.ariaLabel.trim() : '';
+  if (ariaLabel) return ariaLabel;
+  const iconLabel = typeof node.icon?.textLabel === 'string' ? node.icon.textLabel.trim() : '';
+  if (iconLabel) return iconLabel;
+  return undefined;
+};
+const hasVisibleTextContent = (node: UiNode): boolean => Boolean(typeof node.text === 'string' && node.text.trim());
+const shouldSynthesizeVisibleButtonLabel = (node: UiNode): boolean => {
+  if (node.kind === 'button') return hasVisibleTextContent(node);
+  const iconOnlyChildren = node.children.length > 0 && node.children.every((child) => child.kind === 'icon');
+  return Boolean((node.kind === 'frame' || node.kind === 'group') && hasVisibleTextContent(node) && (node.children.length === 0 || iconOnlyChildren));
+};
+const shouldPersistAccessibleLabelMetadata = (node: UiNode): boolean => {
+  if (hasVisibleTextContent(node)) return false;
+  if (node.kind !== 'button') return false;
+  return Boolean(getAccessibleNodeLabel(node));
 };
 
 const planTextNode = (node: UiNode, parentNode: UiNode | undefined, parentRef: string | undefined, actions: PlannerAction[], commands: FigmaCommandStep[]): void => {
@@ -615,6 +833,10 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
   if (autoLayout) {
     actions.push({ id: `${ref}:alignment`, type: 'set_alignment', uiId: node.uiId, payload: { nodeRef: ref } });
     commands.push({ type: 'set_alignment', payload: { nodeRef: ref, alignment: { primaryAxisAlignItems: autoLayout.primaryAxisAlignItems, counterAxisAlignItems: autoLayout.counterAxisAlignItems } } });
+    if (shouldKeepFixedAutoLayoutSizing(node)) {
+      actions.push({ id: `${ref}:layout_sizing`, type: 'set_layout_sizing', uiId: node.uiId, payload: { nodeRef: ref, horizontal: 'FIXED', vertical: 'FIXED' } });
+      commands.push({ type: 'set_layout_sizing', payload: { nodeRef: ref, layoutSizing: { horizontal: 'FIXED', vertical: 'FIXED' } } });
+    }
   }
 
   const fillRaw = resolvedBackgroundPaintRaw(node);
@@ -697,8 +919,11 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
     commands.push({ type: 'set_size', payload: { nodeRef: overlayRef, width, height } });
   }
 
-  if (node.asset?.layer) {
-    const figmaStrategy = (needsReview || renderAsPlaceholder) ? 'placeholder' : (node.asset.figmaStrategy ?? (node.asset.sourceUrl || node.asset.resolvedAssetPath ? 'image_fill' : 'placeholder'));
+  if (node.asset?.layer && !shouldSkipAssetReference(node)) {
+    const preserveRenderableAsset = shouldPreserveRenderableAssetReference(node);
+    const figmaStrategy = preserveRenderableAsset
+      ? 'image_fill'
+      : ((needsReview || renderAsPlaceholder) ? 'placeholder' : (node.asset.figmaStrategy ?? (node.asset.sourceUrl || node.asset.resolvedAssetPath ? 'image_fill' : 'placeholder')));
     commands.push({ type: 'set_asset_reference', payload: { nodeRef: ref, layer: node.asset.layer, sourceUrl: node.asset.sourceUrl, resolvedAssetPath: node.asset.resolvedAssetPath, alt: node.asset.alt, placeholder: figmaStrategy === 'placeholder', figmaStrategy } });
   }
 
@@ -706,14 +931,14 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
     const hasInlineSvgSource = Boolean(typeof node.icon.svgMarkup === 'string' && node.icon.svgMarkup.trim());
     const figmaStrategy = (hasInlineSvgSource ? (node.icon.figmaStrategy ?? 'vector_icon') : ((needsReview || renderAsPlaceholder) ? 'placeholder' : (node.icon.figmaStrategy ?? 'vector_icon')));
     actions.push({ id: `${ref}:icon`, type: 'set_icon', uiId: node.uiId, payload: { nodeRef: ref, sourceType: node.icon.sourceType } });
-    commands.push({ type: 'set_icon_reference', payload: { nodeRef: ref, sourceType: node.icon.sourceType, textLabel: node.icon.textLabel, svgMarkup: sanitizeSvgMarkupForFigma(node.icon.svgMarkup, node.icon), fill: node.icon.fill, stroke: node.icon.stroke, size: node.icon.size, placement: node.icon.placement, spriteRef: node.icon.spriteRef, hash: node.icon.hash, assetId: node.icon.assetId, figmaStrategy } });
+    commands.push({ type: 'set_icon_reference', payload: { nodeRef: ref, sourceType: node.icon.sourceType, textLabel: node.icon.textLabel, svgMarkup: sanitizeSvgMarkupForFigma(node.icon.svgMarkup, node.icon), fill: lowerAnyPaint(node.icon.fill, 1) ?? node.icon.fill, stroke: node.icon.stroke, size: node.icon.size, placement: node.icon.placement, spriteRef: node.icon.spriteRef, hash: node.icon.hash, assetId: node.icon.assetId, figmaStrategy } });
   }
 
-  const iconOnlyChildren = node.children.length > 0 && node.children.every((child) => child.kind === 'icon');
-  if ((node.kind === 'button' || ((node.kind === 'frame' || node.kind === 'group') && node.text && (node.children.length === 0 || iconOnlyChildren))) && (node.text || node.name)) {
+  if (shouldSynthesizeVisibleButtonLabel(node)) {
     const labelUiId = `${node.uiId}.label`;
     const font = node.computedStyle ?? {};
-    const labelText = node.text ?? node.name ?? 'Label';
+    const labelText = ((node.text ?? '').trim()) || node.name || 'Label';
+    const labelWidth = Math.max(0, Number(width ?? node.boundingBox?.width ?? node.size?.width ?? 0) - Number((node.padding?.left ?? node.layout?.padding?.left ?? 0) + (node.padding?.right ?? node.layout?.padding?.right ?? 0)));
     commands.push({
       type: 'create_text',
       payload: {
@@ -722,15 +947,23 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
         uiId: labelUiId,
         name: 'text-button-label',
         text: labelText,
+        width: labelWidth > 0 ? labelWidth : undefined,
         fontSize: font.fontSize,
         fontFamily: normalizeFontFamilyForFigma(font.fontFamily),
         fontWeight: font.fontWeight,
         lineHeight: font.lineHeight,
         letterSpacing: font.letterSpacing,
         textAlignHorizontal: lowerTextAlign(font.textAlign),
+        textAutoResize: labelWidth > 0 ? 'HEIGHT' : 'WIDTH_AND_HEIGHT',
         fills: lowerAnyPaint(font.color, 1)
       }
     });
+    if (autoLayout) {
+      commands.push({ type: 'set_layout_sizing', payload: { nodeRef: labelUiId, layoutSizing: { horizontal: 'FILL', vertical: 'HUG' } } });
+    }
+  }
+  if (shouldPersistAccessibleLabelMetadata(node)) {
+    commands.push({ type: 'set_plugin_data', payload: { nodeRef: ref, pluginData: { namespace: 'figma-gateway', key: 'accessible-label', value: getAccessibleNodeLabel(node) } } });
   }
 };
 
@@ -766,7 +999,7 @@ const attachPlanningMetadataToPlan = (model: UiModelDocument, commands: FigmaCom
   const planningContext = createPlanningContextFromNode(model.root);
   const variantSet = createBreakpointVariantSetFromDocument(model);
   const variantName = formatPlanningVariantName(planningContext, componentName);
-  commands.unshift({ type: 'rename_node', payload: { nodeRef: model.root.uiId, name: variantName } });
+  commands.push({ type: 'rename_node', payload: { nodeRef: model.root.uiId, name: variantName } });
   commands.push({ type: 'set_plugin_data', payload: { nodeRef: model.root.uiId, pluginData: { namespace: 'figma-gateway', key: 'surface-mode', value: planningContext.surfaceMode } } });
   commands.push({ type: 'set_plugin_data', payload: { nodeRef: model.root.uiId, pluginData: { namespace: 'figma-gateway', key: 'breakpoint-family', value: planningContext.breakpointFamily } } });
   commands.push({ type: 'set_plugin_data', payload: { nodeRef: model.root.uiId, pluginData: { namespace: 'figma-gateway', key: 'variant-group-id', value: variantSet.variantGroupId } } });
@@ -811,6 +1044,8 @@ export class CodeToFigmaPipelineService {
 
     attachBreakpointVariantSet(attachBlockIdentity(annotateVisualConfidence(model)));
     visualLogger.info({ renderedUsed, root: summarizeNode(model.root) }, 'code-to-figma model ready');
+    normalizeRenderableAssetSourcesForTarget(model);
+    await hydrateFontIconSvgMarkup(model);
     const planningContext = createPlanningContextFromNode(model.root);
     model.root.meta = { ...(model.root.meta ?? {}), planningContext };
     const plan = buildCodeToFigmaPlan(model, component.componentName, component.filePath);

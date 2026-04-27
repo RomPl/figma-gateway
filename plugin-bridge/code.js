@@ -2,13 +2,15 @@ const GATEWAY_URL = 'https://figma-gateway.vazovski.art';
 const API_BEARER_TOKEN = '8f6c2d4e7a0b1c9d3e5f7a8b2c4d6e8f9a1b3c5d7e9f0a2b4c6d8e0f1a3b5c7d';
 const CLIENT_NAME = 'figma-plugin-bridge';
 const POLL_INTERVAL_MS = 3000;
-const RUNTIME_BUILD = '2026-04-17-font-debug-1';
+const RUNTIME_BUILD = '2026-04-27-fidelity-snapshot-1';
 const SESSION_STORAGE_KEY = 'figma-gateway-plugin-session-v1';
 let pollInFlight = false;
 const SUPPORTED_GENERIC_COMMANDS = new Set([
   'create_frame',
+  'create_frame_rich',
   'create_section',
   'create_text',
+  'create_text_rich',
   'create_group',
   'move_node',
   'delete_node',
@@ -33,9 +35,12 @@ const SUPPORTED_GENERIC_COMMANDS = new Set([
   'find_nodes',
   'delete_matching_nodes',
   'export_ui_snapshot',
+  'export_node_snapshot',
+  'export_node_as_image',
   'set_effects',
   'set_asset_reference',
-  'set_icon_reference'
+  'set_icon_reference',
+  'debug_runtime_info'
 ]);
 const UI_ID_PLUGIN_NAMESPACE = 'figma-gateway';
 const UI_ID_PLUGIN_KEY = 'ui-id';
@@ -213,17 +218,190 @@ async function loadRequestedFont(payload) {
   }
   return null;
 }
-function applyAutoLayout(node, payload) { if (!('layoutMode' in node)) throw appError('UNSUPPORTED_OPERATION', 'Target node does not support auto layout: ' + node.id); if (payload.layoutMode !== undefined) node.layoutMode = String(payload.layoutMode); if (payload.primaryAxisAlignItems !== undefined) node.primaryAxisAlignItems = String(payload.primaryAxisAlignItems); if (payload.counterAxisAlignItems !== undefined) node.counterAxisAlignItems = String(payload.counterAxisAlignItems); if (payload.layoutWrap !== undefined && 'layoutWrap' in node) node.layoutWrap = String(payload.layoutWrap); if (payload.itemSpacing !== undefined) node.itemSpacing = Number(payload.itemSpacing); if (payload.strokesIncludedInLayout !== undefined && 'strokesIncludedInLayout' in node) node.strokesIncludedInLayout = Boolean(payload.strokesIncludedInLayout); }
-function applyPadding(node, payload) { if (!('paddingTop' in node)) throw appError('UNSUPPORTED_OPERATION', 'Target node does not support padding: ' + node.id); const padding = payload.padding || {}; if (payload.paddingTop !== undefined || padding.top !== undefined) node.paddingTop = Number(payload.paddingTop !== undefined ? payload.paddingTop : padding.top); if (payload.paddingRight !== undefined || padding.right !== undefined) node.paddingRight = Number(payload.paddingRight !== undefined ? payload.paddingRight : padding.right); if (payload.paddingBottom !== undefined || padding.bottom !== undefined) node.paddingBottom = Number(payload.paddingBottom !== undefined ? payload.paddingBottom : padding.bottom); if (payload.paddingLeft !== undefined || padding.left !== undefined) node.paddingLeft = Number(payload.paddingLeft !== undefined ? payload.paddingLeft : padding.left); }
+function safeClone(value) { try { return JSON.parse(JSON.stringify(value)); } catch (error) { return undefined; } }
+function getNodeIdFromPayload(payload, refMap) { return payload && payload.nodeRef ? resolveRefId(payload.nodeRef, refMap || {}) : payload && payload.ref ? resolveRefId(payload.ref, refMap || {}) : payload && payload.nodeId ? String(payload.nodeId) : ''; }
+function nodeSupportsAutoLayout(node) { return Boolean(node && ['FRAME','COMPONENT','COMPONENT_SET','INSTANCE'].includes(String(node.type))); }
+function requireAutoLayoutNode(node, operation) { if (!nodeSupportsAutoLayout(node) || !('layoutMode' in node)) throw appError('UNSUPPORTED_OPERATION', operation + ' requires a Figma node that supports auto layout: ' + (node && node.id ? node.id : 'unknown')); }
+function applyAutoLayout(node, payload) {
+  requireAutoLayoutNode(node, 'set_auto_layout');
+  const warnings = [];
+  const requestedLayoutMode = payload.layoutMode !== undefined ? String(payload.layoutMode) : node.layoutMode;
+  if (!['NONE','HORIZONTAL','VERTICAL'].includes(requestedLayoutMode)) throw appError('INVALID_COMMAND_PAYLOAD', 'Invalid layoutMode: ' + requestedLayoutMode);
+  node.layoutMode = requestedLayoutMode;
+  if (payload.layoutWrap !== undefined && 'layoutWrap' in node) {
+    if (node.layoutMode === 'NONE') warnings.push('layoutWrap ignored because layoutMode=NONE');
+    else node.layoutWrap = String(payload.layoutWrap);
+  }
+  if (payload.primaryAxisAlignItems !== undefined) {
+    const value = String(payload.primaryAxisAlignItems);
+    if (!['MIN','MAX','CENTER','SPACE_BETWEEN'].includes(value)) throw appError('INVALID_COMMAND_PAYLOAD', 'Invalid primaryAxisAlignItems: ' + value);
+    if (node.layoutMode === 'NONE') warnings.push('primaryAxisAlignItems ignored because layoutMode=NONE');
+    else node.primaryAxisAlignItems = value;
+  }
+  if (payload.counterAxisAlignItems !== undefined) {
+    const value = String(payload.counterAxisAlignItems);
+    if (!['MIN','MAX','CENTER','BASELINE'].includes(value)) throw appError('INVALID_COMMAND_PAYLOAD', 'Invalid counterAxisAlignItems: ' + value);
+    if (value === 'BASELINE' && node.layoutMode !== 'HORIZONTAL') throw appError('INVALID_COMMAND_PAYLOAD', 'BASELINE counter axis alignment is only valid for HORIZONTAL auto layout');
+    if (node.layoutMode === 'NONE') warnings.push('counterAxisAlignItems ignored because layoutMode=NONE');
+    else node.counterAxisAlignItems = value;
+  }
+  if (payload.itemSpacing !== undefined) {
+    if (node.layoutMode === 'NONE') warnings.push('itemSpacing ignored because layoutMode=NONE');
+    else if (node.primaryAxisAlignItems === 'SPACE_BETWEEN') warnings.push('itemSpacing may be visually ignored because primaryAxisAlignItems=SPACE_BETWEEN');
+    node.itemSpacing = Number(payload.itemSpacing);
+  }
+  if (payload.counterAxisSpacing !== undefined) {
+    if (node.layoutMode === 'NONE') warnings.push('counterAxisSpacing ignored because layoutMode=NONE');
+    else if (node.layoutWrap !== 'WRAP') throw appError('INVALID_COMMAND_PAYLOAD', 'counterAxisSpacing requires layoutWrap=WRAP');
+    else if ('counterAxisSpacing' in node) node.counterAxisSpacing = Number(payload.counterAxisSpacing);
+  }
+  if (payload.strokesIncludedInLayout !== undefined && 'strokesIncludedInLayout' in node) node.strokesIncludedInLayout = Boolean(payload.strokesIncludedInLayout);
+  return warnings;
+}
+function applyPadding(node, payload) {
+  requireAutoLayoutNode(node, 'set_padding');
+  if (node.layoutMode === 'NONE') throw appError('INVALID_COMMAND_PAYLOAD', 'Padding can only be set on auto-layout frames where layoutMode is HORIZONTAL or VERTICAL');
+  const padding = payload.padding || {};
+  if (payload.paddingTop !== undefined || padding.top !== undefined) node.paddingTop = Number(payload.paddingTop !== undefined ? payload.paddingTop : padding.top);
+  if (payload.paddingRight !== undefined || padding.right !== undefined) node.paddingRight = Number(payload.paddingRight !== undefined ? payload.paddingRight : padding.right);
+  if (payload.paddingBottom !== undefined || padding.bottom !== undefined) node.paddingBottom = Number(payload.paddingBottom !== undefined ? payload.paddingBottom : padding.bottom);
+  if (payload.paddingLeft !== undefined || padding.left !== undefined) node.paddingLeft = Number(payload.paddingLeft !== undefined ? payload.paddingLeft : padding.left);
+  return [];
+}
+function applyLayoutSizing(node, payload) {
+  if (!('layoutSizingHorizontal' in node)) throw appError('UNSUPPORTED_OPERATION', 'Target node does not support layout sizing: ' + node.id);
+  const warnings = [];
+  const sizing = payload.layoutSizing && typeof payload.layoutSizing === 'object' ? payload.layoutSizing : {};
+  const horizontal = payload.layoutSizingHorizontal !== undefined ? payload.layoutSizingHorizontal : sizing.horizontal;
+  const vertical = payload.layoutSizingVertical !== undefined ? payload.layoutSizingVertical : sizing.vertical;
+  function apply(axis, value) {
+    if (value === undefined) return;
+    const normalized = String(value);
+    if (!['FIXED','HUG','FILL'].includes(normalized)) throw appError('INVALID_COMMAND_PAYLOAD', 'Invalid layout sizing value: ' + normalized);
+    if (normalized === 'FILL' && (!node.parent || !('layoutMode' in node.parent) || node.parent.layoutMode === 'NONE')) throw appError('INVALID_COMMAND_PAYLOAD', 'FILL sizing is only valid for children of auto-layout frames');
+    if (normalized === 'HUG' && !['FRAME','TEXT','COMPONENT','COMPONENT_SET','INSTANCE'].includes(String(node.type))) throw appError('INVALID_COMMAND_PAYLOAD', 'HUG sizing is not valid for node type: ' + node.type);
+    if (axis === 'horizontal') node.layoutSizingHorizontal = normalized;
+    else node.layoutSizingVertical = normalized;
+  }
+  apply('horizontal', horizontal);
+  apply('vertical', vertical);
+  return warnings;
+}
+function extractNodeGeometry(node) { return { x: 'x' in node ? Number(node.x || 0) : undefined, y: 'y' in node ? Number(node.y || 0) : undefined, width: 'width' in node ? Number(node.width || 0) : undefined, height: 'height' in node ? Number(node.height || 0) : undefined, absoluteBoundingBox: node.absoluteBoundingBox ? safeClone(node.absoluteBoundingBox) : undefined }; }
+function serializeNodeSnapshot(node, options, depth) {
+  const maxDepth = options && Number.isFinite(Number(options.maxDepth)) ? Number(options.maxDepth) : 4;
+  const includeChildren = options && options.includeChildren === false ? false : true;
+  const snapshot = {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    uiId: getUiIdFromNode(node) || null,
+    geometry: extractNodeGeometry(node),
+    visible: 'visible' in node ? Boolean(node.visible) : undefined,
+    opacity: 'opacity' in node ? Number(node.opacity) : undefined,
+    blendMode: 'blendMode' in node ? String(node.blendMode) : undefined,
+    fills: 'fills' in node ? safeClone(node.fills) : undefined,
+    strokes: 'strokes' in node ? safeClone(node.strokes) : undefined,
+    strokeWeight: 'strokeWeight' in node ? node.strokeWeight : undefined,
+    strokeAlign: 'strokeAlign' in node ? node.strokeAlign : undefined,
+    cornerRadius: 'cornerRadius' in node ? node.cornerRadius : undefined,
+    rectangleCornerRadii: 'topLeftRadius' in node ? { topLeft: node.topLeftRadius, topRight: node.topRightRadius, bottomRight: node.bottomRightRadius, bottomLeft: node.bottomLeftRadius } : undefined,
+    effects: 'effects' in node ? safeClone(node.effects) : undefined,
+    clipsContent: 'clipsContent' in node ? Boolean(node.clipsContent) : undefined,
+    layout: 'layoutMode' in node ? { layoutMode: node.layoutMode, layoutWrap: 'layoutWrap' in node ? node.layoutWrap : undefined, paddingTop: node.paddingTop, paddingRight: node.paddingRight, paddingBottom: node.paddingBottom, paddingLeft: node.paddingLeft, primaryAxisAlignItems: node.primaryAxisAlignItems, counterAxisAlignItems: node.counterAxisAlignItems, itemSpacing: node.itemSpacing, counterAxisSpacing: 'counterAxisSpacing' in node ? node.counterAxisSpacing : undefined, layoutSizingHorizontal: 'layoutSizingHorizontal' in node ? node.layoutSizingHorizontal : undefined, layoutSizingVertical: 'layoutSizingVertical' in node ? node.layoutSizingVertical : undefined, strokesIncludedInLayout: 'strokesIncludedInLayout' in node ? node.strokesIncludedInLayout : undefined } : undefined,
+    constraints: 'constraints' in node ? safeClone(node.constraints) : undefined,
+    text: 'characters' in node ? { characters: node.characters, fontName: node.fontName === figma.mixed ? 'MIXED' : safeClone(node.fontName), fontSize: node.fontSize === figma.mixed ? 'MIXED' : node.fontSize, lineHeight: node.lineHeight === figma.mixed ? 'MIXED' : safeClone(node.lineHeight), letterSpacing: node.letterSpacing === figma.mixed ? 'MIXED' : safeClone(node.letterSpacing), textAutoResize: node.textAutoResize, textAlignHorizontal: node.textAlignHorizontal, textAlignVertical: node.textAlignVertical } : undefined,
+    childCount: 'children' in node ? node.children.length : 0
+  };
+  Object.keys(snapshot).forEach(function (key) { if (snapshot[key] === undefined) delete snapshot[key]; });
+  if (includeChildren && 'children' in node && depth < maxDepth) snapshot.children = node.children.map(function (child) { return serializeNodeSnapshot(child, options, depth + 1); });
+  return snapshot;
+}
+async function exportNodeSnapshot(payload, refMap) {
+  const nodeId = getNodeIdFromPayload(payload || {}, refMap || {});
+  const node = await getNodeByIdRequired(nodeId, 'export_node_snapshot');
+  const snapshot = serializeNodeSnapshot(node, payload || {}, 0);
+  let restDocument = null;
+  if (payload && payload.includeRestJson && 'exportAsync' in node) {
+    try { restDocument = await node.exportAsync({ format: 'JSON_REST_V1' }); } catch (error) { restDocument = { error: String(error && error.message ? error.message : error) }; }
+  }
+  return { snapshot, restDocument };
+}
+function applyRichFrameProperties(node, payload) {
+  const warnings = [];
+  if (payload.fills !== undefined || payload.fill !== undefined) setFills(node, payload.fills !== undefined ? payload.fills : payload.fill);
+  if (payload.strokes !== undefined || payload.stroke !== undefined) setStrokes(node, payload.strokes !== undefined ? payload.strokes : payload.stroke, payload.strokeWeight);
+  if (payload.cornerRadius !== undefined && 'cornerRadius' in node) node.cornerRadius = Number(payload.cornerRadius);
+  if (payload.opacity !== undefined && 'opacity' in node) node.opacity = Number(payload.opacity);
+  if (payload.clipsContent !== undefined && 'clipsContent' in node) node.clipsContent = Boolean(payload.clipsContent);
+  if (payload.layoutMode !== undefined || payload.autoLayout) warnings.push.apply(warnings, applyAutoLayout(node, Object.assign({}, payload.autoLayout || {}, payload)));
+  if (payload.padding || payload.paddingTop !== undefined || payload.paddingRight !== undefined || payload.paddingBottom !== undefined || payload.paddingLeft !== undefined) warnings.push.apply(warnings, applyPadding(node, payload));
+  if (payload.layoutSizing || payload.layoutSizingHorizontal !== undefined || payload.layoutSizingVertical !== undefined) warnings.push.apply(warnings, applyLayoutSizing(node, payload));
+  if (payload.effects !== undefined && 'effects' in node) node.effects = safeClone(payload.effects) || payload.effects;
+  if (payload.pluginData && node.setPluginData) Object.keys(payload.pluginData).forEach(function (key) { node.setPluginData(String(key), String(payload.pluginData[key])); });
+  return warnings;
+}
+async function createFrameRich(payload, refMap) {
+  const parent = await getParentNodeResolved(payload, refMap || {});
+  const frame = figma.createFrame();
+  frame.name = String(payload.name || 'Frame');
+  if ('fills' in frame) frame.fills = [];
+  frame.resizeWithoutConstraints(payload.width !== undefined ? Number(payload.width) : 320, payload.height !== undefined ? Number(payload.height) : 120);
+  parent.appendChild(frame);
+  setUiIdOnNode(frame, payload.uiId);
+  setXY(frame, payload.x, payload.y);
+  const warnings = applyRichFrameProperties(frame, payload || {});
+  if (payload.ref) refMap[String(payload.ref)] = frame.id;
+  return normalizeCommandResult('create_frame_rich', 'ok', { nodeId: frame.id, data: { id: frame.id, name: frame.name, parentNodeId: parent.id, ref: payload.ref || null, warnings, snapshot: serializeNodeSnapshot(frame, { includeChildren: false }, 0) } });
+}
+async function exportNodeAsImage(payload, refMap) {
+  const nodeId = getNodeIdFromPayload(payload || {}, refMap || {});
+  const node = await getNodeByIdRequired(nodeId, 'export_node_as_image');
+  if (!('exportAsync' in node)) throw appError('UNSUPPORTED_OPERATION', 'Target node does not support exportAsync: ' + node.id);
+  const scale = payload && payload.scale !== undefined ? Number(payload.scale) : 1;
+  const format = payload && payload.format ? String(payload.format).toUpperCase() : 'PNG';
+  if (!['PNG','JPG','SVG','PDF'].includes(format)) throw appError('INVALID_COMMAND_PAYLOAD', 'Unsupported export format: ' + format);
+  const settings = format === 'SVG' || format === 'PDF' ? { format } : { format, constraint: { type: 'SCALE', value: scale } };
+  const bytes = await node.exportAsync(settings);
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let base64 = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b1 = bytes[i]; const b2 = i + 1 < bytes.length ? bytes[i + 1] : 0; const b3 = i + 2 < bytes.length ? bytes[i + 2] : 0;
+    const triplet = (b1 << 16) | (b2 << 8) | b3;
+    base64 += chars[(triplet >> 18) & 63] + chars[(triplet >> 12) & 63] + (i + 1 < bytes.length ? chars[(triplet >> 6) & 63] : '=') + (i + 2 < bytes.length ? chars[triplet & 63] : '=');
+  }
+  return { nodeId: node.id, format, scale, byteLength: bytes.length, imageData: payload && payload.returnImageData === false ? undefined : base64, snapshot: serializeNodeSnapshot(node, { includeChildren: false }, 0) };
+}
 function applyTextMetrics(textNode, payload) { if (payload.lineHeight !== undefined) textNode.lineHeight = { value: Number(payload.lineHeight), unit: 'PIXELS' }; if (payload.letterSpacing !== undefined) textNode.letterSpacing = { value: Number(payload.letterSpacing), unit: 'PIXELS' }; }
 function parseCssColor(raw) { const rgb=String(raw).match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/i); if (rgb) return {r:Number(rgb[1])/255,g:Number(rgb[2])/255,b:Number(rgb[3])/255,a:rgb[4]!==undefined?Number(rgb[4]):1}; const hex=String(raw).trim().replace('#',''); if (hex.length===6||hex.length===3){ const n=hex.length===3?hex.split('').map(c=>c+c).join(''):hex; return {r:parseInt(n.slice(0,2),16)/255,g:parseInt(n.slice(2,4),16)/255,b:parseInt(n.slice(4,6),16)/255,a:1}; } return {r:0,g:0,b:0,a:0.25}; }
 function splitBoxShadowEntries(boxShadow) { const input=String(boxShadow||'').trim(); if (!input || input==='none') return []; const parts=[]; let current=''; let depth=0; for (const ch of input) { if (ch==='(') depth+=1; if (ch===')') depth=Math.max(0, depth-1); if (ch===',' && depth===0) { if (current.trim()) parts.push(current.trim()); current=''; continue; } current+=ch; } if (current.trim()) parts.push(current.trim()); return parts; }
 function parseSingleShadowEntry(entry) { const inset=/\binset\b/i.test(entry); const colorMatch=entry.match(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/); const color=parseCssColor(colorMatch ? colorMatch[1] : 'rgba(0,0,0,0.25)'); const cleaned=entry.replace(/\binset\b/i,'').replace(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/,' ').trim(); const nums=cleaned.match(/-?\d+(?:\.\d+)?px/g) || []; if (nums.length < 3) return null; return { type: inset ? 'INNER_SHADOW' : 'DROP_SHADOW', color, offset:{x:Number(nums[0].replace('px','')), y:Number(nums[1].replace('px',''))}, radius:Number(nums[2].replace('px','')), spread:nums[3]!==undefined?Number(nums[3].replace('px','')):0, visible:true, blendMode:'NORMAL' }; }
 function parseBoxShadow(boxShadow) { return splitBoxShadowEntries(boxShadow).map(parseSingleShadowEntry).filter(Boolean); }
 
+
+function isGatewayProxySource(value) {
+  const raw = String(value || '').trim();
+  return raw.startsWith(GATEWAY_URL + '/api/assets/proxy');
+}
+async function fetchWithGatewayAuth(source, options) {
+  const raw = String(source || '').trim();
+  const init = Object.assign({}, options || {});
+  const headers = Object.assign({}, init.headers || {});
+  if (raw.startsWith(GATEWAY_URL + '/api/')) headers['Authorization'] = 'Bearer ' + API_BEARER_TOKEN;
+  init.headers = headers;
+  return fetch(raw, init);
+}
 function isSvgSource(value) {
-  const raw = String(value || '').trim().toLowerCase();
-  return raw.startsWith('data:image/svg+xml') || /\.svg(?:[?#].*)?$/.test(raw);
+  const rawOriginal = String(value || '').trim();
+  const raw = rawOriginal.toLowerCase();
+  if (raw.startsWith('data:image/svg+xml') || /\.svg(?:[?#].*)?$/.test(raw)) return true;
+  try {
+    if (isGatewayProxySource(rawOriginal)) {
+      const params = new URL(rawOriginal).searchParams;
+      return (params.get('sourceKind') || params.get('sourcekind') || '').toLowerCase() === 'svg';
+    }
+  } catch (error) {}
+  return false;
 }
 function decodeSvgDataUri(value) {
   const raw = String(value || '');
@@ -237,13 +415,25 @@ function decodeSvgDataUri(value) {
     return null;
   }
 }
+
+function isSupportedRasterImageSource(source) {
+  const raw = String(source || '').trim().toLowerCase();
+  if (/^data:image\/(png|jpeg|jpg|gif)/.test(raw) || /\.(png|jpe?g|gif)(?:[?#].*)?$/.test(raw)) return true;
+  return isGatewayProxySource(raw);
+}
+async function fetchBinaryImageBytes(source) {
+  const response = await fetchWithGatewayAuth(String(source), { redirect: 'follow', cache: 'no-store' });
+  if (!response.ok) throw new Error('Failed to fetch image: ' + response.status + ' ' + response.statusText);
+  const buffer = await response.arrayBuffer();
+  return new Uint8Array(buffer);
+}
 async function fetchSvgMarkupFromSource(source) {
   const raw = String(source || '').trim();
   if (!raw) return null;
   const inline = decodeSvgDataUri(raw);
   if (inline) return inline;
   try {
-    const response = await fetch(raw, { cache: 'no-store' });
+    const response = await fetchWithGatewayAuth(raw, { cache: 'no-store', redirect: 'follow' });
     if (!response.ok) return null;
     const contentType = String(response.headers.get('content-type') || '').toLowerCase();
     const text = await response.text();
@@ -308,6 +498,7 @@ function findNodesByQuery(query) {
 function findMatchingNodes(payload) { const query = payload && payload.query ? payload.query : {}; const matches = []; const nodes = findNodesByQuery(query); for (const node of nodes) matches.push({ id: node.id, name: node.name, type: node.type, visible: 'visible' in node ? node.visible : undefined }); return matches; }
 function mapPaint(paint) { if (!paint || typeof paint !== 'object') return undefined; if (paint.type === 'IMAGE') return undefined; const color = paint.color && typeof paint.color === 'object' ? paint.color : null; const toHex = function (v) { return Math.round(Math.min(1, Math.max(0, Number(v || 0))) * 255).toString(16).padStart(2, '0'); }; const hex = color ? '#' + toHex(color.r) + toHex(color.g) + toHex(color.b) : undefined; return paint.opacity !== undefined ? { value: hex, opacity: Number(paint.opacity) } : hex; }
 function inferUiKind(node) { const type = String(node.type || '').toUpperCase(); const name = String(node.name || ''); if (type === 'CANVAS') return 'page'; if (type === 'SECTION') return 'section'; if (type === 'FRAME' || type === 'COMPONENT' || type === 'COMPONENT_SET') return 'frame'; if (type === 'GROUP') return 'group'; if (type === 'TEXT') return 'text'; if (type === 'INSTANCE') return 'component_instance'; if (type === 'VECTOR' || /icon/i.test(name)) return 'icon'; if (node.fills && Array.isArray(node.fills) && node.fills.some(function (fill) { return fill && fill.type === 'IMAGE'; })) return 'image'; if (/button|cta/i.test(name)) return 'button'; if (/input|field/i.test(name)) return 'input'; if (/card/i.test(name)) return 'card'; if (/list/i.test(name)) return 'list'; return 'group'; }
+function canReceiveImageFill(node) { return !!node && ('fills' in node); }
 function buildUiModelSnapshot(node) {
   const layoutMode = typeof node.layoutMode === 'string' ? node.layoutMode : undefined;
   const style = {};
@@ -418,6 +609,9 @@ async function executeLowLevelCommand(step, refMap) {
     const document = await exportUiSnapshot(payload);
     return normalizeCommandResult(commandType, 'ok', { nodeId: document.root && document.root.source ? document.root.source.nodeId || null : null, data: document });
   }
+  if (commandType === 'create_frame_rich') {
+    return await createFrameRich(payload, refMap);
+  }
   if (commandType === 'create_frame' || commandType === 'create_section') {
     const parent = await getParentNodeResolved(payload, refMap);
     const node = commandType === 'create_frame' ? figma.createFrame() : figma.createSection();
@@ -435,7 +629,7 @@ async function executeLowLevelCommand(step, refMap) {
       data: { id: node.id, name: node.name, parentNodeId: parent.id, width: node.width, height: node.height, uiId: getUiIdFromNode(node) || null, ref: payload.ref || null }
     });
   }
-  if (commandType === 'create_text') {
+  if (commandType === 'create_text' || commandType === 'create_text_rich') {
     const parent = await getParentNodeResolved(payload, refMap);
     const textNode = figma.createText();
     const requestedFont = await loadRequestedFont(payload);
@@ -457,7 +651,7 @@ async function executeLowLevelCommand(step, refMap) {
       try { setSize(textNode, payload.width, payload.height, commandType); } catch (error) {}
     }
     if (payload.ref) refMap[String(payload.ref)] = textNode.id;
-    return normalizeCommandResult(commandType, 'ok', { nodeId: textNode.id, data: { id: textNode.id, name: textNode.name, parentNodeId: parent.id, text: textNode.characters, fontName: textNode.fontName, uiId: getUiIdFromNode(textNode) || null, ref: payload.ref || null } });
+    return normalizeCommandResult(commandType, 'ok', { nodeId: textNode.id, data: { id: textNode.id, name: textNode.name, parentNodeId: parent.id, text: textNode.characters, fontName: textNode.fontName, uiId: getUiIdFromNode(textNode) || null, ref: payload.ref || null, snapshot: serializeNodeSnapshot(textNode, { includeChildren: false }, 0) } });
   }
   if (commandType === 'create_group') {
     const nodeIds = payload.nodes;
@@ -553,19 +747,21 @@ async function executeLowLevelCommand(step, refMap) {
   }
   if (commandType === 'set_auto_layout') {
     const node = await getNodeFromPayload(payload, commandType, refMap);
-    applyAutoLayout(node, payload);
-    return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, layoutMode: node.layoutMode, itemSpacing: node.itemSpacing } });
+    const warnings = applyAutoLayout(node, payload);
+    return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, layoutMode: node.layoutMode, layoutWrap: node.layoutWrap, primaryAxisAlignItems: node.primaryAxisAlignItems, counterAxisAlignItems: node.counterAxisAlignItems, itemSpacing: node.itemSpacing, counterAxisSpacing: 'counterAxisSpacing' in node ? node.counterAxisSpacing : undefined, warnings } });
   }
   if (commandType === 'set_padding') {
     const node = await getNodeFromPayload(payload, commandType, refMap);
-    applyPadding(node, payload);
-    return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, paddingTop: node.paddingTop, paddingRight: node.paddingRight, paddingBottom: node.paddingBottom, paddingLeft: node.paddingLeft } });
+    const warnings = applyPadding(node, payload);
+    return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, paddingTop: node.paddingTop, paddingRight: node.paddingRight, paddingBottom: node.paddingBottom, paddingLeft: node.paddingLeft, warnings } });
   }
   if (commandType === 'set_spacing') {
     const node = await getNodeFromPayload(payload, commandType, refMap);
-    if (!('itemSpacing' in node)) throw appError('UNSUPPORTED_OPERATION', 'Target node does not support spacing: ' + node.id);
+    requireAutoLayoutNode(node, commandType);
+    if (node.layoutMode === 'NONE') throw appError('INVALID_COMMAND_PAYLOAD', 'Spacing can only be set on auto-layout frames where layoutMode is HORIZONTAL or VERTICAL');
     node.itemSpacing = Number(payload.spacing !== undefined ? payload.spacing : payload.itemSpacing);
-    return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, itemSpacing: node.itemSpacing } });
+    if (payload.counterAxisSpacing !== undefined) { if (node.layoutWrap !== 'WRAP') throw appError('INVALID_COMMAND_PAYLOAD', 'counterAxisSpacing requires layoutWrap=WRAP'); if ('counterAxisSpacing' in node) node.counterAxisSpacing = Number(payload.counterAxisSpacing); }
+    return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, itemSpacing: node.itemSpacing, counterAxisSpacing: 'counterAxisSpacing' in node ? node.counterAxisSpacing : undefined } });
   }
   if (commandType === 'set_alignment') {
     const node = await getNodeFromPayload(payload, commandType, refMap);
@@ -580,10 +776,8 @@ async function executeLowLevelCommand(step, refMap) {
   }
   if (commandType === 'set_layout_sizing') {
     const node = await getNodeFromPayload(payload, commandType, refMap);
-    if (!('layoutSizingHorizontal' in node)) throw appError('UNSUPPORTED_OPERATION', 'Target node does not support layout sizing: ' + node.id);
-    if (payload.layoutSizing && payload.layoutSizing.horizontal !== undefined) node.layoutSizingHorizontal = String(payload.layoutSizing.horizontal);
-    if (payload.layoutSizing && payload.layoutSizing.vertical !== undefined) node.layoutSizingVertical = String(payload.layoutSizing.vertical);
-    return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, horizontal: node.layoutSizingHorizontal, vertical: node.layoutSizingVertical } });
+    const warnings = applyLayoutSizing(node, payload);
+    return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, horizontal: node.layoutSizingHorizontal, vertical: node.layoutSizingVertical, warnings } });
   }
   if (commandType === 'set_visibility') {
     const node = await getNodeFromPayload(payload, commandType, refMap);
@@ -592,6 +786,14 @@ async function executeLowLevelCommand(step, refMap) {
     return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, visible: node.visible } });
   }
 
+  if (commandType === 'export_node_snapshot') {
+    const data = await exportNodeSnapshot(payload, refMap);
+    return normalizeCommandResult(commandType, 'ok', { nodeId: data.snapshot.id, data });
+  }
+  if (commandType === 'export_node_as_image') {
+    const data = await exportNodeAsImage(payload, refMap);
+    return normalizeCommandResult(commandType, 'ok', { nodeId: data.nodeId, data });
+  }
   if (commandType === 'set_effects') {
     const node = await getNodeFromPayload(payload, commandType, refMap);
     if (!('effects' in node)) throw appError('UNSUPPORTED_OPERATION', 'Target node does not support effects: ' + node.id);
@@ -602,27 +804,43 @@ async function executeLowLevelCommand(step, refMap) {
   }
   if (commandType === 'set_asset_reference') {
     const node = await getNodeFromPayload(payload, commandType, refMap);
-    if (payload.placeholder && 'setPluginData' in node) node.setPluginData('figma-gateway:asset-placeholder', String(payload.alt || payload.sourceUrl || payload.resolvedAssetPath || 'asset'));
+    if ('setPluginData' in node) {
+      node.setPluginData('figma-gateway:asset-error', '');
+      node.setPluginData('figma-gateway:asset-placeholder', payload.placeholder ? String(payload.alt || payload.sourceUrl || payload.resolvedAssetPath || 'asset') : '');
+    }
     const imageSource = payload.resolvedAssetPath || payload.sourceUrl;
     if (!payload.placeholder && typeof imageSource === 'string' && imageSource.trim()) {
       if (isSvgSource(imageSource) && 'appendChild' in node) {
         try {
           const svgMarkup = await fetchSvgMarkupFromSource(imageSource);
-          if (svgMarkup) {
-            const imported = figma.createNodeFromSvg(svgMarkup);
-            imported.name = 'asset-svg';
-            node.appendChild(imported);
-            centerImportedNodeInContainer(node, imported, { width: typeof node.width === 'number' ? node.width : undefined, height: typeof node.height === 'number' ? node.height : undefined });
-            return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: false, layer: payload.layer || null, importedAs: 'svg' } });
-          }
-        } catch (error) {}
+          if (!svgMarkup) throw new Error('Empty SVG markup');
+          const imported = figma.createNodeFromSvg(svgMarkup);
+          imported.name = 'asset-svg';
+          node.appendChild(imported);
+          centerImportedNodeInContainer(node, imported, { width: typeof node.width === 'number' ? node.width : undefined, height: typeof node.height === 'number' ? node.height : undefined });
+          const hasImportedSvg = Array.isArray(node.children) && node.children.some(function (child) { return child && child.name === 'asset-svg'; });
+          if (!hasImportedSvg) throw new Error('SVG import did not attach to node');
+          return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: false, layer: payload.layer || null, importedAs: 'svg' } });
+        } catch (error) {
+          if ('setPluginData' in node) node.setPluginData('figma-gateway:asset-error', String(error && error.message ? error.message : error));
+          return normalizeCommandResult(commandType, 'error', { nodeId: node.id, error: { code: 'ASSET_IMPORT_FAILED', message: String(error && error.message ? error.message : error) } });
+        }
       }
       if (canReceiveImageFill(node)) {
         try {
-          const image = await figma.createImageAsync(imageSource.trim());
+          if (!isSupportedRasterImageSource(imageSource)) throw new Error('Unsupported image type for Figma image API');
+          const bytes = await fetchBinaryImageBytes(imageSource.trim());
+          const image = figma.createImage(bytes);
           node.fills = [{ type: 'IMAGE', scaleMode: 'FILL', imageHash: image.hash }];
-        } catch (error) {}
+          const hasImageFill = Array.isArray(node.fills) && node.fills.some(function (fill) { return fill && fill.type === 'IMAGE' && fill.imageHash; });
+          if (!hasImageFill) throw new Error('Image fill was not applied');
+          return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: false, layer: payload.layer || null, importedAs: 'image_fill' } });
+        } catch (error) {
+          if ('setPluginData' in node) node.setPluginData('figma-gateway:asset-error', String(error && error.message ? error.message : error));
+          return normalizeCommandResult(commandType, 'error', { nodeId: node.id, error: { code: 'ASSET_IMPORT_FAILED', message: String(error && error.message ? error.message : error) } });
+        }
       }
+      return normalizeCommandResult(commandType, 'error', { nodeId: node.id, error: { code: 'ASSET_IMPORT_UNSUPPORTED', message: 'Target node cannot receive raster image fill' } });
     }
     return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: Boolean(payload.placeholder), layer: payload.layer || null } });
   }
@@ -727,7 +945,7 @@ async function handleUpdateText(command, sessionId, sessionToken) { const result
 async function handleApplyStyleFromAlias(command, sessionId, sessionToken) { const alias = command.payload && command.payload.alias ? String(command.payload.alias) : ''; const style = STYLE_ALIAS_REGISTRY[alias]; if (!style) { const error = { code: 'STYLE_ALIAS_NOT_FOUND', message: 'Alias style not found in plugin registry: ' + alias }; await completeCommand(sessionId, sessionToken, command.commandId, { error: error, result: normalizeCommandResult('apply_style_from_alias', 'error', { error: error }) }); throw appError(error.code, error.message); } const result = await executeCommandStep({ type: 'set_fill', payload: { nodeId: command.payload.nodeId, fills: style.fills } }); if (result.status === 'error') { await completeCommand(sessionId, sessionToken, command.commandId, { error: result.error, result: result }); throw appError(result.error.code, result.error.message, result.error.details); } result.commandType = 'apply_style_from_alias'; result.data = { id: result.nodeId, alias: alias, applied: true }; await completeCommand(sessionId, sessionToken, command.commandId, { result: result }); setLastCommand('apply-style-from-alias → ' + alias + ' (' + command.commandId + ')'); }
 async function handleDuplicateBlock(command, sessionId, sessionToken) { const sourceNodeId = command.payload && command.payload.nodeId ? String(command.payload.nodeId) : ''; if (!sourceNodeId) throw appError('INVALID_COMMAND_PAYLOAD', 'duplicate-block requires nodeId'); const sourceNode = await figma.getNodeByIdAsync(sourceNodeId); if (!sourceNode) throw appError('NODE_NOT_FOUND', 'Source node not found for duplicate-block: ' + sourceNodeId); if (!('clone' in sourceNode)) throw appError('UNSUPPORTED_OPERATION', 'Target node does not support clone(): ' + sourceNodeId); const cloned = sourceNode.clone(); let targetParent = null; if (command.payload && command.payload.targetParentNodeId) targetParent = await figma.getNodeByIdAsync(String(command.payload.targetParentNodeId)); if (!targetParent || !('appendChild' in targetParent)) targetParent = sourceNode.parent && 'appendChild' in sourceNode.parent ? sourceNode.parent : figma.currentPage; targetParent.appendChild(cloned); if (command.payload && command.payload.name) cloned.name = String(command.payload.name); setXY(cloned, command.payload && command.payload.x, command.payload && command.payload.y); const result = normalizeCommandResult('duplicate_block', 'ok', { nodeId: cloned.id, data: { id: cloned.id, name: cloned.name, parentNodeId: targetParent.id, sourceNodeId: sourceNode.id } }); await completeCommand(sessionId, sessionToken, command.commandId, { result: result }); setLastCommand('duplicate-block → ' + cloned.name + ' (' + command.commandId + ')'); }
 async function handleExecutePluginCommand(command, sessionId, sessionToken) { const step = command.payload && command.payload.command ? command.payload.command : null; if (!step) throw appError('INVALID_COMMAND_PAYLOAD', 'execute-plugin-command requires command'); const result = await executeCommandStep(step); if (result.status === 'error') { await completeCommand(sessionId, sessionToken, command.commandId, { error: result.error, result: result }); throw appError(result.error.code, result.error.message, result.error.details); } await completeCommand(sessionId, sessionToken, command.commandId, { result: result }); setLastCommand('execute-plugin-command → ' + result.commandType + ' (' + command.commandId + ')'); }
-async function handleExecutePluginBatch(command, sessionId, sessionToken) { const steps = command.payload && Array.isArray(command.payload.commands) ? command.payload.commands : []; if (!steps.length) throw appError('INVALID_COMMAND_PAYLOAD', 'execute-plugin-batch requires commands'); const refMap = {}; const results = []; let failed = false; for (const step of steps) { const result = await executeCommandStep(step, refMap); results.push(result); if (result.status === 'error') failed = true; } const batchResult = { status: failed ? 'partial' : 'ok', total: results.length, successCount: results.filter(function (item) { return item.status === 'ok'; }).length, errorCount: results.filter(function (item) { return item.status === 'error'; }).length, results: results, refs: refMap }; if (failed) await completeCommand(sessionId, sessionToken, command.commandId, { error: { code: 'PLUGIN_BATCH_PARTIAL_FAILURE', message: 'One or more batch steps failed' }, result: batchResult }); else await completeCommand(sessionId, sessionToken, command.commandId, { result: batchResult }); setLastCommand('execute-plugin-batch → ' + steps.length + ' steps (' + command.commandId + ')'); }
+async function handleExecutePluginBatch(command, sessionId, sessionToken) { const steps = command.payload && Array.isArray(command.payload.commands) ? command.payload.commands : []; if (!steps.length) throw appError('INVALID_COMMAND_PAYLOAD', 'execute-plugin-batch requires commands'); const refMap = {}; const results = []; let failed = false; for (const step of steps) { const result = await executeCommandStep(step, refMap); results.push(result); if (result.status === 'error') failed = true; } const batchResult = { status: failed ? 'partial' : 'ok', total: results.length, successCount: results.filter(function (item) { return item.status === 'ok'; }).length, errorCount: results.filter(function (item) { return item.status === 'error'; }).length, results: results, refs: refMap }; if (command.payload && command.payload.returnSnapshots) { batchResult.snapshots = {}; for (const key of Object.keys(refMap)) { try { const node = await figma.getNodeByIdAsync(refMap[key]); if (node) batchResult.snapshots[key] = serializeNodeSnapshot(node, { maxDepth: 3 }, 0); } catch (error) {} } } if (failed) await completeCommand(sessionId, sessionToken, command.commandId, { error: { code: 'PLUGIN_BATCH_PARTIAL_FAILURE', message: 'One or more batch steps failed' }, result: batchResult }); else await completeCommand(sessionId, sessionToken, command.commandId, { result: batchResult }); setLastCommand('execute-plugin-batch → ' + steps.length + ' steps (' + command.commandId + ')'); }
 async function pollOnce() { const pending = await getPendingCommands(state.sessionId, state.sessionToken); const scope = await refreshSessionScope(); setPollHeartbeat(); const items = pending && pending.data ? pending.data : []; setPendingCount(items.length); if (!items.length) { if (scope && scope.data) setActiveSessionCount(scope.data.activeSessionCount); setLastCommand(state.lastCommand || 'No pending commands'); return; } for (const command of items) { try { if (command.type === 'create-page') await handleCreatePage(command, state.sessionId, state.sessionToken); else if (command.type === 'create-frame') await handleCreateFrame(command, state.sessionId, state.sessionToken); else if (command.type === 'create-section') await handleCreateSection(command, state.sessionId, state.sessionToken); else if (command.type === 'duplicate-block') await handleDuplicateBlock(command, state.sessionId, state.sessionToken); else if (command.type === 'apply-style-from-alias') await handleApplyStyleFromAlias(command, state.sessionId, state.sessionToken); else if (command.type === 'update-text') await handleUpdateText(command, state.sessionId, state.sessionToken); else if (command.type === 'execute-plugin-command') await handleExecutePluginCommand(command, state.sessionId, state.sessionToken); else if (command.type === 'execute-plugin-batch') await handleExecutePluginBatch(command, state.sessionId, state.sessionToken); else throw appError('UNSUPPORTED_COMMAND', 'Unsupported command: ' + command.type); } catch (error) { const mapped = mapError(error); await completeCommand(state.sessionId, state.sessionToken, command.commandId, { error: { code: mapped.code, message: mapped.message }, result: normalizeCommandResult(command.type, 'error', { error: mapped }) }); setLastCommand('Failed: ' + command.type + ' (' + command.commandId + ')'); } } }
 figma.ui.onmessage = async function (msg) { if (!msg || !msg.type) return; if (msg.type === 'request-status') { pushState(); refreshSessionScope().catch(function (error) { console.error(error); }); return; } if (msg.type === 'reconnect-session') { try { state.status = 'reconnecting'; state.connected = false; state.lastError = ''; pushState(); const registration = await registerSession(); setConnected(registration.data.sessionId, registration.data.sessionToken); setLastCommand('Session re-registered'); figma.notify('Plugin bridge reconnected: ' + registration.data.sessionId); } catch (error) { const message = String(error && error.message ? error.message : error); console.error(error); setError(message); figma.notify(message, { error: true, timeout: 8000 }); } return; } if (msg.type === 'keep-current-session') { try { const result = await keepOnlyCurrentSession(state.sessionId, state.sessionToken); const count = result && result.data ? result.data.activeSessionCount : 0; setActiveSessionCount(count); setLastCommand('Kept only current session'); figma.notify('Only current session remains active' + (result && result.data && result.data.deactivatedSessionIds && result.data.deactivatedSessionIds.length ? ': ' + result.data.deactivatedSessionIds.length + ' deactivated' : '')); } catch (error) { const message = String(error && error.message ? error.message : error); console.error(error); setError(message); figma.notify(message, { error: true, timeout: 8000 }); } return; } if (msg.type === 'copy-session-id') { const value = msg.value || state.sessionId || ''; figma.notify(value ? 'Session ID ready to copy: ' + value : 'Session ID is empty'); return; } };
 async function main() { syncFileState(); pushState(); try { const restored = await tryRestoreStoredSession(); if (restored) { figma.notify('Plugin bridge restored: ' + state.sessionId); } else { const registration = await registerSession(); const sessionId = registration.data.sessionId; const sessionToken = registration.data.sessionToken; setConnected(sessionId, sessionToken); setLastCommand('Session registered'); figma.notify('Plugin bridge connected: ' + sessionId); } setInterval(async function () { if (pollInFlight) return; pollInFlight = true; try { await pollOnce(); } catch (error) { if (isSessionTransportError(error)) { await recoverSessionAfterTransportError(error); } else { const message = String(error && error.message ? error.message : error); console.error(error); setError(message); } } finally { pollInFlight = false; } }, POLL_INTERVAL_MS); } catch (error) { const message = String(error && error.message ? error.message : error); console.error(error); setError(message); figma.notify(message, { error: true, timeout: 8000 }); } }

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 
 import { extractRenderedUiSchema, extractRenderedUiBreakpointsSchema, diagnoseRenderedUiSchema } from '../../core/rendered-ui-extractor';
-import { buildCodeToFigmaPlan, auditFirstPassVisualAcceptance } from '../../core/code-to-figma-pipeline';
+import { buildCodeToFigmaPlan, auditFirstPassVisualAcceptance, hydrateFontIconSvgMarkup, normalizeRenderableAssetSourcesForTarget } from '../../core/code-to-figma-pipeline';
 import { segmentVisualBlocks } from '../../core/visual-segmentation';
 import { attachBreakpointVariantSet } from '../../core/breakpoint-variant-set';
 import { materializeBreakpointVariantNodeRefs } from '../../core/breakpoint-variant-materializer';
@@ -220,6 +220,8 @@ renderedUiRouter.post(
       ? await req.app.locals.renderedToCodeMapperService.map({ project: data.project, rootDir: data.rootDir, render: data })
       : null;
     const model = attachBreakpointVariantSet(segmentVisualBlocks(mapped?.rendered ?? await req.app.locals.renderedUiExtractorService.extract(data)));
+    normalizeRenderableAssetSourcesForTarget(model);
+    await hydrateFontIconSvgMarkup(model);
     const plan = buildCodeToFigmaPlan(model, data.componentName, data.filePath);
     const uiIdStats = collectUiIdStats(plan.model.root);
     if (!data.dryRun) {
@@ -300,6 +302,8 @@ renderedUiRouter.post(
     for (const breakpoint of data.breakpoints) {
       const snapshot = extracted.snapshots[breakpoint];
       const segmented = attachBreakpointVariantSet(segmentVisualBlocks(snapshot), data.breakpoints as any);
+      normalizeRenderableAssetSourcesForTarget(segmented);
+      await hydrateFontIconSvgMarkup(segmented);
       const family = ((segmented.root.meta as any)?.planningContext?.breakpointFamily ?? breakpoint) as 'desktop' | 'tablet' | 'mobile';
       const variantModel = materializeBreakpointVariantNodeRefs(segmented, family);
       const plan = buildCodeToFigmaPlan(variantModel, `${data.componentName}`, data.filePath);

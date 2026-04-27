@@ -283,6 +283,9 @@ This keeps the result closer to browser flow layout and reduces fragile parent-c
 
 When a render-first frame/group carries its own text and only icon children, planner should synthesize a text label child instead of leaving the container icon-only.
 
+Icon-only buttons must not receive a visible synthetic label from technical DOM names or class-derived node names.
+When such a control exposes an accessible name (for example `aria-label`), planner should persist that value as metadata for reconcile/back-sync instead of rendering it as visible text.
+
 This is required for inline-flex links, badges and CTA-like controls where browser text is part of the same visual container.
 
 ## Grid reconstruction
@@ -308,12 +311,15 @@ This is intentionally redundant for newer runtimes, but helps older running plug
 Render-first planning should expose cleaner Figma-facing names such as `Header`, `Main`, `Footer`, `Section`, `Container`, `Card`, `Text`, `Icon`, and `Button`.
 This normalization is conservative: it only replaces clearly technical DOM/class-derived names, while preserving human-authored names like `Hero` or `CTA` and still appending the stable `uiId`.
 Small visual icon-holder wrappers (for example `48x48` centered circular containers around SVG icons) must stay as their own frame nodes with child icon attachment and auto-layout centering. They must not collapse into a bare icon layer during render-first planning.
+When such wrappers or icon-only buttons are reconstructed as auto-layout frames, planner must keep both axes `FIXED` so Figma does not hug the icon width and collapse square geometry.
 When CSS `box-shadow` contains several non-zero entries, planner should preserve the normalized multi-entry stack for plugin-side effect parsing instead of collapsing everything to a single strongest shadow. Inset-specific fidelity still needs a dedicated follow-up pass.
 Repeated card grids must preserve both layers: the outer wrapping grid container and each individual card wrapper with its own internal vertical text stack. Card copy must stay attached to its own card frame instead of leaking directly into the grid parent.
 For shell-like surfaces (`app_shell`, `auth_gated_spa`), planner must write both `shell-selection-mode` and `content-selection-mode` plugin-data on the planned root so the chosen content work surface remains explicit during downstream review and reconcile.
 Current render-first SVG/effects fidelity now includes: preserved multi-shadow stacks, fallback `viewBox` injection, scaled `stroke-width`, nested `currentColor` rewrite, and explicit `needsReview` signaling for low-confidence effect-heavy nodes.
 `CodeToFigmaPipelineResult` now also carries a compact `hierarchySummary` (node/container/text/button/icon/image counts plus max depth). This is intended as the measurable baseline for later reference-comparison passes.
 The pipeline may optionally accept a reference `hierarchySummary` and return `referenceComparison` with toleranced deltas for section/container/text/button/icon/image/depth counts. This is the operational comparison contract for beauty-transfer parity checks.
+
+First-pass visual acceptance remains strict by default, but text-first landing pages with strong section/container/text/button structure can now pass without mandatory icon or asset coverage. This keeps live import blocked for weak reconstructions while avoiding false negatives on clean marketing pages.
 
 This naming layer must not change the stable `uiId`. Reverse sync and selector resolution continue to use `uiId` as the primary durable identity.
 
@@ -350,3 +356,45 @@ This improves human reference in Figma while keeping reverse sync anchored on `u
 When browser CSS reports a generic UI font stack, planner should normalize it to a concrete Figma-friendly family before runtime font resolution.
 
 For the current template-engine project this prevents fallback into emoji/symbol families and keeps text aligned with the design intent.
+
+
+## Figma cross-axis alignment compatibility
+
+Figma frame auto-layout does not accept `STRETCH` for `counterAxisAlignItems` in the plugin write path used by this project.
+Planner must normalize CSS `align-items: stretch` to a compatible Figma value during command generation instead of emitting invalid enum values into live batches.
+
+
+Synthetic text labels inside render-first interactive auto-layout containers must inherit the available parent width instead of hugging unconstrained text width.
+Planner should assign width-aware text sizing (`textAutoResize: HEIGHT`) and `layoutSizing.horizontal = FILL` for these labels so long button/card labels wrap inside the parent frame instead of overflowing past its bounds.
+
+
+CSS border shorthand values may expose multi-side `border-color` strings (for example `top right bottom left`) instead of a single color token.
+Planner stroke normalization must extract the first valid color token before emitting `set_stroke`, otherwise Figma receives an invalid empty stroke payload.
+
+CSS font-family tokens for variable fonts may appear as compact identifiers such as `RobotoFlex`, while Figma expects canonical family names like `Roboto Flex`.
+Planner font normalization should map known aliases and split camel-case family names before sending text font requests to the plugin runtime.
+
+
+Render-first planner must not emit `set_asset_reference` placeholder commands for nodes already covered by `set_icon_reference` (`svg-icon`) or for decorative background-image sources such as gradients and inline SVG data URIs.
+These sources are either handled by fill/icon reconstruction or should be skipped entirely; otherwise Figma receives conflicting placeholder asset commands that surface as red fallback squares.
+
+
+Picture-like image wrappers should not be flagged as `asset-source-missing` when they proxy a child `img` node that already carries a renderable image asset.
+Otherwise planner stops at the wrapper placeholder and never reaches the actual image source, producing red fallback rectangles instead of real images.
+
+## Post-write Figma truth for bidirectional sync
+
+Live Figma writes should now be treated as a two-step operation:
+
+1. send editable Figma-native commands
+2. read back the actual Figma node state through plugin-side snapshots
+
+The plugin command bus supports `export_node_snapshot`, `export_node_as_image`, `create_frame_rich`, `create_text_rich` and `execute-plugin-batch.returnSnapshots=true` for this purpose.
+
+Operational rule for agents:
+
+- do not treat the requested command payload as the final Figma state
+- after a live import or significant visual mutation, read the actual node snapshot and use that as the Figma-side baseline for mapping and reconcile
+- when visual fidelity is uncertain, export the target node as an image and compare it against rendered UI output before handing work to code-side MCP
+
+This keeps the tool explicitly bidirectional: Code/Rendered -> Figma writes produce observed Figma truth, and later Figma -> Code or reconcile operations compare against that observed truth.

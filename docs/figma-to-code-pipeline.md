@@ -82,3 +82,9 @@ The agent should understand a strict split:
 - semantic normalization comes from tokens
 
 That split is the basis for safe visual sync.
+
+## Figma-side observed baseline
+
+When a Figma node was created or updated by the plugin bridge, the preferred baseline for reverse sync is the observed plugin snapshot returned by `export_node_snapshot` or by a batch with `returnSnapshots=true`.
+
+This avoids translating code from the intended command payload when Figma applied different sizing, Auto Layout behavior, font fallback, unsupported effects or warnings. The reverse-sync pipeline should prefer actual Figma geometry/layout/text/style fields over requested write parameters whenever those fields are available.

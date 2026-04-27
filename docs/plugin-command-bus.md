@@ -224,3 +224,57 @@ Best-practice runtime behavior for visual fidelity:
 - inline SVG and accessible `.svg` asset sources should be imported through `createNodeFromSvg`, not treated as raster image fills
 - raster assets should continue to use image fills
 - shadow effects with non-zero spread may require `clipsContent = true` on eligible Figma containers to be accepted by the editor
+
+## Fidelity and bidirectional verification runtime
+
+The command bus now exposes extra Figma-side truth commands for two-way sync work:
+
+- `create_frame_rich` -> creates a frame and applies geometry, fills, strokes, radius, opacity, clipping, Auto Layout, padding, sizing, effects and plugin data in one plugin-side operation.
+- `create_text_rich` -> alias-compatible rich text creation using the same runtime path as `create_text`, including font resolution and a returned actual text-node snapshot.
+- `export_node_snapshot` -> returns the actual Figma node state after write operations, including geometry, fills, strokes, radius, effects, layout, constraints, text metrics, plugin `uiId` and recursive children. It can also include `JSON_REST_V1` output for REST-shaped inspection.
+- `export_node_as_image` -> exports a node as PNG/JPG/SVG/PDF and returns metadata plus base64 image data unless `returnImageData=false` is passed.
+
+`execute-plugin-batch` also supports a payload flag:
+
+```json
+{
+  "returnSnapshots": true,
+  "commands": [
+    {
+      "type": "create_frame_rich",
+      "payload": {
+        "ref": "hero",
+        "uiId": "landing.hero",
+        "name": "Hero",
+        "width": 1440,
+        "height": 720,
+        "fills": [{ "type": "SOLID", "color": { "r": 1, "g": 1, "b": 1 } }],
+        "layoutMode": "VERTICAL",
+        "paddingTop": 96,
+        "paddingRight": 80,
+        "paddingBottom": 96,
+        "paddingLeft": 80,
+        "itemSpacing": 24
+      }
+    },
+    {
+      "type": "export_node_snapshot",
+      "payload": { "nodeRef": "hero", "includeChildren": true, "includeRestJson": true }
+    }
+  ]
+}
+```
+
+This exists for bidirectional sync: the write result should become an observed Figma-side baseline for mapping, reconcile and future Figma -> code handoff instead of trusting the requested command payload blindly.
+
+## Auto Layout validation
+
+The plugin runtime now validates common Figma Auto Layout constraints before applying layout mutations:
+
+- padding requires `layoutMode` to be `HORIZONTAL` or `VERTICAL`
+- `BASELINE` counter-axis alignment requires horizontal Auto Layout
+- `FILL` sizing requires the node to be a child of an Auto Layout parent
+- `counterAxisSpacing` requires `layoutWrap=WRAP`
+- `SPACE_BETWEEN` may make explicit `itemSpacing` visually irrelevant, so the runtime returns a warning
+
+Validation errors are surfaced as normalized plugin command errors. Non-fatal fidelity risks are returned in the command `data.warnings` array.
