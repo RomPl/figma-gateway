@@ -12,6 +12,7 @@ import { mapRenderedToCodeSchema } from '../../core/rendered-to-code-mapper';
 import { asyncHandler, sendSuccess, validateRequest } from './helpers';
 import { AppError } from '../../core/errors';
 import type { UiNode } from '../../core/ui-model';
+import { createObservedDesignSystem } from '../../core/design-system-extractor';
 
 export const renderedUiRouter = Router();
 
@@ -135,7 +136,10 @@ const importToFigmaRenderedUiSchema = extractRenderedUiSchema.extend({
   clientName: z.string().trim().min(1).max(200).optional(),
   componentName: z.string().trim().min(1).default('rendered-ui-import'),
   filePath: z.string().trim().min(1).default('[rendered-ui]'),
-  dryRun: z.coerce.boolean().default(false)
+  dryRun: z.coerce.boolean().default(false),
+  includeDesignSystem: z.coerce.boolean().default(false),
+  designSystemTitle: z.string().trim().min(1).max(160).optional(),
+  designSystemMaxItemsPerSection: z.number().int().positive().max(64).default(24)
 });
 
 
@@ -223,6 +227,18 @@ renderedUiRouter.post(
     normalizeRenderableAssetSourcesForTarget(model);
     await hydrateFontIconSvgMarkup(model);
     const plan = buildCodeToFigmaPlan(model, data.componentName, data.filePath);
+    const sourceUrl = data.target.mode === 'existing_url' ? data.target.url : undefined;
+    const rootWidth = Number(plan.model.root.boundingBox?.width ?? plan.model.root.size?.width ?? 1440);
+    const designSystem = data.includeDesignSystem
+      ? createObservedDesignSystem(plan.model, {
+          title: data.designSystemTitle ?? (sourceUrl ? new URL(sourceUrl).hostname : data.componentName),
+          sourceUrl,
+          maxItemsPerSection: data.designSystemMaxItemsPerSection,
+          x: Math.max(0, rootWidth + 80),
+          y: 0
+        })
+      : undefined;
+    if (designSystem) plan.commands = [...plan.commands, ...designSystem.commands];
     const uiIdStats = collectUiIdStats(plan.model.root);
     if (!data.dryRun) {
       assertNoDuplicateUiIdsForLiveImport(uiIdStats, 'Rendered-first import');
@@ -277,7 +293,9 @@ renderedUiRouter.post(
       mappingCount: mappedNodes.length,
       visualSource: 'rendered-first',
       sourceMapping: mapped ? 'code-backed' : 'rendered-only',
-      breakpointVariantSet: (plan.model.root.meta as any)?.breakpointVariantSet
+      breakpointVariantSet: (plan.model.root.meta as any)?.breakpointVariantSet,
+      designSystem: designSystem?.document,
+      designSystemCommandCount: designSystem?.commands.length ?? 0
     });
   })
 );

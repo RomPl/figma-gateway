@@ -21,6 +21,7 @@ import { intentsRouter } from './intents';
 import { selectorsRouter } from './selectors';
 import { assetsRouter } from './assets';
 import { variantGroupsRouter } from './variant-groups';
+import { designSystemRouter } from './design-system';
 
 export const createApiRouter = (): Router => {
   const router = Router();
@@ -46,6 +47,7 @@ export const createApiRouter = (): Router => {
   router.use('/api', selectorsRouter);
   router.use('/api', assetsRouter);
   router.use('/api', variantGroupsRouter);
+  router.use('/api', designSystemRouter);
 
   return router;
 };

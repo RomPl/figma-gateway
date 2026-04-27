@@ -424,3 +424,17 @@ Rules:
 - CSS-drawn icon fragments, such as hamburger lines represented by small `<i>` elements with background fills, should be reconstructed as fill-backed frames rather than generic font-icon placeholders
 
 These rules keep the Figma tree editable while preventing duplicated text layers and preserving non-SVG icon constructions for reverse sync.
+
+## Design-system sidecar generation
+
+Rendered-first imports may include an observed design-system sidecar by passing `includeDesignSystem=true` to `/api/rendered-ui/import-to-figma`.
+
+The sidecar is placed to the right of the imported mockup and is generated from the same rendered UI model used to create the Figma layout. This keeps the mockup and the style system aligned to the same browser-rendered truth.
+
+The first implementation intentionally creates editable documentation frames with plugin data, not permanent Figma variables/styles. This avoids polluting a Figma file with uncurated tokens while still making the design system readable and reversible.
+
+Each token/specimen stores evidence in plugin data so later Figma -> Code/reconcile flows can distinguish:
+
+- observed values extracted from the site
+- curated values confirmed by a designer or GPT orchestrator
+- one-off values that should not become brand tokens
