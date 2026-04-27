@@ -836,11 +836,13 @@ async function executeLowLevelCommand(step, refMap) {
           if (!hasImageFill) throw new Error('Image fill was not applied');
           return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: false, layer: payload.layer || null, importedAs: 'image_fill' } });
         } catch (error) {
-          if ('setPluginData' in node) node.setPluginData('figma-gateway:asset-error', String(error && error.message ? error.message : error));
-          return normalizeCommandResult(commandType, 'error', { nodeId: node.id, error: { code: 'ASSET_IMPORT_FAILED', message: String(error && error.message ? error.message : error) } });
+          const message = String(error && error.message ? error.message : error);
+          if ('setPluginData' in node) { node.setPluginData('figma-gateway:asset-error', message); node.setPluginData('figma-gateway:asset-placeholder', String(payload.alt || payload.sourceUrl || payload.resolvedAssetPath || 'asset')); }
+          return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: true, layer: payload.layer || null, importedAs: 'placeholder', warning: message } });
         }
       }
-      return normalizeCommandResult(commandType, 'error', { nodeId: node.id, error: { code: 'ASSET_IMPORT_UNSUPPORTED', message: 'Target node cannot receive raster image fill' } });
+      if ('setPluginData' in node) node.setPluginData('figma-gateway:asset-placeholder', String(payload.alt || payload.sourceUrl || payload.resolvedAssetPath || 'asset'));
+      return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: true, layer: payload.layer || null, importedAs: 'placeholder', warning: 'Target node cannot receive raster image fill' } });
     }
     return normalizeCommandResult(commandType, 'ok', { nodeId: node.id, data: { id: node.id, placeholder: Boolean(payload.placeholder), layer: payload.layer || null } });
   }

@@ -826,9 +826,9 @@ const planContainerNode = (node: UiNode, parentNode: UiNode | undefined, parentR
     commands.push({ type: 'set_auto_layout', payload: { nodeRef: ref, ...autoLayout } });
   }
 
-  const padding = (autoLayout?.padding as { top?: number; right?: number; bottom?: number; left?: number } | undefined) ?? node.layout?.padding ?? node.padding;
+  const padding = autoLayout ? ((autoLayout.padding as { top?: number; right?: number; bottom?: number; left?: number } | undefined) ?? node.layout?.padding ?? node.padding) : undefined;
   if (padding) commands.push({ type: 'set_padding', payload: { nodeRef: ref, paddingTop: padding.top, paddingRight: padding.right, paddingBottom: padding.bottom, paddingLeft: padding.left } });
-  const spacing = node.layout?.gap ?? node.spacing ?? node.computedStyle?.gap ?? node.computedStyle?.rowGap ?? node.computedStyle?.columnGap;
+  const spacing = autoLayout ? (node.layout?.gap ?? node.spacing ?? node.computedStyle?.gap ?? node.computedStyle?.rowGap ?? node.computedStyle?.columnGap) : undefined;
   if (spacing !== undefined) commands.push({ type: 'set_spacing', payload: { nodeRef: ref, itemSpacing: spacing } });
   if (autoLayout) {
     actions.push({ id: `${ref}:alignment`, type: 'set_alignment', uiId: node.uiId, payload: { nodeRef: ref } });
