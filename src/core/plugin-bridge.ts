@@ -123,18 +123,70 @@ const DEFAULT_ACTIVE_SESSION_MAX_AGE_MS = 60_000;
 const DEFAULT_DISPATCH_LEASE_MS = 30_000;
 
 const makeId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
+const VISUAL_FRAME_PAYLOAD_KEYS = new Set([
+  'fills',
+  'fill',
+  'strokes',
+  'stroke',
+  'strokeWeight',
+  'cornerRadius',
+  'opacity',
+  'clipsContent',
+  'layoutMode',
+  'layoutWrap',
+  'itemSpacing',
+  'padding',
+  'paddingTop',
+  'paddingRight',
+  'paddingBottom',
+  'paddingLeft',
+  'effects',
+  'pluginData'
+]);
+
+const normalizePluginCommandPayload = (type: unknown, rawPayload: unknown): Record<string, unknown> | undefined => {
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) {
+    return undefined;
+  }
+
+  const payload = { ...(rawPayload as Record<string, unknown>) };
+  const commandType = String(type ?? '');
+
+  if ((commandType === 'create_text' || commandType === 'create_text_rich') && payload.text === undefined && payload.content === undefined && payload.characters !== undefined) {
+    payload.text = payload.characters;
+  }
+
+  const fontName = payload.fontName;
+  if (fontName && typeof fontName === 'object' && !Array.isArray(fontName)) {
+    const value = fontName as Record<string, unknown>;
+    if (payload.fontFamily === undefined && typeof value.family === 'string') payload.fontFamily = value.family;
+    if (payload.fontStyle === undefined && typeof value.style === 'string') payload.fontStyle = value.style;
+  }
+
+  return payload;
+};
+
+const commandNeedsRichFrameRuntime = (type: unknown, payload: Record<string, unknown> | undefined): boolean => {
+  if (type !== 'create_frame' || !payload) return false;
+  return Object.keys(payload).some((key) => VISUAL_FRAME_PAYLOAD_KEYS.has(key));
+};
+
 const normalizePluginCommandStep = (step: FigmaCommandStep | Record<string, unknown>): Record<string, unknown> => {
   if (!step || typeof step !== 'object' || Array.isArray(step)) {
     return step as Record<string, unknown>;
   }
   const value = step as Record<string, unknown>;
-  if (value.payload && typeof value.payload === 'object' && !Array.isArray(value.payload)) {
-    return value;
-  }
-  const { type, ...rest } = value;
+  const rawPayload = value.payload && typeof value.payload === 'object' && !Array.isArray(value.payload)
+    ? value.payload
+    : (() => {
+        const { type: _type, ...rest } = value;
+        return Object.keys(rest).length ? rest : undefined;
+      })();
+  const payload = normalizePluginCommandPayload(value.type, rawPayload);
+  const type = commandNeedsRichFrameRuntime(value.type, payload) ? 'create_frame_rich' : value.type;
   return {
     type,
-    ...(Object.keys(rest).length ? { payload: rest } : {})
+    ...(payload && Object.keys(payload).length ? { payload } : {})
   };
 };
 

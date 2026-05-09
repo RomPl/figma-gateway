@@ -355,3 +355,14 @@ The returned snapshot includes:
 - `interactivePatternCount`
 
 Interactive pattern metadata is audit-only in MVP1.2. It is generated from rendered evidence without clicking, hovering, submitting forms or advancing carousels.
+
+## GPT Actions compatibility normalization
+
+When commands are queued through GPT Actions or other generic clients, the server now normalizes common action-friendly payloads before the command reaches the plugin runtime:
+
+- `create_text` and `create_text_rich` accept `characters` as an alias for runtime `text` when `text`/`content` are not provided.
+- `fontName: { family, style }` is mapped to `fontFamily` and `fontStyle` for the plugin font resolver.
+- `create_frame` commands that include visual/runtime-only properties such as `fills`, `strokes`, `cornerRadius`, `opacity`, Auto Layout, padding, effects, or plugin data are upgraded to `create_frame_rich` so the active plugin applies styling instead of creating geometry-only empty rectangles.
+
+This avoids a common failure mode where GPT-created mockups appear as empty frames: the old runtime ignored `characters` on `create_text`, and plain `create_frame` intentionally handled only geometry.
+

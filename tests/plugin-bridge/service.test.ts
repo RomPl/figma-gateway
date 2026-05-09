@@ -36,6 +36,31 @@ test('plugin bridge execute-plugin-batch normalizes shorthand command steps into
   assert.deepEqual(steps[1].payload, { nodeRef: 'node-2', x: 10, y: 20 });
 });
 
+test('plugin bridge normalizes action-friendly text and styled frame commands for plugin runtime compatibility', () => {
+  const service = new PluginBridgeService();
+  const session = service.registerSession({ fileKey: 'file-1', clientName: 'client-a' });
+
+  const command = service.queueExecutePluginBatch({
+    sessionId: session.sessionId,
+    fileKey: 'file-1',
+    actorId: 'test',
+    commands: [
+      { type: 'create_text', characters: 'Visible headline', fontName: { family: 'Inter', style: 'Bold' }, fontSize: 32 } as any,
+      { type: 'create_frame', name: 'Styled card', width: 320, height: 200, fills: [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }], cornerRadius: 24 } as any
+    ]
+  });
+
+  const steps = command.payload.commands as Array<any>;
+  assert.equal(steps[0].type, 'create_text');
+  assert.equal(steps[0].payload.text, 'Visible headline');
+  assert.equal(steps[0].payload.characters, 'Visible headline');
+  assert.equal(steps[0].payload.fontFamily, 'Inter');
+  assert.equal(steps[0].payload.fontStyle, 'Bold');
+  assert.equal(steps[1].type, 'create_frame_rich');
+  assert.equal(steps[1].payload.name, 'Styled card');
+  assert.equal(steps[1].payload.cornerRadius, 24);
+});
+
 test('plugin bridge authenticates pending command access and marks completion states', () => {
   const service = new PluginBridgeService();
   const session = service.registerSession({ fileKey: 'file-1', clientName: 'client-a' });
