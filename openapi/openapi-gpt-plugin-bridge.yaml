@@ -248,9 +248,10 @@ components:
       properties:
         type:
           type: string
-          description: Generic plugin command type, for example create_frame, update_text, duplicate_block, apply_style_from_alias.
+          description: Generic plugin command type, for example create_frame, create_text, create_frame_rich, update_text, duplicate_block, apply_style_from_alias. Styled create_frame commands are normalized to create_frame_rich before dispatch.
         payload:
           type: object
+          description: Command payload. For create_text, characters is accepted as an alias for text. fontName.family/style is accepted and normalized to fontFamily/fontStyle. For create_frame, visual fields such as fills, strokes, cornerRadius, opacity, layout, padding, effects, or pluginData trigger server-side upgrade to create_frame_rich.
           additionalProperties: true
     ExecutePluginCommandRequest:
       type: object
@@ -282,6 +283,7 @@ components:
         commands:
           type: array
           minItems: 1
+          description: Batch steps. Action-friendly shorthand is supported: fields next to type are wrapped into payload, create_text.characters is normalized to text, and styled create_frame commands are upgraded to create_frame_rich.
           items:
             $ref: '#/components/schemas/PluginCommandStep'
         dryRun:

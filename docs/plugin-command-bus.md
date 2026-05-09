@@ -366,3 +366,38 @@ When commands are queued through GPT Actions or other generic clients, the serve
 
 This avoids a common failure mode where GPT-created mockups appear as empty frames: the old runtime ignored `characters` on `create_text`, and plain `create_frame` intentionally handled only geometry.
 
+### Compatibility example: action payload to runtime payload
+
+Input accepted from GPT Actions:
+
+```json
+{
+  "type": "create_text",
+  "characters": "Visible headline",
+  "fontName": { "family": "Inter", "style": "Bold" }
+}
+```
+
+Queued payload after normalization:
+
+```json
+{
+  "type": "create_text",
+  "payload": {
+    "characters": "Visible headline",
+    "text": "Visible headline",
+    "fontName": { "family": "Inter", "style": "Bold" },
+    "fontFamily": "Inter",
+    "fontStyle": "Bold"
+  }
+}
+```
+
+A styled frame input such as:
+
+```json
+{ "type": "create_frame", "fills": [{ "type": "SOLID", "color": { "r": 1, "g": 1, "b": 1 } }], "cornerRadius": 24 }
+```
+
+is queued as `create_frame_rich` so the plugin applies visual properties atomically.
+

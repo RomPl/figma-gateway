@@ -177,6 +177,28 @@ Fix:
 - auto-label fallback is now restricted to leaf interactive containers only
 - containers with children must rely on their actual child tree instead of an extra synthetic label
 
+
+## GPT-created mockup appears as empty boxes
+
+Cause:
+
+- generic clients often sent text as `characters`, while the plugin runtime historically only read `text`/`content` during `create_text`
+- plain plugin-side `create_frame` intentionally created geometry only and ignored visual fields like `fills`, `strokes`, and `cornerRadius`
+
+Fix:
+
+- queued plugin commands are normalized server-side before dispatch
+- `characters` is copied to `text` for `create_text` and `create_text_rich`
+- `fontName.family/style` is copied to `fontFamily` / `fontStyle`
+- styled `create_frame` commands are upgraded to `create_frame_rich`
+
+Verification:
+
+- command payloads for styled frames should contain `type: "create_frame_rich"`
+- command payloads for text created from GPT Actions should contain both `characters` and normalized `text`
+- completed batch result should show `successCount === total` and snapshots with non-empty text/fills
+
+
 ## Nested rendered text disappears after create_text
 
 Cause:

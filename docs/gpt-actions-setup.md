@@ -97,3 +97,45 @@ When the user asks to create a page or frame in the currently open Figma file:
 ## Generic plugin command bus
 
 Use `executePluginCommand` for one operation or `executePluginBatch` for multiple operations when you do not want a separate action call per specific write operation.
+
+
+### Batch mockup compatibility
+
+For visible mockups from GPT Actions, prefer `executePluginBatch` with generic `create_frame` and `create_text` steps. The server normalizes action-friendly payloads before queuing them for the plugin:
+
+- `create_text.characters` is copied to runtime `text` when `text`/`content` are absent.
+- `fontName: { family, style }` is copied to `fontFamily` / `fontStyle`.
+- `create_frame` with visual styling (`fills`, `strokes`, `cornerRadius`, `opacity`, Auto Layout, padding, effects, plugin data) is upgraded to `create_frame_rich` so Figma receives visible styled frames instead of geometry-only boxes.
+
+Minimal visible batch:
+
+```json
+{
+  "clientName": "figma-plugin-bridge",
+  "dryRun": false,
+  "commands": [
+    {
+      "type": "create_frame",
+      "name": "Visible card",
+      "x": 80,
+      "y": 80,
+      "width": 520,
+      "height": 160,
+      "fills": [{ "type": "SOLID", "color": { "r": 0.9, "g": 0.05, "b": 0.06 } }],
+      "cornerRadius": 24
+    },
+    {
+      "type": "create_text",
+      "name": "Visible label",
+      "characters": "Text is visible",
+      "x": 120,
+      "y": 130,
+      "width": 440,
+      "height": 40,
+      "fontSize": 28,
+      "fontName": { "family": "Inter", "style": "Bold" },
+      "fills": [{ "type": "SOLID", "color": { "r": 1, "g": 1, "b": 1 } }]
+    }
+  ]
+}
+```

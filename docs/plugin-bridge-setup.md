@@ -4,7 +4,7 @@
 
 - automatic plugin session registration for the currently open Figma file
 - automatic session discovery for GPT Actions
-- queued `create-page`, `create-frame`, `create-section`, `duplicate-block`, and `update-text` commands from GPT Actions
+- queued `create-page`, `create-frame`, `create-section`, `duplicate-block`, `update-text`, `execute-plugin-command`, and `execute-plugin-batch` commands from GPT Actions
 - plugin-side execution inside Figma with a visible status UI
 
 ## Files
@@ -75,8 +75,9 @@ Auth:
 ### Preferred flow
 
 1. Ensure the Figma plugin bridge is running in the target file
-2. Call `createPage` or `createFrame` with just the write payload plus optional `clientName`
+2. Call `createPage`, `createFrame`, or `executePluginBatch` with just the write payload plus optional `clientName`
 3. The server automatically resolves the latest active plugin session
+4. For multi-node mockups, prefer `executePluginBatch`; it can create styled frames and text in one queued command.
 
 ### Explicit flow for debugging
 
@@ -106,9 +107,55 @@ Auth:
 }
 ```
 
+
+
+### Generic batch mockup creation
+
+For GPT Actions and other generic clients, the server accepts action-friendly payloads and normalizes them before the plugin executes them:
+
+```json
+{
+  "clientName": "ChatGPT web108",
+  "dryRun": false,
+  "commands": [
+    {
+      "type": "create_frame",
+      "name": "Hero background",
+      "x": 80,
+      "y": 80,
+      "width": 1440,
+      "height": 560,
+      "fills": [{ "type": "SOLID", "color": { "r": 0.075, "g": 0.09, "b": 0.12 } }],
+      "cornerRadius": 24
+    },
+    {
+      "type": "create_text",
+      "name": "Hero title",
+      "characters": ">90 лет лидерства",
+      "x": 160,
+      "y": 180,
+      "width": 680,
+      "height": 80,
+      "fontSize": 58,
+      "fontName": { "family": "Inter", "style": "Bold" },
+      "fills": [{ "type": "SOLID", "color": { "r": 1, "g": 1, "b": 1 } }]
+    }
+  ]
+}
+```
+
+Compatibility notes:
+
+- `characters` is accepted as an alias for runtime `text` on `create_text` and `create_text_rich`.
+- `fontName: { family, style }` is accepted and mapped to `fontFamily` / `fontStyle`.
+- A `create_frame` command that includes visual properties such as `fills`, `strokes`, `cornerRadius`, `opacity`, Auto Layout, padding, effects, or plugin data is automatically upgraded to `create_frame_rich`, because plain plugin-side `create_frame` is geometry-only.
+
+If a mockup appears as empty boxes, inspect the queued command payload in the database or command detail endpoint: styled frames should be stored as `create_frame_rich`, and text payloads should include both `characters` and normalized `text`.
+
+
 ## Important limitation
 
-This bridge currently supports the queued `create-page` flow. It does not yet create brand new Figma files/projects.
+This bridge creates content only inside the currently open Figma file through the plugin session. It does not yet create brand new Figma files/projects.
 
 
 ### Auto-resolved frame creation
