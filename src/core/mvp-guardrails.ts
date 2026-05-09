@@ -30,6 +30,7 @@ const SUPPORTED_MVP_COMMANDS = new Set<FigmaLowLevelCommandType>([
   'get_plugin_data',
   'find_nodes',
   'set_icon_reference',
+  'set_asset_reference',
   'set_effects',
   'delete_matching_nodes',
   'export_ui_snapshot',

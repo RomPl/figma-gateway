@@ -401,3 +401,21 @@ A styled frame input such as:
 
 is queued as `create_frame_rich` so the plugin applies visual properties atomically.
 
+
+
+## Screenshot/raster fidelity layers
+
+`set_asset_reference` is allowed for MVP visual fidelity workflows. A typical exact-site capture flow is:
+
+1. create one or more fixed-size frames for screenshot chunks;
+2. call `set_asset_reference` on each frame with a raster `sourceUrl` such as a data URL or accessible image URL;
+3. optionally add editable annotations or extracted structure beside the raster reference.
+
+This is intended for pixel-reference reconstruction when a live webpage must be represented exactly before deeper vectorization.
+
+
+### Static snapshot URLs
+
+The HTTP app exposes `/snapshots/*` as a public, read-only static route backed by `public_html/snapshots`. It sets `Access-Control-Allow-Origin: *` and `Cross-Origin-Resource-Policy: cross-origin` so the Figma plugin can fetch raster screenshot chunks by HTTPS during `set_asset_reference` imports.
+
+Use this route for large webpage screenshots instead of embedding megabyte-scale data URLs in command payloads.

@@ -618,10 +618,20 @@ function applyShadowCompatibility(node, effects) {
   }
 }
 
+function compactAssetSourceForPluginData(imageSource) {
+  const value = String(imageSource || '');
+  if (value.length <= 90000) return { stored: value, truncated: false, length: value.length };
+  const isDataUrl = /^data:image\//i.test(value);
+  const prefix = isDataUrl ? value.slice(0, 80) : value.slice(0, 500);
+  return { stored: prefix + '...[truncated ' + value.length + ' chars]', truncated: true, length: value.length };
+}
 function setAssetPluginData(node, payload, state) {
   if (!node || !('setPluginData' in node)) return;
   const imageSource = String((payload && (payload.resolvedAssetPath || payload.sourceUrl)) || '');
-  node.setPluginData('figma-gateway:asset-source', imageSource);
+  const compactSource = compactAssetSourceForPluginData(imageSource);
+  node.setPluginData('figma-gateway:asset-source', compactSource.stored);
+  node.setPluginData('figma-gateway:asset-source-length', String(compactSource.length));
+  node.setPluginData('figma-gateway:asset-source-truncated', compactSource.truncated ? 'true' : 'false');
   node.setPluginData('figma-gateway:asset-layer', String((payload && payload.layer) || ''));
   node.setPluginData('figma-gateway:asset-strategy', String((payload && payload.figmaStrategy) || ''));
   node.setPluginData('figma-gateway:asset-source-kind', String((payload && payload.sourceKind) || (isSvgSource(imageSource) ? 'svg' : 'raster')));

@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import express from 'express';
 
 import { config } from '../config/env';
@@ -169,6 +171,15 @@ export const createApp = (dependencies: ApiDependencies = {}) => {
   app.use(express.urlencoded({ extended: false, limit: '5mb' }));
   app.use(createAuditMiddleware(auditService));
   app.use(createRequestLoggingMiddleware(logger));
+  app.use('/snapshots', express.static(path.join(config.codeUiRootDir, 'public_html', 'snapshots'), {
+    fallthrough: true,
+    immutable: true,
+    maxAge: '7d',
+    setHeaders: (res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    }
+  }));
   app.use('/api', createAuthMiddleware(authToken), createRateLimitMiddleware(rateLimitWindowMs, rateLimitMaxRequests));
 
   app.use(createApiRouter());

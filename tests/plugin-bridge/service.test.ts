@@ -245,6 +245,16 @@ test('plugin runtime validates auto-layout constraints before applying visual mu
 });
 
 
+
+
+test('plugin runtime truncates large data URL asset source plugin data before image import metadata write', async () => {
+  const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
+  assert.match(source, /function compactAssetSourceForPluginData/);
+  assert.match(source, /asset-source-length/);
+  assert.match(source, /asset-source-truncated/);
+  assert.match(source, /\[truncated '/);
+});
+
 test('plugin runtime treats svg asset import failures as observed placeholders for bidirectional sync', async () => {
   const source = require('node:fs').readFileSync('plugin-bridge/code.js', 'utf8');
   assert.match(source, /function setAssetPluginData/);

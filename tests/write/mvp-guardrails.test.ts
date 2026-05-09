@@ -16,6 +16,17 @@ test('mvp guardrails allow simple visual sync commands', () => {
   );
 });
 
+
+
+test('mvp guardrails allow asset references for screenshot and raster fidelity layers', () => {
+  assert.doesNotThrow(() =>
+    assertMvpWriteBatchAllowed([
+      { type: 'create_frame', payload: { ref: 'screenshot', width: 1440, height: 1200, kind: 'image' } },
+      { type: 'set_asset_reference', payload: { nodeRef: 'screenshot', sourceUrl: 'data:image/jpeg;base64,abc', sourceKind: 'raster' } }
+    ])
+  );
+});
+
 test('mvp guardrails block unsupported feature hints', () => {
   assert.throws(
     () =>
