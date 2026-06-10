@@ -1,7 +1,11 @@
 {
-  "source": "https://open-design.vazovski.art/",
+  "source": "http://127.0.0.1:7456/",
   "kind": "open-design-bootstrap-ui-snapshot",
   "createdAt": "2026-06-10T15:19:45+03:00",
   "image": "https://figma-gateway.vazovski.art/snapshots/open-design/bootstrap/open-design-home.png",
-  "notes": "First Open Design UI snapshot for Figma Gateway reference import. Basic Auth credentials are intentionally not included."
+  "notes": "Fixed bad DNS snapshot. Captured directly from the local Open Design daemon via Chrome DevTools, avoiding Basic Auth credentials in a browser URL. Public UI remains protected by OpenLiteSpeed Basic Auth.",
+  "publicUi": "https://open-design.vazovski.art/",
+  "capturedVia": "local-loopback-daemon-cdp-no-basic-auth",
+  "fixedAt": "2026-06-10T12:38:13.558062+00:00",
+  "bodyTextSanity": "Welcome / Connect / About you / Choose a runtime"
 }
