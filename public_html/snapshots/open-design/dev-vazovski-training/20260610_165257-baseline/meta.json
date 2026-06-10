@@ -1,0 +1,7 @@
+{
+  "title": "Meeting Summary Bot",
+  "bodyText": "Meeting Summary Bot\n\nАвтоматическая транскрипция и резюмирование совещаний\n\nИстория обработок\nВаше имя (опционально)\nПеретащите файл сюда или нажмите для выбора\n\nПоддерживаемые форматы: MP3, WAV, M4A, MP4, WebM\nМаксимальный размер: 20MB\n\n Выбрать файл\nМаскировать чувствительные данные\nПрименяется только к текущей задаче. Глобальный дефолт можно менять через API settings.\n Начать обработку",
+  "out": "/mnt/newdisk/home/figma-gateway.vazovski.art/public_html/snapshots/open-design/dev-vazovski-training/20260610_165257-baseline/dev-home-baseline.png",
+  "width": 1440,
+  "height": 1000
+}
