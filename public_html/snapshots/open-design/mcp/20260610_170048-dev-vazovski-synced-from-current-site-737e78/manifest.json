@@ -1,0 +1,10 @@
+{
+  "createdAt": "2026-06-10T17:00:52+0300",
+  "path": "/api/projects/dev-vazovski-meeting-summary-training/raw/index.html",
+  "targetUrl": "http://127.0.0.1:7456/api/projects/dev-vazovski-meeting-summary-training/raw/index.html",
+  "publicUrl": "https://figma-gateway.vazovski.art/snapshots/open-design/mcp/20260610_170048-dev-vazovski-synced-from-current-site-737e78/snapshot.png",
+  "width": 1440,
+  "height": 1000,
+  "title": "Meeting Summary Bot",
+  "bodyText": "Meeting Summary Bot\n\nТранскрипция, резюме и DOCX за один поток\n\nИстория обработок\nUI training iteration\nЗагрузите запись встречи — получите понятное резюме\n\nИнтерфейс фокусирует пользователя на одном действии: выбрать файл, включить маскирование при необходимости и следить за статусом обработки.\n\n1\nЗагрузка файла\nMP3, WAV, M4A, MP4, WebM до 20MB.\n2\nТранскрипция и LLM-резюме\nПайплайн показывает реальные статусы обработки.\n3\nГотовые материалы\nТема, участники, транскрипт и DOCX.\nWeb upload\nTelegram"
+}
