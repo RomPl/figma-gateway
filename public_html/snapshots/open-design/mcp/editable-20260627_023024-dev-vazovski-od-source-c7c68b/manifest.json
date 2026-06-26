@@ -1,0 +1,15 @@
+{
+  "createdAt": "2026-06-27T02:30:31+0300",
+  "path": "/api/projects/dev-vazovski-meeting-summary-training/raw/index.html",
+  "targetUrl": "http://127.0.0.1:7456/api/projects/dev-vazovski-meeting-summary-training/raw/index.html",
+  "rootRef": "dev-vazovski/open-design-dom-editable",
+  "frameName": "dev.vazovski.art · Editable from Open Design DOM",
+  "nodeCount": 56,
+  "commandCount": 39,
+  "snapshotReference": {
+    "publicUrl": "https://figma-gateway.vazovski.art/snapshots/open-design/mcp/editable-20260627_023024-dev-vazovski-od-source-c7c68b/snapshot.png",
+    "title": "Meeting Summary Bot",
+    "width": 1440,
+    "height": 1000
+  }
+}
