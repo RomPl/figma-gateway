@@ -1,0 +1,11 @@
+{
+  "createdAt": "2026-06-27T02:38:00+0300",
+  "path": "/api/projects/dev-vazovski-meeting-summary-training/raw/index.html",
+  "targetUrl": "http://127.0.0.1:7456/api/projects/dev-vazovski-meeting-summary-training/raw/index.html",
+  "rootRef": "dev-vazovski/open-design-pixel-perfect",
+  "frameName": "dev.vazovski.art · Pixel-perfect from Open Design",
+  "nodeCount": 56,
+  "commandCount": 76,
+  "publicUrl": "https://figma-gateway.vazovski.art/snapshots/open-design/mcp/pixel-perfect-20260627_023754-dev-vazovski-pixel-perfect-3b0dc0/open-design-source.png",
+  "pixelPerfectMode": "raster-source-plus-editable-semantic-layers"
+}
