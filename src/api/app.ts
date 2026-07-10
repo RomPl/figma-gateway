@@ -171,6 +171,15 @@ export const createApp = (dependencies: ApiDependencies = {}) => {
   app.use(express.urlencoded({ extended: false, limit: '5mb' }));
   app.use(createAuditMiddleware(auditService));
   app.use(createRequestLoggingMiddleware(logger));
+  app.use('/openapi', express.static(path.join(config.codeUiRootDir, 'openapi'), {
+    fallthrough: false,
+    maxAge: '5m',
+    setHeaders: (res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+    }
+  }));
   app.use('/snapshots', express.static(path.join(config.codeUiRootDir, 'public_html', 'snapshots'), {
     fallthrough: true,
     immutable: true,

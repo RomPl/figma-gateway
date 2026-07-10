@@ -283,7 +283,7 @@ components:
         commands:
           type: array
           minItems: 1
-          description: Batch steps. Action-friendly shorthand is supported: fields next to type are wrapped into payload, create_text.characters is normalized to text, and styled create_frame commands are upgraded to create_frame_rich.
+          description: "Batch steps. Action-friendly shorthand is supported: fields next to type are wrapped into payload, create_text.characters is normalized to text, and styled create_frame commands are upgraded to create_frame_rich."
           items:
             $ref: '#/components/schemas/PluginCommandStep'
         dryRun:
