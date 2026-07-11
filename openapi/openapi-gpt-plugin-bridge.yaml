@@ -2,18 +2,26 @@ openapi: 3.1.0
 info:
   title: Figma Gateway GPT Plugin Bridge API
   version: 0.1.0
-  description: |
-    GPT Actions schema for read-only alias operations and page creation through the Figma plugin bridge.
+  description: 'GPT Actions schema for read-only alias operations and page creation through the Figma plugin bridge.
+
 
     Notes:
+
     - createPage requires a running Figma plugin bridge session
+
     - registerPluginSession is usually handled automatically by the plugin itself
+
     - createPage can auto-resolve the latest active plugin session when sessionId is omitted
+
     - fileKey is optional for createPage; the server can use the current plugin session context automatically
+
     - createPage is consequential and queues a command for the plugin
+
     - createPage defaults to live execution when dryRun is omitted
+
+    '
 servers:
-  - url: https://figma-gateway.vazovski.art
+- url: https://figma-gateway.vazovski.art
 components:
   securitySchemes:
     bearerAuth:
@@ -70,10 +78,26 @@ components:
     ResolveAliasRequest:
       type: object
       required:
-        - alias
+      - alias
       properties:
         alias:
           type: string
+        correlation_id:
+          type: string
+          maxLength: 80
+        metric_context:
+          type: object
+          properties: &id001
+            correlation_id:
+              type: string
+              maxLength: 80
+            segment_id:
+              type: string
+              maxLength: 80
+            activity_window_id:
+              type: string
+              maxLength: 80
+          additionalProperties: false
     SessionRegisterRequest:
       type: object
       properties:
@@ -88,6 +112,13 @@ components:
           description: Optional current file name for local or draft files.
         clientName:
           type: string
+        correlation_id:
+          type: string
+          maxLength: 80
+        metric_context:
+          type: object
+          properties: *id001
+          additionalProperties: false
     SessionRegisterResponse:
       type: object
       properties:
@@ -109,7 +140,7 @@ components:
     CreatePageRequest:
       type: object
       required:
-        - name
+      - name
       properties:
         fileKey:
           type: string
@@ -126,12 +157,19 @@ components:
           type: boolean
           default: false
           description: Set to false for live page creation.
+        correlation_id:
+          type: string
+          maxLength: 80
+        metric_context:
+          type: object
+          properties: *id001
+          additionalProperties: false
     CreateFrameRequest:
       type: object
       required:
-        - name
-        - width
-        - height
+      - name
+      - width
+      - height
       properties:
         fileKey:
           type: string
@@ -159,11 +197,18 @@ components:
           type: boolean
           default: false
           description: Set to false for live frame creation.
+        correlation_id:
+          type: string
+          maxLength: 80
+        metric_context:
+          type: object
+          properties: *id001
+          additionalProperties: false
     UpdateTextRequest:
       type: object
       required:
-        - nodeId
-        - text
+      - nodeId
+      - text
       properties:
         fileKey:
           type: string
@@ -182,10 +227,17 @@ components:
           type: boolean
           default: false
           description: Set to false for live text updates.
+        correlation_id:
+          type: string
+          maxLength: 80
+        metric_context:
+          type: object
+          properties: *id001
+          additionalProperties: false
     CreateSectionRequest:
       type: object
       required:
-        - name
+      - name
       properties:
         fileKey:
           type: string
@@ -213,10 +265,17 @@ components:
           type: boolean
           default: false
           description: Set to false for live section creation.
+        correlation_id:
+          type: string
+          maxLength: 80
+        metric_context:
+          type: object
+          properties: *id001
+          additionalProperties: false
     DuplicateBlockRequest:
       type: object
       required:
-        - nodeId
+      - nodeId
       properties:
         fileKey:
           type: string
@@ -241,22 +300,33 @@ components:
           type: boolean
           default: false
           description: Set to false for live block duplication.
+        correlation_id:
+          type: string
+          maxLength: 80
+        metric_context:
+          type: object
+          properties: *id001
+          additionalProperties: false
     PluginCommandStep:
       type: object
       required:
-        - type
+      - type
       properties:
         type:
           type: string
-          description: Generic plugin command type, for example create_frame, create_text, create_frame_rich, update_text, duplicate_block, apply_style_from_alias. Styled create_frame commands are normalized to create_frame_rich before dispatch.
+          description: Generic plugin command type, for example create_frame, create_text, create_frame_rich, update_text,
+            duplicate_block, apply_style_from_alias. Styled create_frame commands are normalized to create_frame_rich before
+            dispatch.
         payload:
           type: object
-          description: Command payload. For create_text, characters is accepted as an alias for text. fontName.family/style is accepted and normalized to fontFamily/fontStyle. For create_frame, visual fields such as fills, strokes, cornerRadius, opacity, layout, padding, effects, or pluginData trigger server-side upgrade to create_frame_rich.
+          description: Command payload. For create_text, characters is accepted as an alias for text. fontName.family/style
+            is accepted and normalized to fontFamily/fontStyle. For create_frame, visual fields such as fills, strokes, cornerRadius,
+            opacity, layout, padding, effects, or pluginData trigger server-side upgrade to create_frame_rich.
           additionalProperties: true
     ExecutePluginCommandRequest:
       type: object
       required:
-        - command
+      - command
       properties:
         fileKey:
           type: string
@@ -269,10 +339,17 @@ components:
         dryRun:
           type: boolean
           default: false
+        correlation_id:
+          type: string
+          maxLength: 80
+        metric_context:
+          type: object
+          properties: *id001
+          additionalProperties: false
     ExecutePluginBatchRequest:
       type: object
       required:
-        - commands
+      - commands
       properties:
         fileKey:
           type: string
@@ -283,12 +360,20 @@ components:
         commands:
           type: array
           minItems: 1
-          description: "Batch steps. Action-friendly shorthand is supported: fields next to type are wrapped into payload, create_text.characters is normalized to text, and styled create_frame commands are upgraded to create_frame_rich."
+          description: 'Batch steps. Action-friendly shorthand is supported: fields next to type are wrapped into payload,
+            create_text.characters is normalized to text, and styled create_frame commands are upgraded to create_frame_rich.'
           items:
             $ref: '#/components/schemas/PluginCommandStep'
         dryRun:
           type: boolean
           default: false
+        correlation_id:
+          type: string
+          maxLength: 80
+        metric_context:
+          type: object
+          properties: *id001
+          additionalProperties: false
     QueuedWriteResponse:
       type: object
       properties:
@@ -321,6 +406,31 @@ paths:
       responses:
         '200':
           description: OK
+      parameters:
+      - name: correlation_id
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 80
+      - name: metric_context
+        in: query
+        required: false
+        style: deepObject
+        explode: true
+        schema: &id002
+          type: object
+          properties:
+            correlation_id:
+              type: string
+              maxLength: 80
+            segment_id:
+              type: string
+              maxLength: 80
+            activity_window_id:
+              type: string
+              maxLength: 80
+          additionalProperties: false
   /version:
     get:
       operationId: getVersion
@@ -328,6 +438,19 @@ paths:
       responses:
         '200':
           description: OK
+      parameters:
+      - name: correlation_id
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 80
+      - name: metric_context
+        in: query
+        required: false
+        style: deepObject
+        explode: true
+        schema: *id002
   /capabilities:
     get:
       operationId: getCapabilities
@@ -335,24 +458,49 @@ paths:
       responses:
         '200':
           description: OK
+      parameters:
+      - name: correlation_id
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 80
+      - name: metric_context
+        in: query
+        required: false
+        style: deepObject
+        explode: true
+        schema: *id002
   /api/aliases:
     get:
       operationId: listAliases
       security:
-        - bearerAuth: []
+      - bearerAuth: []
       parameters:
-        - name: project
-          in: query
-          schema:
-            type: string
-        - name: tag
-          in: query
-          schema:
-            type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
+      - name: project
+        in: query
+        schema:
+          type: string
+      - name: tag
+        in: query
+        schema:
+          type: string
+      - name: limit
+        in: query
+        schema:
+          type: integer
+      - name: correlation_id
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 80
+      - name: metric_context
+        in: query
+        required: false
+        style: deepObject
+        explode: true
+        schema: *id002
       responses:
         '200':
           description: OK
@@ -371,7 +519,7 @@ paths:
       operationId: resolveAlias
       x-openai-isConsequential: false
       security:
-        - bearerAuth: []
+      - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -396,7 +544,7 @@ paths:
       operationId: listActivePluginSessions
       x-openai-isConsequential: false
       security:
-        - bearerAuth: []
+      - bearerAuth: []
       responses:
         '200':
           description: OK
@@ -406,12 +554,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: correlation_id
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 80
+      - name: metric_context
+        in: query
+        required: false
+        style: deepObject
+        explode: true
+        schema: *id002
   /api/plugin-bridge/sessions/register:
     post:
       operationId: registerPluginSession
       x-openai-isConsequential: false
       security:
-        - bearerAuth: []
+      - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -437,7 +598,7 @@ paths:
       summary: Queue alias style application for a connected Figma plugin bridge session
       x-openai-isConsequential: true
       security:
-        - bearerAuth: []
+      - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -445,8 +606,8 @@ paths:
             schema:
               type: object
               required:
-                - alias
-                - nodeId
+              - alias
+              - nodeId
               properties:
                 fileKey:
                   type: string
@@ -457,6 +618,13 @@ paths:
                 dryRun:
                   type: boolean
                   default: false
+                correlation_id:
+                  type: string
+                  maxLength: 80
+                metric_context:
+                  type: object
+                  properties: *id001
+                  additionalProperties: false
       responses:
         '202':
           description: Queued
@@ -482,7 +650,7 @@ paths:
       summary: Queue a generic plugin command for a connected Figma plugin bridge session
       x-openai-isConsequential: true
       security:
-        - bearerAuth: []
+      - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -514,7 +682,7 @@ paths:
       summary: Queue a batch of generic plugin commands for a connected Figma plugin bridge session
       x-openai-isConsequential: true
       security:
-        - bearerAuth: []
+      - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -546,7 +714,7 @@ paths:
       summary: Queue block duplication for a connected Figma plugin bridge session
       x-openai-isConsequential: true
       security:
-        - bearerAuth: []
+      - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -578,7 +746,7 @@ paths:
       summary: Queue section creation for a connected Figma plugin bridge session
       x-openai-isConsequential: true
       security:
-        - bearerAuth: []
+      - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -610,7 +778,7 @@ paths:
       summary: Queue text update for a connected Figma plugin bridge session
       x-openai-isConsequential: true
       security:
-        - bearerAuth: []
+      - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -642,7 +810,7 @@ paths:
       summary: Queue frame creation for a connected Figma plugin bridge session
       x-openai-isConsequential: true
       security:
-        - bearerAuth: []
+      - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -674,7 +842,7 @@ paths:
       summary: Queue page creation for a connected Figma plugin bridge session
       x-openai-isConsequential: true
       security:
-        - bearerAuth: []
+      - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -701,4 +869,4 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 security:
-  - bearerAuth: []
+- bearerAuth: []
