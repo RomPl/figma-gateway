@@ -26,6 +26,11 @@ declare global {
   namespace Express {
     interface Request {
       id: string;
+      metricContext?: {
+        correlation_id?: string;
+        segment_id?: string;
+        activity_window_id?: string;
+      };
     }
 
     interface Locals {

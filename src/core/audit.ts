@@ -239,7 +239,8 @@ export const createAuditMiddleware = (auditService: AuditService): RequestHandle
         params: {
           params: req.params,
           query: req.query,
-          body: req.body
+          body: req.body,
+          metric_context: req.metricContext
         },
         status: res.statusCode < 400 ? 'success' : 'error',
         errorCode: res.locals.auditErrorCode as string | undefined,

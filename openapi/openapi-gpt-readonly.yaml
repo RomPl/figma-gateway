@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: Read-only API for a custom GPT via Actions.
 servers:
-  - url: https://figma-gateway.vazovski.art
+- url: https://figma-gateway.vazovski.art
 components:
   securitySchemes:
     bearerAuth:
@@ -19,8 +19,8 @@ components:
         message:
           type: string
       required:
-        - code
-        - message
+      - code
+      - message
     ErrorResponse:
       type: object
       properties:
@@ -29,8 +29,8 @@ components:
         error:
           $ref: '#/components/schemas/Error'
       required:
-        - success
-        - error
+      - success
+      - error
     HealthData:
       type: object
       properties:
@@ -50,8 +50,8 @@ components:
         data:
           $ref: '#/components/schemas/HealthData'
       required:
-        - success
-        - data
+      - success
+      - data
     VersionData:
       type: object
       properties:
@@ -69,8 +69,8 @@ components:
         data:
           $ref: '#/components/schemas/VersionData'
       required:
-        - success
-        - data
+      - success
+      - data
     AliasRecord:
       type: object
       properties:
@@ -102,8 +102,8 @@ components:
           items:
             $ref: '#/components/schemas/AliasRecord'
       required:
-        - success
-        - data
+      - success
+      - data
     AliasResponse:
       type: object
       properties:
@@ -112,15 +112,31 @@ components:
         data:
           $ref: '#/components/schemas/AliasRecord'
       required:
-        - success
-        - data
+      - success
+      - data
     ResolveAliasRequest:
       type: object
       properties:
         alias:
           type: string
+        correlation_id:
+          type: string
+          maxLength: 80
+        metric_context:
+          type: object
+          properties: &id001
+            correlation_id:
+              type: string
+              maxLength: 80
+            segment_id:
+              type: string
+              maxLength: 80
+            activity_window_id:
+              type: string
+              maxLength: 80
+          additionalProperties: false
       required:
-        - alias
+      - alias
     SearchAliasesRequest:
       type: object
       properties:
@@ -134,6 +150,13 @@ components:
             type: string
         limit:
           type: integer
+        correlation_id:
+          type: string
+          maxLength: 80
+        metric_context:
+          type: object
+          properties: *id001
+          additionalProperties: false
 paths:
   /health:
     get:
@@ -147,12 +170,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
-        'default':
+        default:
           description: Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: correlation_id
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 80
+      - name: metric_context
+        in: query
+        required: false
+        style: deepObject
+        explode: true
+        schema: &id002
+          type: object
+          properties:
+            correlation_id:
+              type: string
+              maxLength: 80
+            segment_id:
+              type: string
+              maxLength: 80
+            activity_window_id:
+              type: string
+              maxLength: 80
+          additionalProperties: false
   /version:
     get:
       operationId: getVersion
@@ -165,32 +213,57 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/VersionResponse'
-        'default':
+        default:
           description: Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: correlation_id
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 80
+      - name: metric_context
+        in: query
+        required: false
+        style: deepObject
+        explode: true
+        schema: *id002
   /api/aliases:
     get:
       operationId: listAliases
       summary: List aliases
       parameters:
-        - name: project
-          in: query
-          required: false
-          schema:
-            type: string
-        - name: tag
-          in: query
-          required: false
-          schema:
-            type: string
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
+      - name: project
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: tag
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+      - name: correlation_id
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 80
+      - name: metric_context
+        in: query
+        required: false
+        style: deepObject
+        explode: true
+        schema: *id002
       responses:
         '200':
           description: OK
@@ -198,7 +271,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AliasListResponse'
-        'default':
+        default:
           description: Error
           content:
             application/json:
@@ -209,11 +282,23 @@ paths:
       operationId: getAlias
       summary: Get one alias
       parameters:
-        - name: alias
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: alias
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: correlation_id
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 80
+      - name: metric_context
+        in: query
+        required: false
+        style: deepObject
+        explode: true
+        schema: *id002
       responses:
         '200':
           description: OK
@@ -221,7 +306,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AliasResponse'
-        'default':
+        default:
           description: Error
           content:
             application/json:
@@ -244,7 +329,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AliasResponse'
-        'default':
+        default:
           description: Error
           content:
             application/json:
@@ -267,11 +352,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AliasListResponse'
-        'default':
+        default:
           description: Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 security:
-  - bearerAuth: []
+- bearerAuth: []

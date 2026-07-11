@@ -169,8 +169,52 @@ export const createApp = (dependencies: ApiDependencies = {}) => {
   app.use(createCorsMiddleware(corsAllowedOrigins));
   app.use(express.json({ limit: '5mb' }));
   app.use(express.urlencoded({ extended: false, limit: '5mb' }));
+  app.use((req, _res, next) => {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+      ? req.body as Record<string, unknown>
+      : {};
+    const query = req.query && typeof req.query === 'object'
+      ? req.query as Record<string, unknown>
+      : {};
+    const rawContext = body.metric_context ?? query.metric_context;
+    let context: Record<string, unknown> = {};
+    if (rawContext && typeof rawContext === 'object' && !Array.isArray(rawContext)) {
+      context = rawContext as Record<string, unknown>;
+    } else if (typeof rawContext === 'string') {
+      try {
+        const parsed = JSON.parse(rawContext);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          context = parsed as Record<string, unknown>;
+        }
+      } catch {
+        context = {};
+      }
+    }
+    const correlationId = typeof context.correlation_id === 'string'
+      ? context.correlation_id
+      : typeof body.correlation_id === 'string'
+        ? body.correlation_id
+        : typeof query.correlation_id === 'string'
+          ? query.correlation_id
+          : undefined;
+    req.metricContext = {
+      correlation_id: correlationId?.slice(0, 80),
+      segment_id: typeof context.segment_id === 'string' ? context.segment_id.slice(0, 80) : undefined,
+      activity_window_id: typeof context.activity_window_id === 'string' ? context.activity_window_id.slice(0, 80) : undefined
+    };
+    next();
+  });
   app.use(createAuditMiddleware(auditService));
   app.use(createRequestLoggingMiddleware(logger));
+  app.use('/openapi', express.static(path.join(config.codeUiRootDir, 'openapi'), {
+    fallthrough: false,
+    maxAge: '5m',
+    setHeaders: (res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+    }
+  }));
   app.use('/snapshots', express.static(path.join(config.codeUiRootDir, 'public_html', 'snapshots'), {
     fallthrough: true,
     immutable: true,
