@@ -20,3 +20,7 @@ The plugin-bridge schema is the preferred surface when a connected Figma plugin 
 7. Run a read-only call first, then a `dryRun: true` write call before any live mutation.
 
 The plugin-bridge YAML description containing a colon must remain quoted; otherwise GPT import and standard YAML parsers reject the schema.
+
+## Correlation metadata
+
+All request-body operations in the four published schemas accept optional `correlation_id` and `metric_context` fields. `metric_context` is limited to `correlation_id`, `segment_id`, and `activity_window_id`. The gateway captures this metadata before request validation and retains it in the audit event even when a route schema strips unknown business fields.
