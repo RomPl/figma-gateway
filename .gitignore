@@ -25,3 +25,11 @@ data/*.sqlite-wal
 .local/
 .pki/
 data/*.db
+
+# PF-11 critical dirty worktree cleanup
+backups/
+openapi/backups/
+*.bak_*
+public_html/snapshots/open-design/mcp/
+openapi/openapi.json
+openapi/openapi-gpt-plugin-bridge.json
