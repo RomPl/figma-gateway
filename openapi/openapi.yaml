@@ -76,21 +76,11 @@ paths:
       - name: metric_context
         in: query
         required: false
-        style: deepObject
-        explode: true
-        schema: &id001
-          type: object
-          properties:
-            correlation_id:
-              type: string
-              maxLength: 80
-            segment_id:
-              type: string
-              maxLength: 80
-            activity_window_id:
-              type: string
-              maxLength: 80
-          additionalProperties: false
+        description: JSON object string with correlation_id, segment_id, and activity_window_id. Used instead of deepObject
+          for GPT/JIT GET compatibility.
+        schema:
+          type: string
+          maxLength: 512
   /api/files/{fileKey}:
     get:
       tags:
@@ -109,9 +99,11 @@ paths:
       - name: metric_context
         in: query
         required: false
-        style: deepObject
-        explode: true
-        schema: *id001
+        description: JSON object string with correlation_id, segment_id, and activity_window_id. Used instead of deepObject
+          for GPT/JIT GET compatibility.
+        schema:
+          type: string
+          maxLength: 512
       responses:
         '200':
           description: File payload returned successfully
@@ -164,9 +156,11 @@ paths:
       - name: metric_context
         in: query
         required: false
-        style: deepObject
-        explode: true
-        schema: *id001
+        description: JSON object string with correlation_id, segment_id, and activity_window_id. Used instead of deepObject
+          for GPT/JIT GET compatibility.
+        schema:
+          type: string
+          maxLength: 512
       responses:
         '200':
           description: Node payload returned successfully
@@ -591,7 +585,7 @@ components:
           maxLength: 80
         metric_context:
           type: object
-          properties: &id002
+          properties: &id001
             correlation_id:
               type: string
               maxLength: 80
@@ -642,7 +636,7 @@ components:
           maxLength: 80
         metric_context:
           type: object
-          properties: *id002
+          properties: *id001
           additionalProperties: false
       required:
       - fileKey
@@ -715,7 +709,7 @@ components:
           maxLength: 80
         metric_context:
           type: object
-          properties: *id002
+          properties: *id001
           additionalProperties: false
       required:
       - fileKey

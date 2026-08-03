@@ -10,10 +10,16 @@ type RequestSchemas = {
 };
 
 export const sendSuccess = <T>(res: Response, data: T, statusCode = 200): void => {
-  res.status(statusCode).json({
+  const serializationStartedAt = process.hrtime.bigint();
+  const payload = JSON.stringify({
     success: true,
     data
   });
+  const serializationMs = Number(process.hrtime.bigint() - serializationStartedAt) / 1_000_000;
+
+  res.locals.serializationMs = serializationMs;
+  res.locals.responseBytes = Buffer.byteLength(payload, 'utf8');
+  res.status(statusCode).type('application/json').send(payload);
 };
 
 export const asyncHandler =
