@@ -206,6 +206,58 @@ export const createApp = (dependencies: ApiDependencies = {}) => {
   });
   app.use(createAuditMiddleware(auditService));
   app.use(createRequestLoggingMiddleware(logger));
+  app.get('/schema/', (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.type('text/yaml').sendFile(path.join(config.codeUiRootDir, 'openapi', 'openapi-gpt-plugin-bridge.yaml'));
+  });
+  app.get('/openapi.json', (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.type('application/json').sendFile(path.join(config.codeUiRootDir, 'openapi', 'openapi.json'));
+  });
+  app.get('/openapi-gpt.json', (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.type('application/json').sendFile(path.join(config.codeUiRootDir, 'openapi', 'openapi-gpt-plugin-bridge.json'));
+  });
+  app.get('/.well-known/oauth-protected-resource', (_req, res) => {
+    res.json({
+      resource: 'https://figma-gateway.vazovski.art',
+      authorization_servers: ['https://figma-gateway.vazovski.art'],
+      bearer_methods_supported: ['header'],
+      scopes_supported: ['mcp']
+    });
+  });
+  app.get('/.well-known/oauth-authorization-server', (_req, res) => {
+    res.json({
+      issuer: 'https://figma-gateway.vazovski.art',
+      authorization_endpoint: 'https://figma-gateway.vazovski.art/authorize',
+      token_endpoint: 'https://figma-gateway.vazovski.art/token',
+      registration_endpoint: 'https://figma-gateway.vazovski.art/register',
+      response_types_supported: ['code'],
+      grant_types_supported: ['authorization_code', 'refresh_token'],
+      code_challenge_methods_supported: ['S256'],
+      token_endpoint_auth_methods_supported: ['client_secret_post', 'none'],
+      scopes_supported: ['mcp']
+    });
+  });
+  app.get('/.well-known/openid-configuration', (_req, res) => {
+    res.json({
+      issuer: 'https://figma-gateway.vazovski.art',
+      authorization_endpoint: 'https://figma-gateway.vazovski.art/authorize',
+      token_endpoint: 'https://figma-gateway.vazovski.art/token',
+      registration_endpoint: 'https://figma-gateway.vazovski.art/register',
+      response_types_supported: ['code'],
+      grant_types_supported: ['authorization_code', 'refresh_token'],
+      code_challenge_methods_supported: ['S256'],
+      token_endpoint_auth_methods_supported: ['client_secret_post', 'none'],
+      scopes_supported: ['mcp']
+    });
+  });
   app.use('/openapi', express.static(path.join(config.codeUiRootDir, 'openapi'), {
     fallthrough: false,
     maxAge: '5m',

@@ -324,6 +324,35 @@ paths:
       responses:
         '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - success
+                - data
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    type: object
+                    required:
+                    - status
+                    - service
+                    - version
+                    - uptime
+                    properties:
+                      status:
+                        type: string
+                      service:
+                        type: string
+                      version:
+                        type: string
+                      uptime:
+                        type: number
+                    additionalProperties: true
+                additionalProperties: true
       parameters:
       - name: correlation_id
         in: query
@@ -334,21 +363,11 @@ paths:
       - name: metric_context
         in: query
         required: false
-        style: deepObject
-        explode: true
-        schema: &id002
-          type: object
-          properties:
-            correlation_id:
-              type: string
-              maxLength: 80
-            segment_id:
-              type: string
-              maxLength: 80
-            activity_window_id:
-              type: string
-              maxLength: 80
-          additionalProperties: false
+        description: JSON object string with correlation_id, segment_id, and activity_window_id. Used instead of deepObject
+          for GPT/JIT GET compatibility.
+        schema:
+          type: string
+          maxLength: 512
   /version:
     get:
       operationId: getVersion
@@ -367,9 +386,11 @@ paths:
       - name: metric_context
         in: query
         required: false
-        style: deepObject
-        explode: true
-        schema: *id002
+        description: JSON object string with correlation_id, segment_id, and activity_window_id. Used instead of deepObject
+          for GPT/JIT GET compatibility.
+        schema:
+          type: string
+          maxLength: 512
   /api/aliases:
     get:
       operationId: listAliases
@@ -401,9 +422,11 @@ paths:
       - name: metric_context
         in: query
         required: false
-        style: deepObject
-        explode: true
-        schema: *id002
+        description: JSON object string with correlation_id, segment_id, and activity_window_id. Used instead of deepObject
+          for GPT/JIT GET compatibility.
+        schema:
+          type: string
+          maxLength: 512
       responses:
         '200':
           description: OK
