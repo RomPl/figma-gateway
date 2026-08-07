@@ -87,8 +87,9 @@ test('REST requests are persisted to audit trail with success and error states',
     const baseUrl = `http://127.0.0.1:${address.port}`;
 
     try {
-      await fetch(`${baseUrl}/health`, {
+      await fetch(`${baseUrl}/api/files/file-123`, {
         headers: {
+          authorization: 'Bearer test-api-token',
           'x-actor-id': 'gpt-actions'
         }
       });
@@ -105,9 +106,49 @@ test('REST requests are persisted to audit trail with success and error states',
       assert.equal(errorEvent.actorId, 'anonymous-client');
 
       const successEvent = events[1];
-      assert.equal(successEvent.target, 'GET /health');
+      assert.equal(successEvent.target, 'GET /api/files/file-123');
       assert.equal(successEvent.status, 'success');
       assert.equal(successEvent.actorId, 'gpt-actions');
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+
+test('system health endpoints do not persist synchronous REST audit rows', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'figma-audit-system-'));
+  const dbPath = join(dir, 'audit.sqlite');
+
+  try {
+    const db = createSqliteDatabase(dbPath);
+    const auditService = new AuditService(db);
+    const app = createApp({
+      figmaClient: createMockClient(),
+      apiBearerToken: 'test-token',
+      corsAllowedOrigins: ['https://chat.openai.com'],
+      db,
+      auditService
+    });
+    const server = createServer(app);
+
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Failed to get server address');
+    }
+
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    try {
+      for (const path of ['/health', '/version', '/capabilities']) {
+        const response = await fetch(`${baseUrl}${path}`);
+        assert.equal(response.status, 200);
+      }
+      assert.equal(auditService.listRecent(10).length, 0);
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
