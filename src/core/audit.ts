@@ -7,6 +7,7 @@ import { logger as defaultLogger } from '../utils/logger';
 const REDACTED_VALUE = '[REDACTED]';
 const MAX_STRING_LENGTH = 500;
 const MAX_ARRAY_ITEMS = 50;
+const NON_AUDITED_SYSTEM_PATHS = new Set(['/health', '/version', '/capabilities']);
 
 export type AuditSource = 'rest' | 'mcp';
 export type AuditStatus = 'success' | 'error';
@@ -222,6 +223,12 @@ const getRestActorId = (headers: {
 
 export const createAuditMiddleware = (auditService: AuditService): RequestHandler => {
   return (req, res, next) => {
+    const method = req.method.toUpperCase();
+    if ((method === 'GET' || method === 'HEAD') && NON_AUDITED_SYSTEM_PATHS.has(req.path)) {
+      next();
+      return;
+    }
+
     res.on('finish', () => {
       auditService.record({
         source: 'rest',
