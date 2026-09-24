@@ -42,6 +42,7 @@ import { createRateLimitMiddleware } from './middleware/rate-limit';
 import { createRequestLoggingMiddleware, securityHeadersMiddleware } from './middleware/security';
 import { createApiRouter } from './routes/index';
 import { PluginBridgeService } from '../core/plugin-bridge';
+import { createOAuthRouter, verifyOAuthAccessToken } from './oauth';
 
 export type ApiDependencies = {
   db?: SqliteDatabase;
@@ -206,6 +207,24 @@ export const createApp = (dependencies: ApiDependencies = {}) => {
   });
   app.use(createAuditMiddleware(auditService));
   app.use(createRequestLoggingMiddleware(logger));
+  app.use(createOAuthRouter(authToken!));
+  let streamableMcpHandler: ReturnType<typeof import('../mcp/http.js')['createStreamableMcpHandler']> | undefined;
+  app.all(
+    '/mcp',
+    createAuthMiddleware(
+      authToken,
+      (token) => verifyOAuthAccessToken(token, authToken!),
+      'https://figma-gateway.vazovski.art/.well-known/oauth-protected-resource',
+      false
+    ),
+    async (req, res, next) => {
+      if (!streamableMcpHandler) {
+        const { createStreamableMcpHandler } = await import('../mcp/http.js');
+        streamableMcpHandler = createStreamableMcpHandler();
+      }
+      return streamableMcpHandler!(req, res, next);
+    }
+  );
   app.use('/openapi', express.static(path.join(config.codeUiRootDir, 'openapi'), {
     fallthrough: false,
     maxAge: '5m',
