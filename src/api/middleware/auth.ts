@@ -15,20 +15,29 @@ const parseBearerToken = (authorizationHeader?: string): string | null => {
   return token;
 };
 
-export const createAuthMiddleware = (expectedToken?: string): RequestHandler => {
+export const createAuthMiddleware = (
+  expectedToken?: string,
+  tokenValidator?: (token: string) => boolean,
+  resourceMetadataUrl?: string,
+  allowExpectedToken = true
+): RequestHandler => {
   if (!expectedToken) {
     throw new AppError('API_BEARER_TOKEN is not configured', 500, 'AUTH_MISCONFIGURED');
   }
 
-  return (req, _res, next) => {
+  return (req, res, next) => {
     const token = parseBearerToken(req.headers.authorization);
 
     if (!token) {
+      if (resourceMetadataUrl) {
+        res.setHeader('WWW-Authenticate', `Bearer realm="mcp", resource_metadata="${resourceMetadataUrl}"`);
+      }
       next(new AppError('Missing bearer token', 401, 'UNAUTHORIZED'));
       return;
     }
 
-    if (token !== expectedToken) {
+    const staticTokenAccepted = allowExpectedToken && token === expectedToken;
+    if (!staticTokenAccepted && !tokenValidator?.(token)) {
       next(new AppError('Invalid bearer token', 403, 'FORBIDDEN'));
       return;
     }

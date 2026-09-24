@@ -1,4 +1,4 @@
-import { McpServer, StdioServerTransport } from '@modelcontextprotocol/server';
+import type { McpServer as McpServerType } from '@modelcontextprotocol/server';
 
 import { config } from '../config/env';
 import { AliasRegistry, createAliasService } from '../core/alias-registry';
@@ -19,7 +19,13 @@ import { createSqliteDatabase } from '../db/sqlite';
 import { logger } from '../utils/logger';
 import { registerFigmaTools } from './tools';
 
-export const createMcpServer = () => {
+type McpServerModule = typeof import('@modelcontextprotocol/server');
+const importEsm = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<McpServerModule>;
+
+export const loadMcpServerModule = (): Promise<McpServerModule> => importEsm('@modelcontextprotocol/server');
+
+export const createMcpServer = async (): Promise<McpServerType> => {
+  const { McpServer } = await loadMcpServerModule();
   const db = createSqliteDatabase(config.sqliteDbPath);
   migrateDatabase(db);
   if (config.aliasRegistrySeedOnStartup) {
@@ -74,7 +80,8 @@ export const createMcpServer = () => {
 };
 
 export const startMcpServer = async (): Promise<void> => {
-  const server = createMcpServer();
+  const { StdioServerTransport } = await loadMcpServerModule();
+  const server = await createMcpServer();
   const transport = new StdioServerTransport();
 
   await server.connect(transport);
