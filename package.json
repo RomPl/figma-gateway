@@ -5,7 +5,7 @@
   "private": true,
   "main": "dist/index.js",
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
     "mcp:start": "tsx src/mcp/server.ts",
     "start": "node dist/index.js",
