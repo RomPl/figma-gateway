@@ -22,6 +22,9 @@ const loadClients = (): Map<string, OAuthClient> => {
   }
 };
 
+// Preserve the live loader while keeping the existing public test/API export.
+export const loadOAuthClients = loadClients;
+
 const persistClients = (clients: Map<string, OAuthClient>): void => {
   mkdirSync(dirname(oauthClientsFile), { recursive: true });
   const tmp = oauthClientsFile + '.tmp';
