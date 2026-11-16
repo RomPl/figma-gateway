@@ -44,7 +44,9 @@ const safeRedirectUri = (value: string): boolean => {
     const url = new URL(value);
     const loopback = url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
     const chatgpt = url.protocol === 'https:' && ['chatgpt.com', 'chat.openai.com'].includes(url.hostname);
-    return loopback || chatgpt;
+    const claude = value === 'https://claude.ai/api/mcp/auth_callback';
+    const cline = /^vscode:\/\/saoudrizwan\.claude-dev\/mcp-auth\/callback\/[0-9a-f]{64}$/.test(value);
+    return loopback || chatgpt || claude || cline;
   } catch {
     return false;
   }
