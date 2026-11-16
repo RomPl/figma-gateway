@@ -10,7 +10,7 @@ type OAuthClient = { redirectUris: string[]; authMethod: string; secret?: string
 
 const oauthClientsFile = process.env.OAUTH_CLIENTS_FILE ?? '/mnt/newdisk/state/figma-gateway/oauth-clients.json';
 
-export const loadOAuthClients = (): Map<string, OAuthClient> => {
+const loadClients = (): Map<string, OAuthClient> => {
   if (!existsSync(oauthClientsFile)) return new Map();
   try {
     const raw = JSON.parse(readFileSync(oauthClientsFile, 'utf8')) as Record<string, OAuthClient>;
@@ -22,6 +22,9 @@ export const loadOAuthClients = (): Map<string, OAuthClient> => {
   }
 };
 
+// Preserve the live loader while keeping the existing public test/API export.
+export const loadOAuthClients = loadClients;
+
 const persistClients = (clients: Map<string, OAuthClient>): void => {
   mkdirSync(dirname(oauthClientsFile), { recursive: true });
   const tmp = oauthClientsFile + '.tmp';
@@ -31,7 +34,7 @@ const persistClients = (clients: Map<string, OAuthClient>): void => {
   chmodSync(oauthClientsFile, 0o600);
 };
 
-const clients = loadOAuthClients();
+const clients = loadClients();
 const codes = new Map<string, { clientId: string; redirectUri: string; challenge: string; createdAt: number }>();
 const flows = new Map<string, {
   clientId: string; redirectUri: string; state: string; challenge: string;
@@ -44,7 +47,9 @@ const safeRedirectUri = (value: string): boolean => {
     const url = new URL(value);
     const loopback = url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
     const chatgpt = url.protocol === 'https:' && ['chatgpt.com', 'chat.openai.com'].includes(url.hostname);
-    return loopback || chatgpt;
+    const claude = value === 'https://claude.ai/api/mcp/auth_callback';
+    const cline = /^vscode:\/\/saoudrizwan\.claude-dev\/mcp-auth\/callback\/[0-9a-f]{64}$/.test(value);
+    return loopback || chatgpt || claude || cline;
   } catch {
     return false;
   }
