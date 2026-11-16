@@ -10,7 +10,7 @@ type OAuthClient = { redirectUris: string[]; authMethod: string; secret?: string
 
 const oauthClientsFile = process.env.OAUTH_CLIENTS_FILE ?? '/mnt/newdisk/state/figma-gateway/oauth-clients.json';
 
-export const loadOAuthClients = (): Map<string, OAuthClient> => {
+const loadClients = (): Map<string, OAuthClient> => {
   if (!existsSync(oauthClientsFile)) return new Map();
   try {
     const raw = JSON.parse(readFileSync(oauthClientsFile, 'utf8')) as Record<string, OAuthClient>;
@@ -31,7 +31,7 @@ const persistClients = (clients: Map<string, OAuthClient>): void => {
   chmodSync(oauthClientsFile, 0o600);
 };
 
-const clients = loadOAuthClients();
+const clients = loadClients();
 const codes = new Map<string, { clientId: string; redirectUri: string; challenge: string; createdAt: number }>();
 const flows = new Map<string, {
   clientId: string; redirectUri: string; state: string; challenge: string;
